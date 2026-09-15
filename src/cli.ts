@@ -2,7 +2,7 @@
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applySetup, planSetup } from './cli-setup.js';
+import { applySetup, formatPlan, formatResult, parseHarnessFilter, planSetup } from './cli-setup.js';
 import { createReviewService } from './mcp/service.js';
 import { startLocalService } from './service/http.js';
 
@@ -12,7 +12,10 @@ Usage:
   visual-intent serve [--port 3742]              Start the local review service
   visual-intent open --html <path>               Open a saved HTML artifact and print the review URL
   visual-intent open --app <localhost-url>       Open a running React/Vite app and print the review URL
-  visual-intent setup [--global] [--no-skill]    Register the MCP server and install the Skill
+  visual-intent setup [--global] [--no-skill] [--print-only] [--harness <name>]
+      Register the MCP server with detected harnesses (pi, codex, claude-code,
+      opencode) and install the pi Skill. --harness is repeatable and restricts
+      the matrix to the named harnesses.
   visual-intent mcp                              Run the MCP server over stdio (used by agent hosts)
   visual-intent --help                           Show this help
 
@@ -32,25 +35,52 @@ async function main(): Promise<void> {
   }
   if (args[0] === 'setup') {
     const packageDir = join(dirname(fileURLToPath(import.meta.url)), '..');
+    const harnessValues: string[] = [];
+    for (let index = 1; index < args.length; index += 1) {
+      const arg = args[index]!;
+      if (arg === '--harness') {
+        const value = args[index + 1];
+        if (value === undefined) {
+          console.error('--harness requires a value');
+          process.exitCode = 1;
+          return;
+        }
+        harnessValues.push(value);
+        index += 1;
+      } else if (arg.startsWith('--harness=')) {
+        harnessValues.push(arg.slice('--harness='.length));
+      }
+    }
+    let harnesses;
+    try {
+      harnesses = harnessValues.length > 0 ? parseHarnessFilter(harnessValues) : undefined;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+      return;
+    }
     const setupOptions = {
       packageDir,
       homeDir: homedir(),
       projectDir: process.cwd(),
       global: args.includes('--global'),
       printOnly: args.includes('--print-only'),
-      withSkill: !args.includes('--no-skill')
+      withSkill: !args.includes('--no-skill'),
+      harnesses
     };
     const plan = planSetup(setupOptions);
-    const wrote = applySetup(plan, setupOptions);
-    console.log(`MCP config: ${plan.mcpConfigPath}`);
-    console.log(plan.mcpConfigJson);
-    console.log(`Skill: ${plan.skillTarget}`);
-    if (wrote.length === 0) {
-      console.log('print-only: nothing written.');
-    } else {
-      for (const file of wrote) {
-        console.log(`wrote ${file}`);
-      }
+    if (setupOptions.printOnly) {
+      console.log('visual-intent setup preview');
+      console.log(formatPlan(plan));
+      return;
+    }
+    const result = applySetup(plan, setupOptions);
+    console.log(formatResult(result));
+    for (const note of plan.notes) {
+      console.log(`note: ${note}`);
+    }
+    if (result.outcomes.some((outcome) => outcome.action === 'refused')) {
+      process.exitCode = 1;
     }
     return;
   }

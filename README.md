@@ -10,14 +10,59 @@ Requires Node 20+. No Rust toolchain, no hosted account.
 
 ```sh
 npm install -g visual-intent-layer
-visual-intent setup --global     # MCP registration for every project + Skill install
+visual-intent setup            # register in this project
+visual-intent setup --global   # register for every project on this machine
 ```
 
-`setup` merges the server entry into `~/.config/mcp/mcp.json` (or the current
-project's `.mcp.json` without `--global`) and copies the Skill to
-`~/.pi/agent/skills/visual-intent/`. It never overwrites existing servers and
-refuses to touch invalid JSON. Use `--print-only` to preview, `--no-skill` to
-skip the Skill. The raw snippet also ships as `mcp.json` in the package.
+`setup` detects which harnesses are present and registers the server with each
+one natively. A harness counts as present when its binary resolves on `PATH` or
+its config file or directory already exists, so setup never scatters config for
+a harness you have not installed. Without a harness filter, every detected
+in-scope harness is configured; when nothing is detected, project scope still
+writes the shared `.mcp.json` so pi and Claude Code keep working by default.
+
+| Harness     | Project scope                              | Global scope                                                       |
+| ----------- | ------------------------------------------ | ------------------------------------------------------------------ |
+| pi          | `.mcp.json` (shared) + Skill               | `~/.config/mcp/mcp.json` + Skill                                   |
+| Claude Code | `.mcp.json` (shared; first-use approval)   | `claude mcp add-json … --scope user` (or the printed manual command) |
+| Codex       | `.codex/config.toml` (trusted projects)    | `codex mcp add …` when the binary exists, else `~/.codex/config.toml` |
+| opencode    | `opencode.json`                            | `~/.config/opencode/opencode.json`                                 |
+
+Every write merges the server entry and preserves existing servers. Setup never
+overwrites another server's configuration, refuses a file holding invalid JSON
+or TOML (naming the harness and path) instead of touching it, and reports an
+already-registered server without rewriting the file. `.mcp.json` is a single
+write that serves pi and Claude Code together; Claude Code requires first-use
+approval for project-scoped servers, and the report says so. Claude Code's state
+file is never hand-edited: setup delegates to Claude's own writer command, or
+prints the exact command when the binary is absent. opencode files containing
+hand-written comments are never rewritten; setup prints the exact entry to paste.
+
+### Setup flags
+
+- `--global` — user-global scope instead of the current project.
+- `--harness <name>` — restrict the matrix to named harnesses (`pi`, `codex`,
+  `claude-code`, `opencode`); repeatable.
+- `--print-only` — show every planned write without touching disk.
+- `--no-skill` — skip the pi Skill install.
+
+### Packaged snippet
+
+On a machine without a global install, paste the packaged `mcp.json` snippet
+(shipped with the package) into your harness's config. It uses the
+`npx -y --package visual-intent-layer@<version> visual-intent-mcp` form so no
+binary needs to be on `PATH`.
+
+### Stays manual
+
+- Zed settings-file edits (`context_servers`), IDE marketplace listings, and
+  one-click or deep-link installs.
+- OAuth, tokens, and any credential-bearing setup step.
+- Windows-specific config paths.
+
+Setup support means the server is reachable with **Baseline Compatibility**, not
+that a harness carries a **Certified Experience**. No host certification claims
+are made here.
 
 pi users: MCP is provided via `pi-mcp-adapter`, which reads the standard MCP
 files above. The local browser carries the complete V0 experience; no embedded
