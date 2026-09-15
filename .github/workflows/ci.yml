@@ -19,3 +19,5 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run benchmark
+      - run: node scripts/check-bins.js
+      - run: npm install -g --prefix /tmp/vil-ci . && /tmp/vil-ci/bin/visual-intent --help

@@ -24,10 +24,10 @@ files above. The local browser carries the complete V0 experience; no embedded
 UI is required. Alternatively, add this package to pi's `packages` setting —
 its `pi.skills` manifest exposes the Skill automatically.
 
-> Maintainer: the package is not published yet. Publish checklist: `npm login`,
-> `npm publish --access public` (name `visual-intent-layer` verified available),
-> then `npm install -g visual-intent-layer` from a clean machine and run the
-> ticket 16 checklist.
+> Maintainer: releases go out via the Publish workflow (npm trusted publishing).
+> Bump the version, push to `main`, then `gh release create vX.Y.Z --generate-notes` —
+> publishing to npm happens automatically. Verify with a clean-machine
+> `npm install -g visual-intent-layer` and the ticket 16 checklist.
 
 ## Use
 

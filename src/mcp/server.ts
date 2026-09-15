@@ -7,7 +7,7 @@ import {
 import type { ReviewService } from './service.js';
 
 export const SERVER_NAME = 'visual-intent-layer';
-export const SERVER_VERSION = '0.1.0';
+export const SERVER_VERSION = '0.1.1';
 
 export function createMcpServer(service: ReviewService): Server {
   const server = new Server(
