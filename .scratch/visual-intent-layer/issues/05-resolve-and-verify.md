@@ -10,3 +10,7 @@
 - [ ] Original targets re-resolve against the new revision as exact, recovered, ambiguous, stale, or deleted, never silently picking an uncertain target
 - [ ] The Builder-Reviewer compares requested intent with the resulting revision and can approve, reject, request another pass, supersede, or mark obsolete
 - [ ] Agent acknowledgement or source modification alone never completes the intent; verification history survives restart
+
+## Comments
+
+Implemented (implemented in 8b70d52): BLAKE3 content-addressed revisions (src/artifact/revision.ts), revision polling + banner, POST /api/intents/:id/resolutions re-resolves every target as exact/recovered/ambiguous/stale/deleted (src/resolution/resolve.ts, never silently picks uncertain targets), human-only verify approve/reject/another-pass/supersede/obsolete with deleted/ambiguous blocking approval; history survives restart (tests/loop.test.ts).

@@ -10,3 +10,7 @@
 - [ ] Entering Select mode is obvious and reversible, and application controls cannot be activated through it
 - [ ] Hovered elements respond immediately with a trustworthy outline, and selecting an element or exact text range keeps the selection visually clear
 - [ ] The visible Rendered Grounding evidence for the selection is shown before anything is sent
+
+## Comments
+
+Implemented (implemented in 8b70d52): entry tool opens saved HTML in review surface (src/service/http.ts, src/ui/shell.html) with Explore/Select/Direct modes (src/ui/review.ts modeMachine, keyboard 1/2/3, Escape), hover outline + element/text-range selection with Rendered Grounding shown pre-submit (src/ui/selection.ts, grounding in src/ui/review.ts). Never claims provenance from DOM alone.

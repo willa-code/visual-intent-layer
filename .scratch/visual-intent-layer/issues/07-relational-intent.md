@@ -9,3 +9,7 @@
 - [ ] Ordering (before, after, inside), alignment (left, center, right, top, middle), spacing (equal gap, preserved rhythm), containment (visual group membership), equivalence (shared visible property or behavior), and comparative sizing (same width, same height) are expressible without CSS vocabulary
 - [ ] Each relationship is stored implementation-neutral in the envelope, preserving the desired visible relationship rather than raw coordinates
 - [ ] The agent receives relationships it can implement in a way consistent with the application architecture
+
+## Comments
+
+Implemented (implemented in 8b70d52): ordering/alignment/spacing/containment/equivalence/comparative-size in schema (schema/envelope-v0.1.schema.json), composer, review-shell relationship builder; stored implementation-neutral (no pixel fields), tested in src/ui/composer.test.ts.

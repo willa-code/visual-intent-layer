@@ -40,6 +40,10 @@ visual-intent serve --port 3742               # local service only
 
 In the review surface:
 
+The `visual-intent` command is a local operator for the human (serve/open) plus
+the MCP stdio entry point for agent hosts. It is not an agent-facing CLI
+fallback; that remains a documented principle, not a V0 deliverable.
+
 1. **Explore** the artifact normally, then enter **Select** (press `2`).
 2. Click elements, select exact text, `Alt`-drag a region, `Shift`-click for
    multi-target sets. Grounding evidence shows before anything is sent.

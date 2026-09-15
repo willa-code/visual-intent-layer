@@ -9,3 +9,7 @@
 - [ ] Host support for embedded UI, steering, and subscriptions is detected, and unsupported behavior degrades with explicit labels
 - [ ] The local browser delivers the complete interaction as a first-class experience when the host cannot embed the view
 - [ ] The embedded view is used only on hosts that declare and implement the capability
+
+## Comments
+
+Implemented (implemented in 8b70d52): capability detection/defaults with explicit labels (src/host/capabilities.ts), embedded view only where declared, local browser as complete first-class fallback (full loop in shell + HTTP API).

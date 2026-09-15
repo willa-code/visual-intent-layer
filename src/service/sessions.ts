@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { join } from 'node:path';
+import { readJsonFile, writeJsonAtomic } from './json-file.js';
 
 export type SessionRecord = {
   sessionId: string;
@@ -52,19 +53,10 @@ export class SessionRecords {
   }
 
   private load(): Record<string, SessionRecord> {
-    if (!existsSync(this.file)) {
-      return {};
-    }
-    try {
-      return JSON.parse(readFileSync(this.file, 'utf8')) as Record<string, SessionRecord>;
-    } catch {
-      return {};
-    }
+    return readJsonFile<Record<string, SessionRecord>>(this.file, {});
   }
 
   private persist(): void {
-    const tmp = `${this.file}.tmp`;
-    writeFileSync(tmp, JSON.stringify(this.records, null, 2), 'utf8');
-    renameSync(tmp, this.file);
+    writeJsonAtomic(this.file, this.records);
   }
 }

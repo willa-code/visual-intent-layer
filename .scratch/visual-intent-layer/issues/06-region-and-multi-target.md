@@ -9,3 +9,7 @@
 - [ ] A visible region can be marked where no semantic element fits and carries spatial evidence into the envelope
 - [ ] Multiple targets can be selected as one set that stays visually clear while the Builder-Reviewer writes
 - [ ] Selection remains correct under scroll, zoom, responsive reflow, and overlapping layers
+
+## Comments
+
+Implemented (implemented in 8b70d52): Alt-drag region marquees with spatial evidence, Shift-click multi-target sets (src/ui/selection.ts), region kind end-to-end in composer/schema/resolver; selection panel stays visible while writing.

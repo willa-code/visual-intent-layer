@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { computeRevision, stableArtifactId } from '../artifact/revision.js';
 import { validateEnvelope, type Envelope } from '../envelope/validate.js';
 import { LifecycleStore, type EnvelopeRecord } from '../lifecycle/store.js';
+import { readJsonFile, writeJsonAtomic } from '../service/json-file.js';
 import { SessionRecords } from '../service/sessions.js';
 import { deliveryPlan, detectCapabilities, type DeliveryPlan } from '../host/capabilities.js';
 
@@ -78,16 +79,11 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
   mkdirSync(options.dataDir, { recursive: true });
 
   function readSessions(): Record<string, Session> {
-    if (!existsSync(sessionsFile)) {
-      return {};
-    }
-    return JSON.parse(readFileSync(sessionsFile, 'utf8')) as Record<string, Session>;
+    return readJsonFile<Record<string, Session>>(sessionsFile, {});
   }
 
   function writeSessions(sessions: Record<string, Session>): void {
-    const tmp = `${sessionsFile}.tmp`;
-    writeFileSync(tmp, JSON.stringify(sessions, null, 2), 'utf8');
-    renameSync(tmp, sessionsFile);
+    writeJsonAtomic(sessionsFile, sessions);
   }
 
   async function openArtifact(input: OpenArtifactInput, baseUrlOverride?: string): Promise<OpenedArtifact> {
@@ -131,12 +127,14 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     }
     const artifactId = stableArtifactId(input.url);
     const sessionId = `session-${randomUUID()}`;
+    assertLocalAppUrl(input.url);
+    const initialRevision = await fetchAppRevision(input.url).catch(() => computeRevision(Buffer.from(input.url, 'utf8'), []));
     const sessions = readSessions();
     sessions[sessionId] = {
       sessionId,
       artifactId,
       artifactKind: 'react-vite-app',
-      revision: computeRevision(Buffer.from(input.url, 'utf8'), []),
+      revision: initialRevision,
       source: input.url,
       createdAt: new Date().toISOString()
     };
@@ -279,4 +277,33 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
   }
 
   return { listTools, openArtifact, submitIntent, acknowledgeIntent, getIntent, listIntents, store };
+}
+
+export function assertLocalAppUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Application Mode needs a local http(s) URL, got: ${url}`);
+  }
+  const localHost =
+    parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '::1';
+  if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || !localHost) {
+    throw new Error(`Application Mode only opens local applications, refused: ${url}`);
+  }
+}
+
+export async function fetchAppRevision(url: string): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3000);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`app returned ${response.status}`);
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return computeRevision(buffer.slice(0, 5 * 1024 * 1024), []);
+  } finally {
+    clearTimeout(timer);
+  }
 }

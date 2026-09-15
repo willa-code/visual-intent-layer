@@ -10,3 +10,7 @@
 - [ ] Rendered artifacts run sandboxed with bounded assets, canonical path confinement, explicit symlink handling, and observable remote egress
 - [ ] The UI discloses exactly what evidence leaves the machine before any envelope is delivered
 - [ ] Malicious artifact fixtures exercise the boundary; SECURITY.md publishes disclosure process, threat model, and supported versions; telemetry defaults to off; dependencies are audited
+
+## Comments
+
+Implemented (implemented in 8b70d52): loopback-only + unguessable caps + Host/Origin validation, sandboxed artifact CSP (no top-nav, connect-src none), canonical path confinement + symlink refusal, 1MB/5MB bounds, pre-delivery evidence disclosure UI, malicious fixtures (fixtures/malicious/) with boundary tests, SECURITY.md published, telemetry none, npm audit clean (0 vulns).

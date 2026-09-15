@@ -3,8 +3,8 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync } from 'no
 import { dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { computeRevision } from '../artifact/revision.js';
-import { validateEnvelope } from '../envelope/validate.js';
 import type { OpenArtifactInput, ReviewService } from '../mcp/service.js';
+import { fetchAppRevision } from '../mcp/service.js';
 import { resolveTarget, type ResolutionCandidate } from '../resolution/resolve.js';
 import { SessionRecords, type SessionRecord } from './sessions.js';
 
@@ -164,13 +164,17 @@ async function handleRequest(
       return;
     }
     const envelopeJson = (parsed as { envelope?: unknown })['envelope'] ?? parsed;
-    const validation = validateEnvelope(envelopeJson);
-    if (!validation.ok) {
-      sendText(response, 400, `Invalid Visual Intent Envelope: ${validation.errors.join('; ')}`);
-      return;
+    try {
+      const submitted = await review.submitIntent(envelopeJson, { host: 'browser' });
+      sendJson(response, 200, {
+        envelopeId: submitted.envelopeId,
+        status: submitted.status,
+        delivery: submitted.delivery.label
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'submit failed';
+      sendText(response, message.startsWith('Invalid Visual Intent Envelope') ? 400 : 409, message);
     }
-    const record = review.store.deliver(validation.value, 'browser');
-    sendJson(response, 200, { envelopeId: record.envelopeId, status: record.status });
     return;
   }
   const statusMatch = /^\/api\/intents\/([^/]+)$/.exec(url.pathname);
@@ -260,7 +264,7 @@ async function handleRequest(
       sendText(response, 401, 'Unauthorized');
       return;
     }
-    sendJson(response, 200, sessionStatus(session));
+    sendJson(response, 200, await sessionStatus(session));
     return;
   }
   sendText(response, 404, 'Not found');
@@ -324,12 +328,40 @@ function isAllowedOrigin(request: IncomingMessage): boolean {
   );
 }
 
-function sessionStatus(session: SessionRecord): Record<string, unknown> {
-  if (session.kind === 'saved-html' && session.source.startsWith('file://')) {
-    const absolute = session.source.slice('file://'.length);
+function artifactFile(session: SessionRecord): string | undefined {
+  if (session.kind !== 'saved-html' || !session.source.startsWith('file://')) {
+    return undefined;
+  }
+  return session.source.slice('file://'.length);
+}
+
+async function sessionStatus(session: SessionRecord): Promise<Record<string, unknown>> {
+  const absolute = artifactFile(session);
+  if (absolute) {
     try {
       const bytes = readFileSync(absolute);
       const revision = computeRevision(bytes, []);
+      return {
+        sessionId: session.sessionId,
+        artifactId: session.artifactId,
+        openedRevision: session.revision,
+        currentRevision: revision,
+        changed: revision !== session.revision
+      };
+    } catch {
+      return {
+        sessionId: session.sessionId,
+        artifactId: session.artifactId,
+        openedRevision: session.revision,
+        currentRevision: session.revision,
+        changed: false,
+        unreadable: true
+      };
+    }
+  }
+  if (session.kind === 'react-vite-app') {
+    try {
+      const revision = await fetchAppRevision(session.source);
       return {
         sessionId: session.sessionId,
         artifactId: session.artifactId,
@@ -375,11 +407,15 @@ function serveReviewShell(response: ServerResponse, session: SessionRecord): voi
 }
 
 function serveArtifact(response: ServerResponse, session: SessionRecord): void {
-  if (session.kind !== 'saved-html' || !session.source.startsWith('file://')) {
-    sendText(response, 501, 'Application Mode artifacts render from the running application URL');
+  const absolute = artifactFile(session);
+  if (!absolute) {
+    if (session.kind === 'react-vite-app') {
+      serveAppRelay(response, session);
+      return;
+    }
+    sendText(response, 501, 'Unknown artifact kind');
     return;
   }
-  const absolute = session.source.slice('file://'.length);
   if (!existsSync(absolute)) {
     sendText(response, 404, 'Artifact file no longer exists');
     return;
@@ -403,12 +439,24 @@ function serveArtifact(response: ServerResponse, session: SessionRecord): void {
   response.end(bytes);
 }
 
+function serveAppRelay(response: ServerResponse, session: SessionRecord): void {
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8" /><title>Application review relay</title><style>html,body{margin:0;height:100%}iframe{width:100%;height:100%;border:0}.note{font:12px system-ui;padding:.4rem .8rem;background:#fef3c7}</style></head><body><div class="note">Reviewing the running app at ${escapeHtml(session.source)}. Cross-origin selection needs the instrumented adapter runtime; Rendered Grounding stays available.</div><iframe title="Running application" src="${escapeHtml(session.source)}"></iframe></body></html>`;
+  response.writeHead(200, {
+    'content-type': 'text/html; charset=utf-8',
+    'content-security-policy':
+      "default-src 'self'; frame-src http://127.0.0.1:* http://localhost:* https://127.0.0.1:* https://localhost:*; style-src 'unsafe-inline'",
+    'x-content-type-options': 'nosniff'
+  });
+  response.end(html);
+}
+
 function serveAsset(response: ServerResponse, session: SessionRecord, requested: string): void {
-  if (session.kind !== 'saved-html' || !session.source.startsWith('file://')) {
+  const absolute = artifactFile(session);
+  if (!absolute) {
     sendText(response, 501, 'Only saved HTML artifacts serve local assets');
     return;
   }
-  const base = dirnameOf(session.source.slice('file://'.length));
+  const base = dirnameOf(absolute);
   const confined = confinePath(base, join(base, requested));
   if (!confined || !existsSync(confined)) {
     sendText(response, 403, 'Asset path is outside the artifact directory');

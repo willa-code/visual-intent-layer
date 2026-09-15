@@ -10,3 +10,7 @@
 - [ ] Delivery through ordinary MCP tools works from pi via pi-mcp-adapter, and the agent receives targets, evidence, revision identity, and uncertainty without reverse-engineering a screenshot
 - [ ] The UI distinguishes locally queued, host-accepted, and agent-acknowledged states without implying acceptance means action
 - [ ] Repeated delivery of the same envelope is idempotent and cannot create silent duplicates
+
+## Comments
+
+Implemented (implemented in 8b70d52): composer builds versioned envelope (src/ui/composer.ts), submit via POST /api/intents and MCP submit_visual_intent (src/mcp/service.ts); UI distinguishes draft/queued-local/host-accepted/agent-acknowledged; idempotent on idempotencyKey (src/lifecycle/store.ts).

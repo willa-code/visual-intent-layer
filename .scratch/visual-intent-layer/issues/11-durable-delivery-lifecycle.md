@@ -10,3 +10,7 @@
 - [ ] Killing and restarting the process at any lifecycle boundary loses no acknowledged intent and duplicates none
 - [ ] Steering is offered only where the host exposes it and is labelled as next-safe-boundary, never instant cancellation
 - [ ] Review Interruption is an explicit disruptive action shown only where it can be represented honestly
+
+## Comments
+
+Implemented (implemented in 8b70d52): atomic JSON lifecycle store with idempotent deliver, durable draft + next-pass queue, restart reconstruction (src/lifecycle/store.ts), steering gated on host capability with next-safe-boundary labels, explicit review interruption only where representable (src/host/capabilities.ts + service wiring).

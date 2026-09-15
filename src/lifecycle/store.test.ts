@@ -46,6 +46,27 @@ describe('delivery lifecycle', () => {
     expect(['verified', 'rejected']).not.toContain(modified.status);
   });
 
+  it('blocks approval on stale targets until they are explicitly re-resolved', () => {
+    const store = new LifecycleStore(tempDir());
+    const envelope = structuredClone(representativeEnvelope);
+    const delivered = store.deliver(envelope, 'test-host');
+    store.recordResolution(delivered.envelopeId, [{ targetId: 't-1', outcome: 'stale' }]);
+    expect(() => store.verify(delivered.envelopeId, 'approve')).toThrow(/stale/);
+    store.recordResolution(delivered.envelopeId, [{ targetId: 't-1', outcome: 'recovered' }]);
+    expect(store.verify(delivered.envelopeId, 'approve').status).toBe('verified');
+  });
+
+  it('marks a pre-delivery envelope stale when the artifact advances', () => {
+    const store = new LifecycleStore(tempDir());
+    const envelope = structuredClone(representativeEnvelope);
+    const queued = store.queueNextPass(envelope);
+    const advanced = store.noteRevisionAdvance(queued.envelopeId, 'blake3:9'.padEnd(71, '9'));
+    expect(advanced.stale).toBe(true);
+    expect(() => store.verify(queued.envelopeId, 'approve')).toThrow(/stale/i);
+    store.recordResolution(queued.envelopeId, [{ targetId: 't-1', outcome: 'recovered' }]);
+    expect(store.get(queued.envelopeId)?.stale).toBe(false);
+  });
+
   it('lets only the Builder-Reviewer verify, and blocks approval on deleted targets', () => {
     const store = new LifecycleStore(tempDir());
     const envelope = structuredClone(representativeEnvelope);

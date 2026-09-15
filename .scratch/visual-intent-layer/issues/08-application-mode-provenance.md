@@ -10,3 +10,7 @@
 - [ ] Exact Source Provenance resolves to file, line, column, and component through the instrumented adapter
 - [ ] Rendered Grounding and Source Provenance are labelled distinctly everywhere they appear
 - [ ] Weak or absent source evidence abstains visibly instead of promoting an inferred location as fact
+
+## Comments
+
+Implemented (implemented in 8b70d52): Application Mode open via entry tool (react-vite-app URL), exact provenance from React fiber debug source with abstention on non-React/production DOM (src/adapters/react-provenance.ts), Vite plugin injecting runtime marker, distinct Rendered Grounding vs Source Provenance labels in evidence cards.

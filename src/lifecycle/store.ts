@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Envelope } from '../envelope/validate.js';
+import { readJsonFileStrict, writeJsonAtomic } from '../service/json-file.js';
 
 export type LifecycleStatus =
   | 'draft'
@@ -36,6 +37,7 @@ export type EnvelopeRecord = {
   idempotencyKey: string;
   envelope: Envelope;
   status: LifecycleStatus;
+  stale: boolean;
   resultingRevisions: string[];
   resolutions: TargetResolution[];
   deliveryHistory: DeliveryEvent[];
@@ -137,18 +139,37 @@ export class LifecycleStore {
     return this.mutate(envelopeId, (record) => {
       const at = now();
       record.resolutions = resolutions.map((resolution) => ({ ...resolution, resolvedAt: at }));
+      record.stale = false;
       record.deliveryHistory.push({ type: 'resolution', at });
+      return record;
+    });
+  }
+
+  noteRevisionAdvance(envelopeId: string, currentRevision: string): EnvelopeRecord {
+    return this.mutate(envelopeId, (record) => {
+      if (currentRevision === record.envelope.artifact.revision) {
+        return record;
+      }
+      if (record.status === 'draft' || record.status === 'queued-local') {
+        record.stale = true;
+      }
       return record;
     });
   }
 
   verify(envelopeId: string, verdict: VerificationVerdict, options: { successorId?: string } = {}): EnvelopeRecord {
     return this.mutate(envelopeId, (record) => {
+      if (verdict === 'approve' && record.stale) {
+        throw new Error('Envelope is stale: the artifact advanced before delivery. Re-resolve targets against the current revision first.');
+      }
       if (verdict === 'approve' && record.resolutions.some((r) => r.outcome === 'deleted')) {
         throw new Error('Cannot approve while a target resolves as deleted; reject, supersede, or mark obsolete instead.');
       }
       if (verdict === 'approve' && record.resolutions.some((r) => r.outcome === 'ambiguous')) {
         throw new Error('Cannot approve while a target resolves as ambiguous; dispose each ambiguous target explicitly.');
+      }
+      if (verdict === 'approve' && record.resolutions.some((r) => r.outcome === 'stale')) {
+        throw new Error('Cannot approve while a target resolves as stale; re-resolve against the current revision or dispose it explicitly.');
       }
       record.status =
         verdict === 'approve'
@@ -206,15 +227,13 @@ export class LifecycleStore {
   }
 
   private load(): PersistedStore {
-    if (!existsSync(this.file)) {
+    const parsed = readJsonFileStrict<PersistedStore | undefined>(
+      this.file,
+      undefined,
+      'Lifecycle store'
+    );
+    if (parsed === undefined) {
       return { version: STORE_VERSION, records: {}, byIdempotencyKey: {} };
-    }
-    const raw = readFileSync(this.file, 'utf8');
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      throw new Error(`Lifecycle store at ${this.file} is corrupt; refusing to start rather than lose intent.`);
     }
     if (!isPersistedStore(parsed)) {
       throw new Error(`Lifecycle store at ${this.file} has an incompatible layout; refusing to start.`);
@@ -223,9 +242,7 @@ export class LifecycleStore {
   }
 
   private persist(): void {
-    const tmp = `${this.file}.tmp`;
-    writeFileSync(tmp, JSON.stringify(this.state, null, 2), 'utf8');
-    renameSync(tmp, this.file);
+    writeJsonAtomic(this.file, this.state);
   }
 }
 
@@ -235,6 +252,7 @@ function blankRecord(envelope: Envelope): EnvelopeRecord {
     idempotencyKey: envelope.delivery.idempotencyKey,
     envelope,
     status: 'draft',
+    stale: false,
     resultingRevisions: [],
     resolutions: [],
     deliveryHistory: [],
