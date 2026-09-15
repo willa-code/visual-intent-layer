@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "Local-first Visual Direction Loop: point at visible targets, deliver a versioned Visual Intent Envelope over MCP, verify by hand.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/willa-code/visual-intent-layer.git"
+  },
   "keywords": ["mcp", "model-context-protocol", "visual-review", "agent-skills", "pi-package"],
   "pi": {
     "skills": ["./skills"]
