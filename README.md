@@ -206,6 +206,14 @@ undocumented new state fails loudly.
 - `src/instrumentation/` — product-boundary measurements
 - `skills/` — thin optional Skill for agents
 
+## Maintaining this package
+
+Releases go out through the Publish workflow (npm trusted publishing).
+`/maintain-visual-intent-layer` lays out the paths — dogfood locally, cut a
+pre-release to `next`, promote a validated pre-release, or fix a bad release —
+and executes the one you pick. Pre-releases publish to `next`; `latest` only
+moves when a validated pre-release is promoted.
+
 ## License
 
 Apache-2.0. The complete local loop is permissively open; see `SECURITY.md`
