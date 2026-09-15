@@ -1,0 +1,16 @@
+# Make Annotation the unit of work and reduce resolution to one axis
+
+Annotation becomes the durable, human-facing unit of the Visual Direction Loop: a Builder-Reviewer selects one or more visible targets, drafts a note in a card anchored to the target, attaches references, expresses Relational Intent by manipulating targets directly, and queues the result. A Visual Intent Envelope is demoted to the portable wire format and the delivery batch carrying one or more Annotations, and each Annotation is verified individually, because one shared written direction and one verdict per submission cannot express independent direction on several targets or verify them separately. Relation type and operator pickers are removed in favour of direct manipulation, and the operator vocabulary is reduced to the relations that have a real gesture — order, alignment, equal spacing, containment, shared property and comparative size — with preserved rhythm and shared behaviour retired and `inside` merged into containment. The product never writes style values: it expresses a desired relationship and leaves the implementation to the agent, which is a deliberate non-parity with integrated design-mode products.
+
+**Resolution model.** The five-outcome vocabulary was two overlapping lists that disagreed with each other, and `stale` described the annotation rather than the target. Resolution stores two facts and derives the labels a human reads:
+
+```
+Target match   { match: 'exact' | 'recovered' | 'unresolved', candidates: Candidate[] }
+Annotation     { revisionRelation: 'current' | 'advanced' }
+```
+
+Ambiguous, Deleted and Stale are derived display labels: unresolved with candidates is ambiguous, unresolved without candidates is deleted, and `advanced` is stale and belongs to the Annotation, not to a target. Provenance Confidence stays a separate axis — exact source span, inferred, or unavailable — and never shares the word "exact" with target resolution in the same view.
+
+**Considered Options:** Keeping the envelope as the only unit was rejected because it forces one textarea and one verdict across independent targets. Keeping five peer outcomes was rejected because `stale` was being asked to mean both a target outcome and an envelope property in the same document. A style panel was rejected because it contradicts the product's stated refusal to be a visual editor. A freehand pen or shape palette was rejected because a stroke layer needs portable semantics for "this squiggle means something", which Relational Intent already expresses better.
+
+**Consequences:** The envelope schema, persisted local state, the MCP contract and the resolution benchmark all change vocabulary. Existing local envelopes migrate on read where the mapping is unambiguous — one envelope becomes one Annotation per target carrying the envelope's shared written direction — and are left untouched and reported where it is not. The Target Resolution and Provenance Confidence glossary entries are rewritten, and `annotation payload` and `annotation workflow` leave the avoid-lists on the Visual Intent Envelope and Visual Direction Loop entries because the product now owns the concept.

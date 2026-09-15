@@ -4,10 +4,11 @@ import {
   ListToolsRequestSchema,
   type CallToolResult
 } from '@modelcontextprotocol/sdk/types.js';
+import { autoOpenSuppressed } from '../service/browser.js';
 import type { ReviewService } from './service.js';
 
 export const SERVER_NAME = 'visual-intent-layer';
-export const SERVER_VERSION = '0.1.1';
+export const SERVER_VERSION = '0.3.0-next.0';
 
 export function createMcpServer(service: ReviewService): Server {
   const server = new Server(
@@ -28,13 +29,17 @@ export function createMcpServer(service: ReviewService): Server {
     try {
       switch (request.params.name) {
         case 'open_visual_review':
-          return ok(await service.openArtifact(openArgs(args)));
-        case 'submit_visual_intent':
-          return ok(await service.submitIntent(args['envelope']));
+          return ok(await openVisualReview(service, args));
         case 'get_intent_status':
-          return ok(service.getIntent(stringArg(args, 'envelopeId')));
+          return ok(service.getBatchStatus(stringArg(args, 'envelopeId')));
         case 'acknowledge_intent':
-          return ok(await service.acknowledgeIntent(stringArg(args, 'envelopeId'), stringArg(args, 'agentId')));
+          return ok(
+            await service.acknowledge(
+              stringArg(args, 'envelopeId'),
+              stringArg(args, 'agentId'),
+              optionalString(args, 'annotationId')
+            )
+          );
         default:
           throw new Error(`Unknown tool: ${request.params.name}`);
       }
@@ -47,6 +52,27 @@ export function createMcpServer(service: ReviewService): Server {
   });
 
   return server;
+}
+
+async function openVisualReview(service: ReviewService, args: Record<string, unknown>): Promise<unknown> {
+  const opened = await service.openArtifact(openArgs(args), { openBrowser: !autoOpenSuppressed() });
+  service.noteAgentContact(opened.sessionId);
+  const noWait = envTruthy(process.env['VISUAL_INTENT_NO_WAIT']) || args['waitMs'] === 0;
+  const waitMs = numberArg(args, 'waitMs') ?? service.waitMs;
+  const batch = noWait ? null : await service.waitForSend(opened.sessionId, waitMs);
+  const queued = service.annotations.queueOf(opened.artifact.id).length;
+  return {
+    reviewUrl: opened.reviewUrl,
+    artifact: opened.artifact,
+    reused: opened.reused,
+    status: batch ? 'sent' : 'stepped-away',
+    envelope: batch?.envelope ?? null,
+    annotationIds: batch?.annotationIds ?? [],
+    queuedAnnotations: queued,
+    note: batch
+      ? 'The human sent this batch. Each Annotation carries its own identity. Acknowledgement is not completion and does not verify anything.'
+      : 'The host could not hold the call for the human. Nothing is lost: Annotations stay queued durably on this machine, and get_intent_status reads them.'
+  };
 }
 
 function ok(value: unknown): CallToolResult {
@@ -71,4 +97,22 @@ function stringArg(args: Record<string, unknown>, name: string): string {
     throw new Error(`Missing required string argument: ${name}`);
   }
   return value;
+}
+
+function optionalString(args: Record<string, unknown>, name: string): string | undefined {
+  const value = args[name];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function numberArg(args: Record<string, unknown>, name: string): number | undefined {
+  const value = args[name];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function envTruthy(value: string | undefined): boolean {
+  if (value === undefined) {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized !== '' && normalized !== '0' && normalized !== 'false' && normalized !== 'no';
 }

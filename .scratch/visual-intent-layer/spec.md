@@ -1,6 +1,30 @@
 # Visual Intent Layer Proof Product
 
-Status: ready-for-agent
+Status: superseded in part by `.scratch/review-surface/spec.md`
+
+## Superseded decisions
+
+The following decisions in this document are no longer in force and must not be
+implemented from here. They are replaced by `.scratch/review-surface/spec.md`.
+
+- The three interaction modes (Explore / Select / Direct) — replaced by the two
+  Review Surface states, Review and Verify, with a tool row inside Review.
+- One envelope per submission carrying one shared written direction and one
+  verdict — replaced by durable Annotations delivered as a batch envelope and
+  verified individually.
+- The five resolution outcomes (exact, recovered, ambiguous, stale, deleted) —
+  replaced by `match` (`exact` / `recovered` / `unresolved`) with candidates,
+  plus an Annotation-level revision relation. See ADR-0016.
+- Relational Intent expressed through relation type and operator pickers —
+  replaced by direct manipulation with a reduced operator set.
+- The three Intent Previews as separate experimental manipulations — folded into
+  Relational Intent as its input method.
+- The embedded MCP App view as a V0 deliverable — deferred until a host supports
+  it. See ADR-0015.
+
+Everything else still holds: the domain model and glossary, the Envelope as the
+portable contract, the delivery lifecycle, resolution semantics and abstention,
+the security posture as amended by ADR-0015, and distribution.
 
 ## Problem Statement
 

@@ -1,17 +1,41 @@
-import { mkdtempSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { connect } from 'node:net';
+import { connect, type AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { representativeEnvelope } from '../envelope/fixtures.js';
 import { createReviewService } from '../mcp/service.js';
+import { autoOpenSuppressed } from './browser.js';
 import { confinePath, startLocalService, type LocalService } from './http.js';
-import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
 
-function startStubApp(
-  initialBody: string
-): Promise<{ url: string; setBody: (next: string) => void; stop: () => Promise<void> }> {
+const running: LocalService[] = [];
+
+afterEach(async () => {
+  while (running.length > 0) {
+    await running.pop()!.stop();
+  }
+});
+
+async function setup(): Promise<{ service: LocalService; baseUrl: string; dataDir: string }> {
+  const dataDir = mkdtempSync(join(tmpdir(), 'vil-http-'));
+  const review = createReviewService({ dataDir });
+  const service = await startLocalService({ dataDir, reviewService: review, port: 0 });
+  running.push(service);
+  return { service, baseUrl: service.baseUrl, dataDir };
+}
+
+async function openGallery(service: LocalService): Promise<{ sessionId: string; capability: string; reviewUrl: string; artifactId: string; revision: string }> {
+  const opened = await service.openSession({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+  return {
+    sessionId: opened.sessionId,
+    capability: opened.capability,
+    reviewUrl: opened.reviewUrl,
+    artifactId: opened.artifact.id,
+    revision: opened.artifact.revision
+  };
+}
+
+function startStubApp(initialBody: string): Promise<{ url: string; setBody: (next: string) => void; stop: () => Promise<void> }> {
   let body = initialBody;
   const server = createServer((_request, response) => {
     response.writeHead(200, { 'content-type': 'text/html' });
@@ -20,12 +44,11 @@ function startStubApp(
   return new Promise((resolvePromise) => {
     server.listen(0, '127.0.0.1', () => {
       const address = server.address() as AddressInfo;
-      const setBody = (next: string): void => {
-        body = next;
-      };
       resolvePromise({
         url: `http://127.0.0.1:${address.port}/`,
-        setBody,
+        setBody: (next) => {
+          body = next;
+        },
         stop: () => new Promise<void>((done) => server.close(() => done()))
       });
     });
@@ -51,30 +74,10 @@ function rawStatus(payload: string, port: number): Promise<number> {
   });
 }
 
-const running: LocalService[] = [];
-
-afterEach(async () => {
-  while (running.length > 0) {
-    await running.pop()!.stop();
-  }
-});
-
-async function setup(): Promise<{ service: LocalService; baseUrl: string }> {
-  const dataDir = mkdtempSync(join(tmpdir(), 'vil-http-'));
-  const review = createReviewService({ dataDir });
-  const service = await startLocalService({ dataDir, reviewService: review, port: 0 });
-  running.push(service);
-  return { service, baseUrl: service.baseUrl };
-}
-
-describe('local service', () => {
-  it('binds to loopback only', async () => {
-    const { service } = await setup();
+describe('local service boundary', () => {
+  it('binds to loopback only and serves health without a capability', async () => {
+    const { service, baseUrl } = await setup();
     expect(service.address).toBe('127.0.0.1');
-  });
-
-  it('serves health without a capability', async () => {
-    const { baseUrl } = await setup();
     const response = await fetch(`${baseUrl}/health`);
     expect(response.status).toBe(200);
     expect(await response.text()).toContain('ok');
@@ -82,132 +85,364 @@ describe('local service', () => {
 
   it('refuses review routes without a valid session capability', async () => {
     const { baseUrl } = await setup();
-    const response = await fetch(`${baseUrl}/review/session-nope`);
-    expect(response.status).toBe(401);
+    expect((await fetch(`${baseUrl}/review/session-nope`)).status).toBe(401);
   });
 
-  it('opens a session and serves the review shell with the capability', async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), 'vil-http-shell-'));
-    const review = createReviewService({ dataDir });
-    const service = await startLocalService({ dataDir, reviewService: review, port: 0 });
-    running.push(service);
-    const opened = await service.openSession({ kind: 'saved-html', path: 'fixtures/gallery.html' });
-    expect(opened.reviewUrl).toContain('cap=');
-    const response = await fetch(opened.reviewUrl);
-    expect(response.status).toBe(200);
-    const html = await response.text();
-    expect(html).toContain('Explore');
-    expect(html).toContain('Select');
-  });
-
-  it('serves the artifact sandboxed in an isolated frame', async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), 'vil-http-artifact-'));
-    const review = createReviewService({ dataDir });
-    const service = await startLocalService({ dataDir, reviewService: review, port: 0 });
-    running.push(service);
-    const opened = await service.openSession({ kind: 'saved-html', path: 'fixtures/gallery.html' });
-    const artifactUrl = opened.reviewUrl.replace('/review/', '/artifact/');
-    const response = await fetch(artifactUrl);
-    expect(response.status).toBe(200);
-    expect(response.headers.get('content-security-policy')).toContain('sandbox');
-    expect(await response.text()).toContain('Summer gallery');
-  });
-
-  it('rejects cross-origin browser requests', async () => {
-    const { baseUrl } = await setup();
-    const response = await fetch(`${baseUrl}/health`, {
-      headers: { Origin: 'https://evil.example.com' }
-    });
+  it('rejects cross-origin browser requests and foreign Host headers', async () => {
+    const { service, baseUrl } = await setup();
+    const response = await fetch(`${baseUrl}/health`, { headers: { Origin: 'https://evil.example.com' } });
     expect(response.status).toBe(403);
-  });
-
-  it('rejects requests with a foreign Host header', async () => {
-    const { service } = await setup();
     const status = await rawStatus('GET /health HTTP/1.1\r\nHost: evil.example.com\r\nConnection: close\r\n\r\n', service.port);
     expect(status).toBe(403);
   });
 
-  it('never serves files outside the artifact directory', async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), 'vil-http-confine-'));
-    const review = createReviewService({ dataDir });
-    const service = await startLocalService({ dataDir, reviewService: review, port: 0 });
-    running.push(service);
-    const opened = await service.openSession({ kind: 'saved-html', path: 'fixtures/gallery.html' });
-    const cap = opened.reviewUrl.split('cap=')[1];
-    const response = await fetch(`${service.baseUrl}/assets/${opened.sessionId}/..%2F..%2Fpackage.json?cap=${cap}`);
-    expect(response.status).not.toBe(200);
+  it('never serves files outside the artifact directory', () => {
     expect(confinePath('/tmp/review', '/tmp/review/../package.json')).toBeUndefined();
     expect(confinePath('/tmp/review', '/etc/passwd')).toBeUndefined();
     expect(confinePath('/tmp/review', '/tmp/review/style.css')).toBeDefined();
   });
 
-  it('keeps browser-submitted drafts local with no agent-side effect', async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), 'vil-http-draft-'));
-    const review = createReviewService({ dataDir });
-    const service = await startLocalService({ dataDir, reviewService: review, port: 0 });
-    running.push(service);
-    const opened = await service.openSession({ kind: 'saved-html', path: 'fixtures/gallery.html' });
-    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
-    const draft = {
-      ...structuredClone(representativeEnvelope),
-      envelopeId: 'env-browser-draft',
-      artifact: { id: opened.artifact.id, kind: 'saved-html', revision: opened.artifact.revision },
-      delivery: { ...representativeEnvelope.delivery, intent: 'draft', idempotencyKey: 'idem-browser-draft' }
-    };
-    const response = await fetch(`${service.baseUrl}/api/intents?${auth}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ envelope: draft })
-    });
+  it('suppresses automatic opening by environment variable', () => {
+    const previous = process.env['VISUAL_INTENT_NO_OPEN'];
+    process.env['VISUAL_INTENT_NO_OPEN'] = '1';
+    expect(autoOpenSuppressed()).toBe(true);
+    process.env['VISUAL_INTENT_NO_OPEN'] = '0';
+    expect(autoOpenSuppressed()).toBe(false);
+    if (previous === undefined) {
+      delete process.env['VISUAL_INTENT_NO_OPEN'];
+    } else {
+      process.env['VISUAL_INTENT_NO_OPEN'] = previous;
+    }
+  });
+});
+
+describe('review shell and asset graph', () => {
+  it('serves the shell with capability and prints the review URL', async () => {
+    const { service } = await setup();
+    const opened = await openGallery(service);
+    expect(opened.reviewUrl).toContain('cap=');
+    const response = await fetch(opened.reviewUrl);
     expect(response.status).toBe(200);
-    expect(((await response.json()) as { status: string }).status).toBe('draft');
+    const html = await response.text();
+    expect(html).toContain('data-artifact-revision');
+    expect(html).toContain('/ui/shell.js');
+    expect(html).toContain('/ui/shell.css');
+    expect(response.headers.get('content-security-policy')).toContain("default-src 'self'");
+    expect(response.headers.get('set-cookie')).toBeTruthy();
   });
 
-  it('renders a running local app through a relay frame instead of failing', async () => {
-    const app = await startStubApp('<h1>stub app</h1>');
+  it('serves every module the shell needs, so its scripts can actually run', async () => {
+    const { baseUrl } = await setup();
+    for (const asset of ['shell.js', 'shell.css', 'artifact-layer.js']) {
+      const response = await fetch(`${baseUrl}/ui/${asset}`);
+      expect(response.status, `${asset} should load`).toBe(200);
+      expect((await response.text()).length).toBeGreaterThan(100);
+    }
+  });
+
+  it('serves the dev-only gallery route without linking it from product navigation', async () => {
+    const { service, baseUrl } = await setup();
+    const galleryResponse = await fetch(`${baseUrl}/gallery`);
+    expect(galleryResponse.status).toBe(200);
+    expect(await galleryResponse.text()).toContain('gallery.js');
+    const shell = await (await fetch((await openGallery(service)).reviewUrl)).text();
+    expect(shell).not.toContain('gallery.js');
+    expect(shell).not.toContain('href="/gallery"');
+  });
+});
+
+describe('artifact fidelity', () => {
+  it('serves the artifact sandboxed, with runtime data fetches blocked and the interaction layer injected', async () => {
+    const { service } = await setup();
+    const opened = await openGallery(service);
+    const response = await fetch(`${service.baseUrl}/artifact/${opened.sessionId}`, {
+      headers: { 'x-session-cap': opened.capability }
+    });
+    expect(response.status).toBe(200);
+    const csp = response.headers.get('content-security-policy') ?? '';
+    expect(csp).toContain('sandbox');
+    expect(csp).not.toContain('allow-top-navigation');
+    expect(csp).toContain("connect-src 'none'");
+    const html = await response.text();
+    expect(html).toContain('Summer gallery');
+    expect(html).toContain('/ui/artifact-layer.js');
+    expect(html).toContain(`data-revision="${opened.revision}"`);
+  });
+
+  it('rewrites relative and root-relative URLs so the artifact keeps its own assets', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vil-fidelity-'));
+    writeFileSync(join(dir, 'styles.css'), 'body { color: #123; }', 'utf8');
+    writeFileSync(
+      join(dir, 'page.html'),
+      '<!doctype html><html><head><link rel="stylesheet" href="styles.css" /></head><body><img src="/images/logo.png" /><p>Hello</p></body></html>',
+      'utf8'
+    );
+    const { service } = await setup();
+    const opened = await service.openSession({ kind: 'saved-html', path: join(dir, 'page.html') });
+    const html = await (
+      await fetch(`${service.baseUrl}/artifact/${opened.sessionId}`, { headers: { 'x-session-cap': opened.capability } })
+    ).text();
+    expect(html).toContain(`href="/artifact/${opened.sessionId}/styles.css"`);
+    expect(html).toContain(`src="/artifact/${opened.sessionId}/images/logo.png"`);
+    const css = await fetch(`${service.baseUrl}/artifact/${opened.sessionId}/styles.css`, {
+      headers: { 'x-session-cap': opened.capability }
+    });
+    expect(css.status).toBe(200);
+    expect(css.headers.get('content-type')).toContain('text/css');
+  });
+
+  it('permits the declared remote stylesheet, font and image origins while keeping data requests blocked', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vil-remote-'));
+    writeFileSync(
+      join(dir, 'page.html'),
+      `<!doctype html><html><head>
+        <link rel="stylesheet" href="https://cdn.example.com/site.css" />
+        <style>@font-face { font-family: X; src: url(https://fonts.example.net/x.woff2); }</style>
+      </head><body><img src="https://images.example.org/hero.png" /><script>fetch('https://api.example.com/data')</script></body></html>`,
+      'utf8'
+    );
+    const { service } = await setup();
+    const opened = await service.openSession({ kind: 'saved-html', path: join(dir, 'page.html') });
+    const artifact = await fetch(`${service.baseUrl}/artifact/${opened.sessionId}`, {
+      headers: { 'x-session-cap': opened.capability }
+    });
+    const csp = artifact.headers.get('content-security-policy') ?? '';
+    expect(csp).toContain('https://cdn.example.com');
+    expect(csp).toContain('https://fonts.example.net');
+    expect(csp).toContain('https://images.example.org');
+    expect(csp).toContain("connect-src 'none'");
+
+    const policy = (await (
+      await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/policy`, {
+        headers: { 'x-session-cap': opened.capability }
+      })
+    ).json()) as { contactsRemote: boolean; remoteOrigins: string[] };
+    expect(policy.contactsRemote).toBe(true);
+    expect(policy.remoteOrigins).toContain('https://cdn.example.com');
+  });
+
+  it('serves the revision the direction was written against for before/after comparison', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vil-before-'));
+    writeFileSync(join(dir, 'page.html'), '<!doctype html><html><body><button>Before</button></body></html>', 'utf8');
+    const { service } = await setup();
+    const opened = await service.openSession({ kind: 'saved-html', path: join(dir, 'page.html') });
+    await fetch(`${service.baseUrl}/artifact/${opened.sessionId}`, { headers: { 'x-session-cap': opened.capability } });
+    writeFileSync(join(dir, 'page.html'), '<!doctype html><html><body><button>After</button></body></html>', 'utf8');
+    const before = await (
+      await fetch(`${service.baseUrl}/artifact/${opened.sessionId}/before`, { headers: { 'x-session-cap': opened.capability } })
+    ).text();
+    expect(before).toContain('Before');
+    expect(before).toContain('data-mode="before"');
+  });
+});
+
+describe('Annotation API', () => {
+  it('creates a durable Annotation, queues it, sends one batch, and verifies it by hand', async () => {
+    const { service, baseUrl } = await setup();
+    const opened = await openGallery(service);
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const createResponse = await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        targets: [
+          {
+            targetId: 't-1',
+            kind: 'element',
+            grounding: {
+              selectors: ['main > button'],
+              boundingBox: { x: 1, y: 2, width: 3, height: 4 },
+              semanticRole: 'button',
+              accessibleName: 'Buy',
+              structuralContext: { ancestorChain: ['body', 'main'], siblingIndex: 0, siblingCount: 1 }
+            },
+            provenanceConfidence: 'unavailable'
+          }
+        ]
+      })
+    });
+    expect(createResponse.status).toBe(200);
+    const created = (await createResponse.json()) as { annotation: { annotationId: string } };
+
+    const patched = (await (
+      await fetch(`${baseUrl}/api/annotations/${created.annotation.annotationId}?${auth}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ note: 'Make the button bigger.' })
+      })
+    ).json()) as { annotation: { note: string } };
+    expect(patched.annotation.note).toBe('Make the button bigger.');
+
+    const queueResponse = await fetch(`${baseUrl}/api/annotations/${created.annotation.annotationId}/queue?${auth}`, { method: 'POST' });
+    expect(queueResponse.status).toBe(200);
+
+    const sendResponse = await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/send?${auth}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ intent: 'next-pass' })
+    });
+    expect(sendResponse.status).toBe(200);
+    const sent = (await sendResponse.json()) as { envelopeId: string; annotationIds: string[] };
+    expect(sent.annotationIds).toEqual([created.annotation.annotationId]);
+
+    const resend = await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/send?${auth}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ intent: 'next-pass' })
+    });
+    expect(resend.status).toBe(409);
+    expect(await resend.text()).toMatch(/nothing to send/i);
+
+    const resolved = (await (
+      await fetch(`${baseUrl}/api/annotations/${created.annotation.annotationId}/resolve?${auth}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          revision: opened.revision,
+          candidates: [
+            {
+              nodeId: 'node-1',
+              selectors: ['main > button'],
+              tag: 'button',
+              semanticRole: 'button',
+              accessibleName: 'Buy',
+              text: 'Buy',
+              ancestorChain: ['body', 'main'],
+              siblingIndex: 0,
+              siblingCount: 1,
+              boundingBox: { x: 1, y: 2, width: 3, height: 4 }
+            }
+          ]
+        })
+      })
+    ).json()) as { resolutions: Array<{ match: string }> };
+    expect(resolved.resolutions[0]?.match).toBe('exact');
+
+    const verified = await fetch(`${baseUrl}/api/annotations/${created.annotation.annotationId}/verify?${auth}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ verdict: 'approve' })
+    });
+    expect(verified.status).toBe(200);
+    expect(((await verified.json()) as { annotation: { state: string } }).annotation.state).toBe('verified');
+  });
+
+  it('refuses an oversized or disallowed attachment visibly without reading it', async () => {
+    const { service, baseUrl } = await setup();
+    const opened = await openGallery(service);
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const created = (await (
+      await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          targets: [
+            {
+              targetId: 't-1',
+              kind: 'element',
+              renderedGrounding: { selectors: ['main'], boundingBox: { x: 0, y: 0, width: 1, height: 1 } },
+              provenanceConfidence: 'unavailable'
+            }
+          ]
+        })
+      })
+    ).json()) as { annotation: { annotationId: string } };
+
+    const refused = await fetch(`${baseUrl}/api/annotations/${created.annotation.annotationId}/attachments?${auth}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/pdf' },
+      body: Buffer.alloc(2048)
+    });
+    expect(refused.status).toBe(415);
+    expect(await refused.text()).toMatch(/not an allowed/i);
+
+    const oversizeStatus = await rawStatus(
+      `POST /api/annotations/${created.annotation.annotationId}/attachments?session=${opened.sessionId}&cap=${opened.capability} HTTP/1.1\r\n` +
+        `Host: 127.0.0.1:${service.port}\r\n` +
+        'Content-Type: image/png\r\n' +
+        `Content-Length: ${10 * 1024 * 1024}\r\n` +
+        'Connection: close\r\n\r\n',
+      service.port
+    );
+    expect(oversizeStatus).toBe(415);
+  });
+
+  it('caps API request bodies', async () => {
+    const { service, baseUrl } = await setup();
+    const opened = await openGallery(service);
+    const response = await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/annotations?session=${opened.sessionId}&cap=${opened.capability}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ padding: 'x'.repeat(2 * 1024 * 1024) })
+    });
+    expect(response.status).toBe(413);
+  });
+});
+
+describe('application mode proxy', () => {
+  it('proxies a running local app through the review service origin and makes its DOM selectable', async () => {
+    const app = await startStubApp('<!doctype html><html><head><link rel="stylesheet" href="/style.css"></head><body><button id="cta">Ship it</button></body></html>');
     try {
-      const dataDir = mkdtempSync(join(tmpdir(), 'vil-http-app-'));
-      const review = createReviewService({ dataDir });
-      const service = await startLocalService({ dataDir, reviewService: review, port: 0 });
-      running.push(service);
+      const { service } = await setup();
       const opened = await service.openSession({ kind: 'react-vite-app', url: app.url });
-      const response = await fetch(opened.reviewUrl.replace('/review/', '/artifact/'));
-      expect(response.status).toBe(200);
-      const html = await response.text();
-      expect(html).toContain(app.url);
-      expect(html).toContain('<iframe');
+      const artifact = await fetch(`${service.baseUrl}/artifact/${opened.sessionId}`, {
+        headers: { 'x-session-cap': opened.capability },
+        redirect: 'manual'
+      });
+      expect(artifact.status).toBe(302);
+      expect(artifact.headers.get('location')).toBe(`/app/${opened.sessionId}/`);
+
+      const proxied = await fetch(`${service.baseUrl}/app/${opened.sessionId}/`, {
+        headers: { 'x-session-cap': opened.capability }
+      });
+      expect(proxied.status).toBe(200);
+      const html = await proxied.text();
+      expect(html).toContain('Ship it');
+      expect(html).toContain(`/app/${opened.sessionId}/style.css`);
+      expect(html).toContain('/ui/artifact-layer.js');
     } finally {
       await app.stop();
     }
+  });
+
+  it('refuses a non-loopback upstream origin', async () => {
+    const { service } = await setup();
+    await expect(service.openSession({ kind: 'react-vite-app', url: 'https://prod.example.com/' })).rejects.toThrow(
+      /loopback/i
+    );
   });
 
   it('observes revision changes in a running local app', async () => {
     const app = await startStubApp('<h1>version one</h1>');
     try {
-      const dataDir = mkdtempSync(join(tmpdir(), 'vil-http-apprev-'));
-      const review = createReviewService({ dataDir });
-      const service = await startLocalService({ dataDir, reviewService: review, port: 0 });
-      running.push(service);
+      const { service } = await setup();
       const opened = await service.openSession({ kind: 'react-vite-app', url: app.url });
-      const first = (await (
+      const before = (await (
         await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}?cap=${opened.capability}`)
       ).json()) as { changed: boolean };
-      expect(first.changed).toBe(false);
-      app.setBody('<h1>version two</h1>');
-      const second = (await (
+      expect(before.changed).toBe(false);
+      app.setBody('<h1>version two longer body</h1>');
+      const after = (await (
         await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}?cap=${opened.capability}`)
       ).json()) as { changed: boolean };
-      expect(second.changed).toBe(true);
+      expect(after.changed).toBe(true);
     } finally {
       await app.stop();
     }
   });
+});
 
-  it('refuses non-local application URLs', async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), 'vil-http-appurl-'));
-    const review = createReviewService({ dataDir });
-    await expect(review.openArtifact({ kind: 'react-vite-app', url: 'https://prod.example.com/' })).rejects.toThrow(
-      /local/
-    );
+describe('oversized artifacts', () => {
+  it('refuses an artifact larger than the bounded size', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vil-big-'));
+    mkdirSync(join(dir, 'sub'), { recursive: true });
+    writeFileSync(join(dir, 'big.html'), `<!doctype html><html><body>${'x'.repeat(6 * 1024 * 1024)}</body></html>`, 'utf8');
+    const { service } = await setup();
+    const opened = await service.openSession({ kind: 'saved-html', path: join(dir, 'big.html') });
+    const response = await fetch(`${service.baseUrl}/artifact/${opened.sessionId}`, {
+      headers: { 'x-session-cap': opened.capability }
+    });
+    expect(response.status).toBe(413);
+    void readFileSync;
   });
 });

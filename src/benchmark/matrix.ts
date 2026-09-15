@@ -1,9 +1,9 @@
 import type { Envelope } from '../envelope/validate.js';
-import type { ResolutionOutcome } from '../lifecycle/store.js';
+import type { TargetMatch } from '../resolution/model.js';
 import type { ResolutionCandidate } from '../resolution/resolve.js';
 import type { BenchmarkCase } from './run.js';
 
-type Target = Envelope['targets'][number];
+type Target = Envelope['annotations'][number]['targets'][number];
 
 function elementTarget(id: string, name: string): Target {
   return {
@@ -57,7 +57,13 @@ function textTarget(): Target {
     renderedGrounding: {
       selectors: ['main p.shipping-note'],
       boundingBox: { x: 320, y: 540, width: 420, height: 22 },
-      textEvidence: { exactText: 'Arrives Thursday', prefix: 'Order now. ', suffix: ' if you order today.', startOffset: 11, endOffset: 27 },
+      textEvidence: {
+        exactText: 'Arrives Thursday',
+        prefix: 'Order now. ',
+        suffix: ' if you order today.',
+        startOffset: 11,
+        endOffset: 27
+      },
       semanticRole: 'paragraph',
       structuralContext: { ancestorChain: ['body', 'main.checkout'], siblingIndex: 3, siblingCount: 5 }
     },
@@ -82,32 +88,43 @@ function textCandidate(nodeId: string, text = 'Order now. Arrives Thursday if yo
 
 export function buildMatrix(): BenchmarkCase[] {
   const cases: BenchmarkCase[] = [];
-  const accept = (name: string, target: Target, candidates: ResolutionCandidate[], expectedNodeId: string | undefined, acceptable: ResolutionOutcome[]): void => {
+  const accept = (
+    name: string,
+    target: Target,
+    candidates: ResolutionCandidate[],
+    expectedNodeId: string | undefined,
+    acceptable: TargetMatch[]
+  ): void => {
     cases.push({ name, target, candidates, expectedNodeId, acceptable });
   };
 
   accept('unique-element/no-change', elementTarget('t-1', 'checkout-submit'), [baseCandidate('n-1', 'checkout-submit'), decoy('n-d')], 'n-1', ['exact']);
-  accept('unique-element/sibling-reorder', elementTarget('t-1', 'checkout-submit'), [baseCandidate('n-1', 'checkout-submit'), decoy('n-d')].map((c) => c.nodeId === 'n-1' ? { ...c, siblingIndex: 0 } : c), 'n-1', ['exact', 'recovered']);
+  accept('unique-element/sibling-reorder', elementTarget('t-1', 'checkout-submit'), [baseCandidate('n-1', 'checkout-submit'), decoy('n-d')].map((c) => (c.nodeId === 'n-1' ? { ...c, siblingIndex: 0 } : c)), 'n-1', ['exact', 'recovered']);
   accept('unique-element/wrapper-insertion', elementTarget('t-1', 'checkout-submit'), [{ ...baseCandidate('n-1', 'checkout-submit'), selectors: ['main > div.wrapper > button.checkout-submit'], ancestorChain: ['body', 'main.checkout', 'div.wrapper'], siblingIndex: 0, siblingCount: 1 }, decoy('n-d')], 'n-1', ['exact', 'recovered']);
   accept('unique-element/unrelated-text-edit', elementTarget('t-1', 'checkout-submit'), [baseCandidate('n-1', 'checkout-submit'), decoy('n-d')], 'n-1', ['exact']);
   accept('unique-element/class-change', elementTarget('t-1', 'checkout-submit'), [{ ...baseCandidate('n-1', 'checkout-submit'), selectors: ['main > button.primary-cta'] }, decoy('n-d')], 'n-1', ['exact', 'recovered']);
   accept('unique-element/target-movement', elementTarget('t-1', 'checkout-submit'), [{ ...baseCandidate('n-1', 'checkout-submit'), boundingBox: { x: 640, y: 120, width: 200, height: 44 } }, decoy('n-d')], 'n-1', ['exact', 'recovered']);
   accept('unique-element/responsive-reflow', elementTarget('t-1', 'checkout-submit'), [{ ...baseCandidate('n-1', 'checkout-submit'), boundingBox: { x: 16, y: 900, width: 343, height: 48 } }, decoy('n-d')], 'n-1', ['exact', 'recovered']);
   accept('unique-element/generated-class-rename', elementTarget('t-1', 'checkout-submit'), [{ ...baseCandidate('n-1', 'checkout-submit'), selectors: ['main > button.css-q9w8e7-r4t5y6'] }, decoy('n-d')], 'n-1', ['exact', 'recovered']);
-  accept('unique-element/target-deletion', elementTarget('t-1', 'checkout-submit'), [decoy('n-d')], undefined, ['deleted', 'stale']);
-  accept('repeated-siblings/ambiguous-duplication', elementTarget('t-1', 'checkout-submit'), [baseCandidate('n-a', 'checkout-submit'), baseCandidate('n-b', 'checkout-submit')], undefined, ['ambiguous']);
+  accept('unique-element/target-deletion', elementTarget('t-1', 'checkout-submit'), [decoy('n-d')], undefined, ['unresolved']);
+  accept('repeated-siblings/ambiguous-duplication', elementTarget('t-1', 'checkout-submit'), [baseCandidate('n-a', 'checkout-submit'), baseCandidate('n-b', 'checkout-submit')], undefined, ['unresolved']);
   accept(
     'repeated-siblings/provenance-disambiguates',
-    { ...elementTarget('t-1', 'checkout-submit'), renderedGrounding: { ...elementTarget('t-1', 'checkout-submit').renderedGrounding, stableRuntimeId: 'fiber-1' }, provenanceConfidence: 'exact', sourceProvenance: { file: '/app/src/Checkout.tsx', line: 42, column: 8, component: 'CheckoutForm', adapter: 'react-fiber@0.1' } },
+    {
+      ...elementTarget('t-1', 'checkout-submit'),
+      renderedGrounding: { ...elementTarget('t-1', 'checkout-submit').renderedGrounding, stableRuntimeId: 'fiber-1' },
+      provenanceConfidence: 'exact',
+      sourceProvenance: { file: '/app/src/Checkout.tsx', line: 42, column: 8, component: 'CheckoutForm', adapter: 'react-fiber@0.1' }
+    },
     [{ ...baseCandidate('n-a', 'checkout-submit'), stableRuntimeId: 'fiber-2' }, { ...baseCandidate('n-b', 'checkout-submit'), stableRuntimeId: 'fiber-1' }],
     'n-b',
     ['exact', 'recovered']
   );
   accept('nested-components/wrapper-insertion', elementTarget('t-1', 'checkout-submit'), [{ ...baseCandidate('n-1', 'checkout-submit'), ancestorChain: ['body', 'main.checkout', 'section.promo', 'div.card'] }, decoy('n-d')], 'n-1', ['exact', 'recovered']);
-  accept('nested-components/component-replacement', elementTarget('t-1', 'checkout-submit'), [{ ...baseCandidate('n-1', 'checkout-submit'), tag: 'a', semanticRole: 'link', selectors: ['main > a.checkout-submit'] }, decoy('n-d')], 'n-1', ['recovered', 'stale']);
+  accept('nested-components/component-replacement', elementTarget('t-1', 'checkout-submit'), [{ ...baseCandidate('n-1', 'checkout-submit'), tag: 'a', semanticRole: 'link', selectors: ['main > a.checkout-submit'] }, decoy('n-d')], 'n-1', ['recovered', 'unresolved']);
   accept('text-range/no-change', textTarget(), [textCandidate('n-t'), decoy('n-d')], 'n-t', ['exact']);
   accept('text-range/unrelated-text-edit', textTarget(), [textCandidate('n-t', 'Order today. Arrives Thursday if you order today.'), decoy('n-d')], 'n-t', ['exact', 'recovered']);
-  accept('text-range/target-deletion', textTarget(), [decoy('n-d')], undefined, ['deleted', 'stale']);
+  accept('text-range/target-deletion', textTarget(), [decoy('n-d')], undefined, ['unresolved']);
 
   return cases;
 }

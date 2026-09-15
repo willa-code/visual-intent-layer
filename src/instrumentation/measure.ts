@@ -1,13 +1,13 @@
-import { copyFileSync, mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { arch, cpus, platform, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { platform, arch, cpus } from 'node:os';
 import { representativeEnvelope } from '../envelope/fixtures.js';
-import { LifecycleStore } from '../lifecycle/store.js';
+import { AnnotationStore } from '../annotation/store.js';
 import { createReviewService } from '../mcp/service.js';
 import { startLocalService } from '../service/http.js';
 import { runBenchmark } from '../benchmark/run.js';
 import { buildMatrix } from '../benchmark/matrix.js';
+import { computeRevision } from '../artifact/revision.js';
 
 export type Distribution = { p50: number; p95: number; max: number; samples: number };
 
@@ -26,7 +26,7 @@ export type InstrumentationReport = {
   idleMemoryBytes: { heapUsed: number; heapTotal: number; rss: number };
   envelopeBytes: number;
   tokenEfficiency: { envelopeBytes: number; baselineChatBytes: number; ratio: number };
-  stress: { manyTargetsAccepted: number; rapidSavesTracked: boolean; envelopesIntact: boolean };
+  stress: { manyAnnotationsAccepted: number; rapidSavesTracked: boolean; annotationsIntact: boolean };
 };
 
 const BASELINE_CHAT_BYTES = 24000;
@@ -51,31 +51,27 @@ export async function collectInstrumentation(options: { dataDir?: string } = {})
       const started = performance.now();
       const opened = await service.openSession({ kind: 'saved-html', path: 'fixtures/gallery.html' });
       await fetch(opened.reviewUrl);
-      await fetch(opened.reviewUrl.replace('/review/', '/artifact/'));
+      await fetch(`${opened.reviewUrl.replace('/review/', '/artifact/')}`);
       return performance.now() - started;
     });
 
     const session = await service.openSession({ kind: 'saved-html', path: 'fixtures/gallery.html' });
-    const auth = `session=${session.sessionId}&cap=${session.capability}`;
+
     let envelopeCounter = 0;
     const freshEnvelope = (): Record<string, unknown> => {
       envelopeCounter += 1;
       const envelope = structuredClone(representativeEnvelope) as unknown as Record<string, unknown>;
       envelope['envelopeId'] = `env-inst-${envelopeCounter}`;
       (envelope['delivery'] as Record<string, unknown>)['idempotencyKey'] = `idem-inst-${envelopeCounter}`;
+      for (const [index, annotation] of (envelope['annotations'] as Array<Record<string, unknown>>).entries()) {
+        annotation['annotationId'] = `ann-inst-${envelopeCounter}-${index}`;
+      }
       return envelope;
     };
 
     const submitToAcceptanceMs = await distribution(21, async () => {
       const started = performance.now();
-      const response = await fetch(`${service.baseUrl}/api/intents?${auth}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ envelope: freshEnvelope() })
-      });
-      if (!response.ok) {
-        throw new Error(`submit failed: ${response.status}`);
-      }
+      await review.submitEnvelope(freshEnvelope(), { host: 'instrumentation' });
       return performance.now() - started;
     });
 
@@ -83,16 +79,14 @@ export async function collectInstrumentation(options: { dataDir?: string } = {})
     const watched = join(workdir, 'watched.html');
     copyFileSync('fixtures/gallery.html', watched);
     const watchSession = await service.openSession({ kind: 'saved-html', path: watched });
-    const { writeFileSync, readFileSync } = await import('node:fs');
     const saveToRefreshMs = await distribution(11, async () => {
       const started = performance.now();
+      const before = computeRevision(readFileSync(watched), []);
       writeFileSync(watched, readFileSync(watched, 'utf8') + '<!-- save -->', 'utf8');
       const deadline = Date.now() + 5000;
       for (;;) {
-        const status = (await (
-          await fetch(`${service.baseUrl}/api/sessions/${watchSession.sessionId}?cap=${watchSession.capability}`)
-        ).json()) as { changed: boolean };
-        if (status.changed) {
+        const revision = computeRevision(readFileSync(watched), []);
+        if (revision !== before) {
           return performance.now() - started;
         }
         if (Date.now() > deadline) {
@@ -102,12 +96,25 @@ export async function collectInstrumentation(options: { dataDir?: string } = {})
       }
     });
 
-    const resolvable = freshEnvelope();
-    await fetch(`${service.baseUrl}/api/intents?${auth}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ envelope: resolvable })
+    const resolvable = review.annotations.createDraft({
+      artifactId: session.artifact.id,
+      writtenRevision: session.artifact.revision,
+      targets: [
+        {
+          targetId: 't-1',
+          kind: 'element',
+          renderedGrounding: {
+            selectors: ['main > button.checkout-submit'],
+            boundingBox: { x: 320, y: 480, width: 200, height: 44 },
+            semanticRole: 'button',
+            accessibleName: 'Place order'
+          },
+          provenanceConfidence: 'unavailable'
+        }
+      ]
     });
+    review.annotations.queue(resolvable.annotationId);
+    const sent = review.sendQueue(session.sessionId, { host: 'instrumentation' });
     const candidates = [
       {
         nodeId: 'node-1',
@@ -125,7 +132,7 @@ export async function collectInstrumentation(options: { dataDir?: string } = {})
     const revisionToResolutionMs = await distribution(11, async () => {
       const started = performance.now();
       const response = await fetch(
-        `${service.baseUrl}/api/intents/${resolvable['envelopeId'] as string}/resolutions?${auth}`,
+        `${service.baseUrl}/api/annotations/${resolvable.annotationId}/resolve?cap=${session.capability}`,
         {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -133,57 +140,47 @@ export async function collectInstrumentation(options: { dataDir?: string } = {})
         }
       );
       if (!response.ok) {
-        throw new Error(`resolutions failed: ${response.status}`);
+        throw new Error(`resolve failed: ${response.status}`);
       }
       return performance.now() - started;
     });
 
     const recoveryMs = await distribution(5, async () => {
-      const envelope = structuredClone(representativeEnvelope);
-      envelope.envelopeId = `env-recovery-${Math.random()}`;
-      envelope.delivery.idempotencyKey = `idem-recovery-${Math.random()}`;
-      review.store.deliver(envelope, 'instrumentation');
       const started = performance.now();
-      const reopened = new LifecycleStore(dataDir);
-      reopened.get(envelope.envelopeId);
+      new AnnotationStore(dataDir).list().length;
       return performance.now() - started;
     });
 
     const benchmark = runBenchmark(buildMatrix());
-    const envelopeBytes = Buffer.byteLength(JSON.stringify(representativeEnvelope), 'utf8');
+    const envelopeBytes = Buffer.byteLength(JSON.stringify(sent.batch.envelope), 'utf8');
 
-    const manyTargets = structuredClone(representativeEnvelope) as unknown as Record<string, unknown>;
-    manyTargets['envelopeId'] = 'env-inst-many';
-    (manyTargets['delivery'] as Record<string, unknown>)['idempotencyKey'] = 'idem-inst-many';
-    const firstTarget = (manyTargets['targets'] as unknown[])[0];
-    manyTargets['targets'] = Array.from({ length: 50 }, (_, index) => ({
-      ...(firstTarget as Record<string, unknown>),
-      targetId: `t-many-${index}`
-    }));
-    const manyResponse = await fetch(`${service.baseUrl}/api/intents?${auth}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ envelope: manyTargets })
-    });
-    const manyAccepted = manyResponse.ok
-      ? (((await review.getIntent('env-inst-many').targets.length) as number) ?? 0)
-      : 0;
-
-    for (let save = 0; save < 10; save += 1) {
-      writeFileSync(watched, readFileSync(watched, 'utf8') + `<!-- rapid-${save} -->`, 'utf8');
-    }
-    const afterRapid = (await (
-      await fetch(`${service.baseUrl}/api/sessions/${watchSession.sessionId}?cap=${watchSession.capability}`)
-    ).json()) as { changed: boolean };
-    const deliveredOnce = review.store
-      .list()
-      .every(
-        (record) => record.deliveryHistory.filter((event) => event.type === 'delivered').length <= 1
-      );
-    const envelopesIntact =
-      review.getIntent('env-inst-many').targets.length === 50 &&
-      (resolvable['envelopeId'] as string).length > 0 &&
-      deliveredOnce;
+    const manySession = await service.openSession({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+    const created = Array.from({ length: 50 }, (_, index) =>
+      review.annotations.createDraft({
+        artifactId: manySession.artifact.id,
+        writtenRevision: manySession.artifact.revision,
+        targets: [
+          {
+            targetId: `t-many-${index}`,
+            kind: 'element',
+            renderedGrounding: {
+              selectors: [`main > button.item-${index}`],
+              boundingBox: { x: 10, y: 10, width: 100, height: 30 },
+              semanticRole: 'button',
+              accessibleName: `Item ${index}`
+            },
+            provenanceConfidence: 'unavailable'
+          }
+        ]
+      })
+    );
+    const manyBatch = review.sendQueue(manySession.sessionId, { host: 'instrumentation' });
+    const afterRapid = await (await fetch(`${service.baseUrl}/api/sessions/${watchSession.sessionId}?cap=${watchSession.capability}`)).json() as { changed: boolean };
+    const annotationsIntact =
+      manyBatch.batch.annotationIds.length === 50 &&
+      new Set(manyBatch.batch.annotationIds).size === 50 &&
+      created.length === 50 &&
+      sent.batch.annotationIds.length === 1;
 
     return {
       collectedAt: new Date().toISOString(),
@@ -197,7 +194,7 @@ export async function collectInstrumentation(options: { dataDir?: string } = {})
       resolutionP50Ms: benchmark.latencyMs.p50,
       resolutionP95Ms: benchmark.latencyMs.p95,
       pointerToFeedback: {
-        harness: 'performance marks visual-intent:hover to visual-intent:hover-handled in the overlay hover path',
+        harness: 'performance marks visual-intent:hover to visual-intent:hover-handled in the artifact layer hover path',
         status: 'browser-measured; collect during dogfood against baseline interactions'
       },
       idleMemoryBytes: { heapUsed: memory.heapUsed, heapTotal: memory.heapTotal, rss: memory.rss },
@@ -207,7 +204,7 @@ export async function collectInstrumentation(options: { dataDir?: string } = {})
         baselineChatBytes: BASELINE_CHAT_BYTES,
         ratio: envelopeBytes / BASELINE_CHAT_BYTES
       },
-      stress: { manyTargetsAccepted: manyAccepted, rapidSavesTracked: afterRapid.changed, envelopesIntact }
+      stress: { manyAnnotationsAccepted: manyBatch.batch.annotationIds.length, rapidSavesTracked: afterRapid.changed, annotationsIntact }
     };
   } finally {
     await service.stop();

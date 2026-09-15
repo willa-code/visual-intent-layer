@@ -14,3 +14,7 @@
 ## Comments
 
 Implemented (implemented in 8b70d52): entry tool opens saved HTML in review surface (src/service/http.ts, src/ui/shell.html) with Explore/Select/Direct modes (src/ui/review.ts modeMachine, keyboard 1/2/3, Escape), hover outline + element/text-range selection with Rendered Grounding shown pre-submit (src/ui/selection.ts, grounding in src/ui/review.ts). Never claims provenance from DOM alone.
+
+Superseded: the Explore / Select mode model and the shared evidence panel are replaced by the Review state with a tool row and a target-anchored Annotation card (ADR-0015). The hover, selection and pre-send Rendered Grounding behaviour this ticket established is still required; the mode model is not.
+
+See `.scratch/review-surface/spec.md`.

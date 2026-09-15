@@ -39,6 +39,13 @@ export class SessionRecords {
     return this.records[sessionId];
   }
 
+  findByArtifactRevision(artifactId: string, revision: string): SessionRecord | undefined {
+    this.records = this.load();
+    return Object.values(this.records).find(
+      (record) => record.artifactId === artifactId && record.revision === revision
+    );
+  }
+
   authorized(sessionId: string, capability: string | null): SessionRecord | undefined {
     const record = this.get(sessionId);
     if (!record || !capability) {

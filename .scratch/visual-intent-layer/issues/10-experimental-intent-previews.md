@@ -14,3 +14,7 @@
 ## Comments
 
 Implemented (implemented in 8b70d52): drag-to-reorder/align/match-size ghost previews (src/ui/previews.ts), reversible with interactionEvidence timestamps, confirm emits same relational semantics as ticket 07, discard restores DOM exactly; each records evidence for ticket 17 verdicts.
+
+Superseded: drag-to-reorder, align and match-size stop being separate experimental previews and become the input method for Relational Intent inside the Review state, so the keep-or-kill question this ticket deferred is answered by whether they work as the relation input (ADR-0016).
+
+See `.scratch/review-surface/spec.md`.

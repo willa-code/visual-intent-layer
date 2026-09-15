@@ -4,14 +4,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applySetup, formatPlan, formatResult, formatStatus, parseHarnessFilter, planSetup } from './cli-setup.js';
 import { createReviewService } from './mcp/service.js';
+import { autoOpenSuppressed } from './service/browser.js';
 import { startLocalService } from './service/http.js';
 
 const HELP = `visual-intent — local-first Visual Direction Loop
 
 Usage:
   visual-intent serve [--port 3742]              Start the local review service
-  visual-intent open --html <path>               Open a saved HTML artifact and print the review URL
-  visual-intent open --app <localhost-url>       Open a running React/Vite app and print the review URL
+  visual-intent open --html <path> [--no-open]   Open a saved HTML artifact and print the review URL
+  visual-intent open --app <localhost-url>       Open a running local app and print the review URL
   visual-intent setup [--global] [--no-skill] [--print-only] [--status] [--harness <name>]
       Detect the harnesses on this machine (pi, codex, claude-code, opencode),
       report what was detected and what was not, and register the MCP server
@@ -21,9 +22,14 @@ Usage:
   visual-intent mcp                              Run the MCP server over stdio (used by agent hosts)
   visual-intent --help                           Show this help
 
+Opening a session launches the default browser on this machine unless --no-open
+or VISUAL_INTENT_NO_OPEN suppresses it. The review URL is always printed.
+
 Environment:
   VISUAL_INTENT_DATA_DIR   Lifecycle data directory (default ~/.visual-intent-layer/data)
   VISUAL_INTENT_PORT       Default service port (default 3742)
+  VISUAL_INTENT_NO_OPEN    Set to 1 to suppress automatic browser opening
+  VISUAL_INTENT_WAIT_MS    How long the agent-facing entry tool holds the call
 `;
 
 const dataDir =
@@ -107,17 +113,26 @@ async function main(): Promise<void> {
   if (args[0] === 'open') {
     const htmlFlag = args.indexOf('--html');
     const appFlag = args.indexOf('--app');
+    const openBrowser = autoOpenSuppressed() || args.includes('--no-open') ? false : true;
     const service = await startLocalService({ dataDir, reviewService });
     if (htmlFlag !== -1 && args[htmlFlag + 1]) {
-      const opened = await service.openSession({ kind: 'saved-html', path: args[htmlFlag + 1]! });
+      const opened = await reviewService.openArtifact(
+        { kind: 'saved-html', path: args[htmlFlag + 1]! },
+        { baseUrl: service.baseUrl, openBrowser }
+      );
       console.log(opened.reviewUrl);
       console.log(`artifact ${opened.artifact.id} revision ${opened.artifact.revision}`);
+      console.log(opened.reused ? 'reused the open session for this revision' : 'opened a new session');
       await new Promise(() => undefined);
       return;
     }
     if (appFlag !== -1 && args[appFlag + 1]) {
-      const opened = await service.openSession({ kind: 'react-vite-app', url: args[appFlag + 1]! });
+      const opened = await reviewService.openArtifact(
+        { kind: 'react-vite-app', url: args[appFlag + 1]! },
+        { baseUrl: service.baseUrl, openBrowser }
+      );
       console.log(opened.reviewUrl);
+      console.log(opened.reused ? 'reused the open session for this revision' : 'opened a new session');
       await new Promise(() => undefined);
       return;
     }

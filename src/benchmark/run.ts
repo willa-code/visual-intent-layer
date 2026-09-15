@@ -1,23 +1,26 @@
 import { resolveTarget, type ResolutionCandidate } from '../resolution/resolve.js';
-import type { ResolutionOutcome } from '../lifecycle/store.js';
+import { deriveResolutionLabel, type ResolutionLabel, type TargetMatch } from '../resolution/model.js';
 import type { Envelope } from '../envelope/validate.js';
 
 export type BenchmarkCase = {
   name: string;
-  target: Envelope['targets'][number];
+  target: Envelope['annotations'][number]['targets'][number];
   candidates: ResolutionCandidate[];
   expectedNodeId: string | undefined;
-  acceptable: ResolutionOutcome[];
+  acceptable: TargetMatch[];
 };
 
 export type BenchmarkReport = {
   total: number;
   correct: number;
   confidentlyWrong: number;
-  abstentions: number;
-  byOutcome: Record<ResolutionOutcome, number>;
+  correctAmbiguity: number;
+  correctAbstention: number;
+  recovered: number;
+  byMatch: Record<TargetMatch, number>;
+  byLabel: Record<ResolutionLabel, number>;
   latencyMs: { p50: number; p95: number; max: number };
-  failures: Array<{ name: string; outcome: ResolutionOutcome; selected?: string }>;
+  failures: Array<{ name: string; match: TargetMatch; selected?: string }>;
   signals: {
     correctRateTarget: number;
     confidentlyWrongLimit: number;
@@ -29,44 +32,46 @@ export type BenchmarkReport = {
 
 export function runBenchmark(cases: BenchmarkCase[]): BenchmarkReport {
   const latencies: number[] = [];
-  const byOutcome: Record<ResolutionOutcome, number> = {
-    exact: 0,
-    recovered: 0,
-    ambiguous: 0,
-    stale: 0,
-    deleted: 0
-  };
+  const byMatch: Record<TargetMatch, number> = { exact: 0, recovered: 0, unresolved: 0 };
+  const byLabel: Record<ResolutionLabel, number> = { matched: 0, recovered: 0, ambiguous: 0, deleted: 0 };
   let correct = 0;
   let confidentlyWrong = 0;
+  let correctAmbiguity = 0;
+  let correctAbstention = 0;
+  let recovered = 0;
   const failures: BenchmarkReport['failures'] = [];
 
   for (const benchmarkCase of cases) {
     const started = performance.now();
     const result = resolveTarget(benchmarkCase.target, benchmarkCase.candidates);
     latencies.push(performance.now() - started);
-    byOutcome[result.outcome] += 1;
+    byMatch[result.match] += 1;
+    const label = deriveResolutionLabel(result);
+    byLabel[label] += 1;
+    if (result.match === 'recovered') {
+      recovered += 1;
+    }
+    if (label === 'ambiguous' && benchmarkCase.expectedNodeId === undefined) {
+      correctAmbiguity += 1;
+    }
+    if (label === 'deleted' && benchmarkCase.expectedNodeId === undefined) {
+      correctAbstention += 1;
+    }
 
-    const outcomeAcceptable = benchmarkCase.acceptable.includes(result.outcome);
+    const outcomeAcceptable = benchmarkCase.acceptable.includes(result.match);
     const rightTarget =
       benchmarkCase.expectedNodeId === undefined
-        ? result.selected === undefined
-        : result.selected?.nodeId === benchmarkCase.expectedNodeId;
+        ? result.selectedNodeId === undefined
+        : result.selectedNodeId === benchmarkCase.expectedNodeId;
     if (outcomeAcceptable && rightTarget) {
       correct += 1;
     } else {
-      failures.push({ name: benchmarkCase.name, outcome: result.outcome, selected: result.selected?.nodeId });
+      failures.push({ name: benchmarkCase.name, match: result.match, ...(result.selectedNodeId ? { selected: result.selectedNodeId } : {}) });
     }
-    if (
-      (result.outcome === 'exact' || result.outcome === 'recovered') &&
-      benchmarkCase.expectedNodeId !== undefined &&
-      result.selected?.nodeId !== benchmarkCase.expectedNodeId
-    ) {
-      confidentlyWrong += 1;
-    }
-    if (
-      (result.outcome === 'exact' || result.outcome === 'recovered') &&
-      benchmarkCase.expectedNodeId === undefined
-    ) {
+    const choseWrong =
+      (result.match === 'exact' || result.match === 'recovered') &&
+      (benchmarkCase.expectedNodeId === undefined || result.selectedNodeId !== benchmarkCase.expectedNodeId);
+    if (choseWrong) {
       confidentlyWrong += 1;
     }
   }
@@ -78,8 +83,11 @@ export function runBenchmark(cases: BenchmarkCase[]): BenchmarkReport {
     total: cases.length,
     correct,
     confidentlyWrong,
-    abstentions: byOutcome['ambiguous'] + byOutcome['stale'] + byOutcome['deleted'],
-    byOutcome,
+    correctAmbiguity,
+    correctAbstention,
+    recovered,
+    byMatch,
+    byLabel,
     latencyMs: {
       p50: percentile(latencies, 0.5),
       p95: percentile(latencies, 0.95),

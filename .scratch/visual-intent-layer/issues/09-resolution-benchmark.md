@@ -14,3 +14,7 @@
 ## Comments
 
 Implemented (implemented in 8b70d52): benchmark harness + 16-case fixture/mutation matrix (src/benchmark/), npm run benchmark reports exact/recovered/ambiguity/stale/deleted/confidently-wrong + latency; current 16/16, 0 confidently-wrong; 95%/1% kept as printed signals, not gates.
+
+Superseded: the benchmark still measures exact resolution, recovered resolution, ambiguity, abstention and confidently-wrong resolution, with its storage vocabulary aligned to `match` plus candidates plus revision relation (ADR-0016).
+
+See `.scratch/review-surface/spec.md`.

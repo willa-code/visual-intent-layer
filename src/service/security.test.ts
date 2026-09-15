@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -13,19 +13,19 @@ afterEach(async () => {
   }
 });
 
-async function openedSession(artifactPath: string): Promise<{ service: LocalService; reviewUrl: string; cap: string; sessionId: string }> {
+async function opened(artifactPath: string): Promise<{ service: LocalService; cap: string; sessionId: string }> {
   const dataDir = mkdtempSync(join(tmpdir(), 'vil-sec-'));
   const review = createReviewService({ dataDir });
   const service = await startLocalService({ dataDir, reviewService: review, port: 0 });
   running.push(service);
-  const opened = await service.openSession({ kind: 'saved-html', path: artifactPath });
-  return { service, reviewUrl: opened.reviewUrl, cap: opened.capability, sessionId: opened.sessionId };
+  const session = await service.openSession({ kind: 'saved-html', path: artifactPath });
+  return { service, cap: session.capability, sessionId: session.sessionId };
 }
 
 describe('security boundary', () => {
-  it('sandboxes hostile artifacts without top navigation or network', async () => {
-    const { service, reviewUrl } = await openedSession('fixtures/malicious/exfil-attempt.html');
-    const response = await fetch(reviewUrl.replace('/review/', '/artifact/'));
+  it('sandboxes a hostile exfiltration artifact without top navigation or network', async () => {
+    const { service, cap, sessionId } = await opened('fixtures/malicious/exfil-attempt.html');
+    const response = await fetch(`${service.baseUrl}/artifact/${sessionId}`, { headers: { 'x-session-cap': cap } });
     expect(response.status).toBe(200);
     const csp = response.headers.get('content-security-policy') ?? '';
     expect(csp).toContain('sandbox');
@@ -33,15 +33,7 @@ describe('security boundary', () => {
     expect(csp).toContain("connect-src 'none'");
   });
 
-  it('serves the review shell with a restrictive policy', async () => {
-    const { reviewUrl } = await openedSession('fixtures/gallery.html');
-    const response = await fetch(reviewUrl);
-    const csp = response.headers.get('content-security-policy') ?? '';
-    expect(csp).toContain("default-src 'self'");
-    expect(csp).not.toContain('unsafe-eval');
-  });
-
-  it('refuses symlink escapes from the artifact directory', () => {
+  it('refuses a symlink that escapes the artifact directory', () => {
     const outside = mkdtempSync(join(tmpdir(), 'vil-outside-'));
     const secret = join(outside, 'secret.txt');
     writeFileSync(secret, 'top secret', 'utf8');
@@ -54,24 +46,27 @@ describe('security boundary', () => {
     expect(confinePath(inner, good)).toBeDefined();
   });
 
-  it('rejects oversized artifacts and assets', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'vil-big-'));
-    const big = join(dir, 'big.html');
-    mkdirSync(join(dir, 'sub'), { recursive: true });
-    writeFileSync(big, `<!doctype html><html><body>${'x'.repeat(6 * 1024 * 1024)}</body></html>`, 'utf8');
-    const { service, reviewUrl } = await openedSession(big);
-    const response = await fetch(reviewUrl.replace('/review/', '/artifact/'));
-    expect(response.status).toBe(413);
-    void service;
+  it('does not permit a declared remote origin to become a data channel', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vil-sec-remote-'));
+    writeFileSync(
+      join(dir, 'page.html'),
+      '<!doctype html><html><head><link rel="stylesheet" href="https://cdn.example.com/a.css"></head><body>x</body></html>',
+      'utf8'
+    );
+    const { service, cap, sessionId } = await opened(join(dir, 'page.html'));
+    const response = await fetch(`${service.baseUrl}/artifact/${sessionId}`, { headers: { 'x-session-cap': cap } });
+    const csp = response.headers.get('content-security-policy') ?? '';
+    expect(csp).toContain('https://cdn.example.com');
+    expect(csp).toContain("connect-src 'none'");
+    expect(csp).toContain("form-action 'none'");
+    expect(csp).toContain("base-uri 'none'");
   });
 
-  it('caps API request bodies', async () => {
-    const { service, sessionId, cap } = await openedSession('fixtures/gallery.html');
-    const response = await fetch(`${service.baseUrl}/api/intents?session=${sessionId}&cap=${cap}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ envelope: { padding: 'x'.repeat(2 * 1024 * 1024) } })
+  it('confines the asset route to the artifact directory', async () => {
+    const { service, cap, sessionId } = await opened('fixtures/gallery.html');
+    const response = await fetch(`${service.baseUrl}/artifact/${sessionId}/..%2F..%2Fpackage.json`, {
+      headers: { 'x-session-cap': cap }
     });
-    expect(response.status).toBe(413);
+    expect(response.status).not.toBe(200);
   });
 });

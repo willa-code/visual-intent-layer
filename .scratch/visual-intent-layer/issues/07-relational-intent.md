@@ -13,3 +13,7 @@
 ## Comments
 
 Implemented (implemented in 8b70d52): ordering/alignment/spacing/containment/equivalence/comparative-size in schema (schema/envelope-v0.1.schema.json), composer, review-shell relationship builder; stored implementation-neutral (no pixel fields), tested in src/ui/composer.test.ts.
+
+Superseded: the relation type and operator pickers are removed and the operator vocabulary is reduced to relations that have a real gesture (ADR-0016). `inside` merges into containment; preserved rhythm and shared behaviour retire. Relational Intent remains first-class, implementation-neutral, and free of pixel fields.
+
+See `.scratch/review-surface/spec.md`.

@@ -3,9 +3,18 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync } from 'no
 import { dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { computeRevision } from '../artifact/revision.js';
-import type { OpenArtifactInput, ReviewService } from '../mcp/service.js';
-import { fetchAppRevision } from '../mcp/service.js';
+import {
+  contentSecurityPolicyFor,
+  emptyRemoteOrigins,
+  injectArtifactLayerScript,
+  rewriteCss,
+  rewriteHtml,
+  type RemoteOrigins
+} from '../artifact/fidelity.js';
+import { assertLocalAppUrl, fetchAppRevision, type ReviewService } from '../mcp/service.js';
 import { resolveTarget, type ResolutionCandidate } from '../resolution/resolve.js';
+import { summarise } from '../annotation/model.js';
+import type { AnnotationTarget } from '../annotation/model.js';
 import { SessionRecords, type SessionRecord } from './sessions.js';
 
 export type LocalServiceOptions = {
@@ -19,14 +28,23 @@ export type OpenedSession = {
   reviewUrl: string;
   artifact: { id: string; kind: string; revision: string; displayName: string };
   capability: string;
+  reused: boolean;
 };
 
 export type LocalService = {
   baseUrl: string;
   address: string;
   port: number;
-  openSession(input: OpenArtifactInput): Promise<OpenedSession>;
+  openSession(input: Parameters<ReviewService['openArtifact']>[0]): Promise<OpenedSession>;
   stop(): Promise<void>;
+};
+
+type RequestContext = {
+  request: IncomingMessage;
+  response: ServerResponse;
+  review: ReviewService;
+  sessions: SessionRecords;
+  policies: Map<string, RemoteOrigins>;
 };
 
 const MAX_API_BODY_BYTES = 1024 * 1024;
@@ -36,6 +54,7 @@ const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -43,38 +62,49 @@ const MIME: Record<string, string> = {
   '.gif': 'image/gif',
   '.svg': 'image/svg+xml',
   '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.ico': 'image/x-icon',
   '.woff': 'font/woff',
-  '.woff2': 'font/woff2'
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.map': 'application/json; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8'
 };
 
 export async function startLocalService(options: LocalServiceOptions): Promise<LocalService> {
   mkdirSync(options.dataDir, { recursive: true });
-  const sessions = new SessionRecords(options.dataDir);
+  const sessions = options.reviewService.sessions;
+  const policies = new Map<string, RemoteOrigins>();
   const server = createServer((request, response) => {
-    void handleRequest(request, response, options.reviewService, sessions).catch((error: unknown) => {
-      sendText(response, 500, error instanceof Error ? error.message : 'internal error');
-    });
+    void handleRequest({ request, response, review: options.reviewService, sessions, policies }).catch(
+      (error: unknown) => {
+        sendText(response, 500, error instanceof Error ? error.message : 'internal error');
+      }
+    );
   });
   const port = await listen(server, options.port ?? 3742);
   const baseUrl = `http://127.0.0.1:${port}`;
 
-  async function openSession(input: OpenArtifactInput): Promise<OpenedSession> {
-    const opened = await options.reviewService.openArtifact(input, baseUrl);
+  async function openSession(input: Parameters<ReviewService['openArtifact']>[0]): Promise<OpenedSession> {
+    const opened = await options.reviewService.openArtifact(input, { baseUrl });
     return {
       sessionId: opened.sessionId,
       reviewUrl: opened.reviewUrl,
       artifact: opened.artifact,
-      capability: opened.capability
+      capability: opened.capability,
+      reused: opened.reused
     };
   }
 
   async function stop(): Promise<void> {
     await new Promise<void>((resolvePromise, rejectPromise) => {
       server.close((error) => (error ? rejectPromise(error) : resolvePromise()));
+      server.closeAllConnections?.();
     });
   }
 
-  return { baseUrl, address: '127.0.0.1', port, openSession, stop };
+  return { baseUrl, address: '127.0.0.1', port, openSession: openSession as LocalService['openSession'], stop };
 }
 
 function listen(server: Server, port: number): Promise<number> {
@@ -91,12 +121,8 @@ function listen(server: Server, port: number): Promise<number> {
   });
 }
 
-async function handleRequest(
-  request: IncomingMessage,
-  response: ServerResponse,
-  review: ReviewService,
-  sessions: SessionRecords
-): Promise<void> {
+async function handleRequest(context: RequestContext): Promise<void> {
+  const { request, response, review, sessions, policies } = context;
   if (!isAllowedHost(request)) {
     sendText(response, 403, 'Forbidden: untrusted Host');
     return;
@@ -107,197 +133,597 @@ async function handleRequest(
   }
   const url = new URL(request.url ?? '/', 'http://127.0.0.1');
   const method = request.method ?? 'GET';
+  const path = url.pathname;
 
-  if (method === 'GET' && url.pathname === '/health') {
+  if (method === 'GET' && path === '/health') {
     sendText(response, 200, 'ok');
     return;
   }
-  if (method === 'GET' && url.pathname.startsWith('/ui/')) {
-    serveUiAsset(response, url.pathname.slice('/ui/'.length));
+  if (method === 'GET' && path === '/favicon.ico') {
+    response.writeHead(204, { 'x-content-type-options': 'nosniff' });
+    response.end();
     return;
   }
-  const reviewMatch = /^\/review\/([^/]+)$/.exec(url.pathname);
+  if (method === 'GET' && path.startsWith('/ui/')) {
+    serveUiAsset(response, path.slice('/ui/'.length));
+    return;
+  }
+  if (method === 'GET' && (path === '/gallery' || path === '/gallery/')) {
+    serveGallery(response);
+    return;
+  }
+
+  const reviewMatch = /^\/review\/([^/]+)$/.exec(path);
   if (method === 'GET' && reviewMatch) {
-    const session = sessions.authorized(reviewMatch[1]!, url.searchParams.get('cap'));
+    const session = authorizedOrRefuse(context, reviewMatch[1]!, url);
     if (!session) {
-      sendText(response, 401, 'Unauthorized: missing or invalid session capability');
       return;
+    }
+    if (url.searchParams.has('cap')) {
+      rememberSessionCookie(response, session);
     }
     serveReviewShell(response, session);
     return;
   }
-  const artifactMatch = /^\/artifact\/([^/]+)$/.exec(url.pathname);
-  if (method === 'GET' && artifactMatch) {
-    const session = sessions.authorized(artifactMatch[1]!, url.searchParams.get('cap'));
+  const artifactDocMatch = /^\/artifact\/([^/]+)$/.exec(path);
+  if (method === 'GET' && artifactDocMatch) {
+    const session = authorizedOrRefuse(context, artifactDocMatch[1]!, url);
     if (!session) {
-      sendText(response, 401, 'Unauthorized: missing or invalid session capability');
       return;
     }
-    serveArtifact(response, session);
+    serveArtifactDocument(response, session, policies, review);
     return;
   }
-  const assetMatch = /^\/assets\/([^/]+)\/(.+)$/.exec(url.pathname);
-  if (method === 'GET' && assetMatch) {
-    const session = sessions.authorized(assetMatch[1]!, url.searchParams.get('cap'));
+  const artifactBeforeMatch = /^\/artifact\/([^/]+)\/before$/.exec(path);
+  if (method === 'GET' && artifactBeforeMatch) {
+    const session = authorizedOrRefuse(context, artifactBeforeMatch[1]!, url);
     if (!session) {
-      sendText(response, 401, 'Unauthorized: missing or invalid session capability');
       return;
     }
-    serveAsset(response, session, decodeURIComponent(assetMatch[2]!));
+    serveArtifactBefore(response, context.review, session, policies);
     return;
   }
-  if (url.pathname === '/api/intents' && method === 'POST') {
-    const session = authorizedApiSession(request, url, sessions);
+  const artifactAssetMatch = /^\/artifact\/([^/]+)\/(.+)$/.exec(path);
+  if (method === 'GET' && artifactAssetMatch) {
+    const session = authorizedOrRefuse(context, artifactAssetMatch[1]!, url);
     if (!session) {
-      sendText(response, 401, 'Unauthorized: missing or invalid session capability');
       return;
     }
-    const body = await readBoundedBody(request, response);
+    serveArtifactAsset(response, session, decodeURIComponent(artifactAssetMatch[2]!));
+    return;
+  }
+  const appMatch = /^\/app\/([^/]+)(\/.*)?$/.exec(path);
+  if ((method === 'GET' || method === 'POST') && appMatch) {
+    const session = authorizedOrRefuse(context, appMatch[1]!, url);
+    if (!session) {
+      return;
+    }
+    await serveAppProxy(context, session, appMatch[2] ?? '/', url.search);
+    return;
+  }
+
+  if (path.startsWith('/api/')) {
+    await handleApi(context, url, method);
+    return;
+  }
+
+  sendText(response, 404, 'Not found');
+}
+
+async function handleApi(context: RequestContext, url: URL, method: string): Promise<void> {
+  const { request, response, review, sessions, policies } = context;
+  const path = url.pathname;
+
+  const policyMatch = /^\/api\/sessions\/([^/]+)\/policy$/.exec(path);
+  if (method === 'GET' && policyMatch) {
+    const session = authorizedOrRefuse(context, policyMatch[1]!, url);
+    if (!session) {
+      return;
+    }
+    sendJson(response, 200, await policyFor(session, policies));
+    return;
+  }
+
+  const sessionMatch = /^\/api\/sessions\/([^/]+)$/.exec(path);
+  if (method === 'GET' && sessionMatch) {
+    const session = authorizedOrRefuse(context, sessionMatch[1]!, url);
+    if (!session) {
+      return;
+    }
+    sendJson(response, 200, await sessionStatus(session));
+    return;
+  }
+
+  const annotationsMatch = /^\/api\/sessions\/([^/]+)\/annotations$/.exec(path);
+  if (annotationsMatch) {
+    const session = authorizedOrRefuse(context, annotationsMatch[1]!, url);
+    if (!session) {
+      return;
+    }
+    if (method === 'GET') {
+      sendJson(response, 200, annotationSnapshot(review, session));
+      return;
+    }
+    if (method === 'POST') {
+      const body = await readJsonBody(request, response);
+      if (body === undefined) {
+        return;
+      }
+      const targets = (body as { targets?: unknown }).targets;
+      if (!Array.isArray(targets) || targets.length === 0) {
+        sendText(response, 400, 'Expected { targets: AnnotationTarget[] }');
+        return;
+      }
+      try {
+        const annotation = review.annotations.createDraft({
+          artifactId: session.artifactId,
+          writtenRevision: session.revision,
+          targets: normalizeTargets(targets),
+          ...(typeof (body as { note?: unknown }).note === 'string' ? { note: (body as { note: string }).note } : {})
+        });
+        sendJson(response, 200, { annotation });
+      } catch (error) {
+        sendText(response, 400, error instanceof Error ? error.message : 'could not create Annotation');
+      }
+      return;
+    }
+  }
+
+  const reorderMatch = /^\/api\/sessions\/([^/]+)\/annotations\/reorder$/.exec(path);
+  if (method === 'POST' && reorderMatch) {
+    const session = authorizedOrRefuse(context, reorderMatch[1]!, url);
+    if (!session) {
+      return;
+    }
+    const body = await readJsonBody(request, response);
     if (body === undefined) {
       return;
     }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(body);
-    } catch {
-      sendText(response, 400, 'Invalid JSON body');
+    const orderedIds = (body as { orderedIds?: unknown }).orderedIds;
+    if (!Array.isArray(orderedIds) || orderedIds.some((id) => typeof id !== 'string')) {
+      sendText(response, 400, 'Expected { orderedIds: string[] }');
       return;
     }
-    const envelopeJson = (parsed as { envelope?: unknown })['envelope'] ?? parsed;
+    const annotations = review.annotations.reorder(session.artifactId, orderedIds as string[]);
+    sendJson(response, 200, { annotations: annotations.map(summarise) });
+    return;
+  }
+
+  const sendMatch = /^\/api\/sessions\/([^/]+)\/send$/.exec(path);
+  if (method === 'POST' && sendMatch) {
+    const session = authorizedOrRefuse(context, sendMatch[1]!, url);
+    if (!session) {
+      return;
+    }
+    const body = await readJsonBody(request, response);
+    const intent = isIntent((body as { intent?: unknown } | undefined)?.intent)
+      ? ((body as { intent: 'next-pass' | 'steering' | 'draft' | 'review-interruption' }).intent)
+      : 'next-pass';
     try {
-      const submitted = await review.submitIntent(envelopeJson, { host: 'browser' });
+      const sent = review.sendQueue(session.sessionId, { host: 'browser', intent });
       sendJson(response, 200, {
-        envelopeId: submitted.envelopeId,
-        status: submitted.status,
-        delivery: submitted.delivery.label
+        envelopeId: sent.batch.envelopeId,
+        annotationIds: sent.batch.annotationIds,
+        delivery: sent.delivery.label,
+        idempotencyKey: sent.batch.idempotencyKey
       });
+    } catch (error) {
+      sendText(response, 409, error instanceof Error ? error.message : 'send failed');
+    }
+    return;
+  }
+
+  const agentMatch = /^\/api\/sessions\/([^/]+)\/agent$/.exec(path);
+  if (method === 'GET' && agentMatch) {
+    const session = authorizedOrRefuse(context, agentMatch[1]!, url);
+    if (!session) {
+      return;
+    }
+    sendJson(response, 200, review.agentPosition(session.sessionId));
+    return;
+  }
+
+  const resolveMatch = /^\/api\/annotations\/([^/]+)\/resolve$/.exec(path);
+  if (method === 'POST' && resolveMatch) {
+    const annotationId = decodeURIComponent(resolveMatch[1]!);
+    const annotation = review.annotations.get(annotationId);
+    if (!annotation) {
+      sendText(response, 404, `Unknown Annotation ${annotationId}`);
+      return;
+    }
+    const session = sessions.findByArtifactRevision(annotation.artifactId, annotation.writtenRevision);
+    if (!session || !authorize(context, session.sessionId, url)) {
+      sendText(response, 401, 'Unauthorized');
+      return;
+    }
+    const body = await readJsonBody(request, response);
+    if (body === undefined) {
+      return;
+    }
+    const revision = (body as { revision?: unknown }).revision;
+    const candidates = (body as { candidates?: unknown }).candidates;
+    if (typeof revision !== 'string' || !Array.isArray(candidates)) {
+      sendText(response, 400, 'Expected { revision: string, candidates: ResolutionCandidate[] }');
+      return;
+    }
+    const resolutions = annotation.targets.map((target) =>
+      resolveTarget(target, candidates as ResolutionCandidate[])
+    );
+    review.annotations.noteRevisionAdvance(annotation.artifactId, revision);
+    const updated = review.annotations.recordResolutions(annotationId, resolutions);
+    sendJson(response, 200, { annotation: updated, resolutions });
+    return;
+  }
+
+  const candidateMatch = /^\/api\/annotations\/([^/]+)\/candidate$/.exec(path);
+  if (method === 'POST' && candidateMatch) {
+    const annotationId = decodeURIComponent(candidateMatch[1]!);
+    const annotation = review.annotations.get(annotationId);
+    if (!annotation) {
+      sendText(response, 404, `Unknown Annotation ${annotationId}`);
+      return;
+    }
+    const session = sessions.findByArtifactRevision(annotation.artifactId, annotation.writtenRevision);
+    if (!session || !authorize(context, session.sessionId, url)) {
+      sendText(response, 401, 'Unauthorized');
+      return;
+    }
+    const body = await readJsonBody(request, response);
+    if (body === undefined) {
+      return;
+    }
+    const targetId = (body as { targetId?: unknown }).targetId;
+    const nodeId = (body as { nodeId?: unknown }).nodeId;
+    if (typeof targetId !== 'string' || typeof nodeId !== 'string') {
+      sendText(response, 400, 'Expected { targetId: string, nodeId: string }');
+      return;
+    }
+    try {
+      const updated = review.annotations.chooseCandidate(annotationId, targetId, nodeId);
+      sendJson(response, 200, { annotation: updated });
+    } catch (error) {
+      sendText(response, 409, error instanceof Error ? error.message : 'choice refused');
+    }
+    return;
+  }
+
+  const verifyMatch = /^\/api\/annotations\/([^/]+)\/verify$/.exec(path);
+  if (method === 'POST' && verifyMatch) {
+    const annotationId = decodeURIComponent(verifyMatch[1]!);
+    const annotation = review.annotations.get(annotationId);
+    if (!annotation) {
+      sendText(response, 404, `Unknown Annotation ${annotationId}`);
+      return;
+    }
+    const session = sessions.findByArtifactRevision(annotation.artifactId, annotation.writtenRevision);
+    if (!session || !authorize(context, session.sessionId, url)) {
+      sendText(response, 401, 'Unauthorized');
+      return;
+    }
+    const body = await readJsonBody(request, response);
+    if (body === undefined) {
+      return;
+    }
+    const verdict = (body as { verdict?: unknown }).verdict;
+    if (!isVerdict(verdict)) {
+      sendText(response, 400, 'Invalid verdict: expected approve, reject, another-pass, supersede, or obsolete');
+      return;
+    }
+    try {
+      const updated = review.annotations.verify(annotationId, verdict, {
+        ...(typeof (body as { successorId?: unknown }).successorId === 'string'
+          ? { successorId: (body as { successorId: string }).successorId }
+          : {})
+      });
+      sendJson(response, 200, { annotation: updated });
+    } catch (error) {
+      sendText(response, 409, error instanceof Error ? error.message : 'verification refused');
+    }
+    return;
+  }
+
+  const queueMatch = /^\/api\/annotations\/([^/]+)\/queue$/.exec(path);
+  if (method === 'POST' && queueMatch) {
+    const annotationId = decodeURIComponent(queueMatch[1]!);
+    const annotation = review.annotations.get(annotationId);
+    if (!annotation) {
+      sendText(response, 404, `Unknown Annotation ${annotationId}`);
+      return;
+    }
+    const session = sessions.findByArtifactRevision(annotation.artifactId, annotation.writtenRevision);
+    if (!session || !authorize(context, session.sessionId, url)) {
+      sendText(response, 401, 'Unauthorized');
+      return;
+    }
+    sendJson(response, 200, { annotation: review.annotations.queue(annotationId) });
+    return;
+  }
+
+  const annotationMatch = /^\/api\/annotations\/([^/]+)$/.exec(path);
+  if (annotationMatch) {
+    const annotationId = decodeURIComponent(annotationMatch[1]!);
+    const annotation = review.annotations.get(annotationId);
+    if (!annotation) {
+      sendText(response, 404, `Unknown Annotation ${annotationId}`);
+      return;
+    }
+    const session = sessions.findByArtifactRevision(annotation.artifactId, annotation.writtenRevision);
+    if (!session || !authorize(context, session.sessionId, url)) {
+      sendText(response, 401, 'Unauthorized');
+      return;
+    }
+    if (method === 'PATCH') {
+      const body = await readJsonBody(request, response);
+      if (body === undefined) {
+        return;
+      }
+      try {
+        const patch = { ...(body as Record<string, unknown>) };
+        if (Array.isArray(patch['targets'])) {
+          patch['targets'] = normalizeTargets(patch['targets'] as unknown[]);
+        }
+        const updated = review.annotations.update(annotationId, patch as never);
+        sendJson(response, 200, { annotation: updated });
+      } catch (error) {
+        sendText(response, 400, error instanceof Error ? error.message : 'update failed');
+      }
+      return;
+    }
+    if (method === 'DELETE') {
+      review.annotations.delete(annotationId);
+      sendJson(response, 200, { deleted: annotationId });
+      return;
+    }
+    if (method === 'GET') {
+      sendJson(response, 200, { annotation });
+      return;
+    }
+  }
+
+  const attachAddMatch = /^\/api\/annotations\/([^/]+)\/attachments$/.exec(path);
+  if (method === 'POST' && attachAddMatch) {
+    const annotationId = decodeURIComponent(attachAddMatch[1]!);
+    const annotation = review.annotations.get(annotationId);
+    if (!annotation) {
+      sendText(response, 404, `Unknown Annotation ${annotationId}`);
+      return;
+    }
+    const session = sessions.findByArtifactRevision(annotation.artifactId, annotation.writtenRevision);
+    if (!session || !authorize(context, session.sessionId, url)) {
+      sendText(response, 401, 'Unauthorized');
+      return;
+    }
+    const declaredLength = Number(request.headers['content-length']);
+    const contentType = request.headers['content-type'];
+    const mediaType = Array.isArray(contentType) ? contentType[0] : contentType;
+    const refused = review.attachments.refuseReason(mediaType, Number.isFinite(declaredLength) ? declaredLength : undefined);
+    if (refused) {
+      sendText(response, 415, refused);
+      return;
+    }
+    const bytes = await readBoundedBinary(request, response, 5 * 1024 * 1024);
+    if (bytes === undefined) {
+      return;
+    }
+    const record = review.attachments.put(bytes, normalizeMedia(mediaType), url.searchParams.get('name') ?? undefined);
+    const updated = review.annotations.addAttachment(annotationId, {
+      attachmentId: record.attachmentId,
+      mediaType: record.mediaType,
+      byteLength: record.byteLength,
+      sha256: record.sha256,
+      ...(record.name ? { name: record.name } : {})
+    });
+    sendJson(response, 200, { annotation: updated, attachment: record });
+    return;
+  }
+
+  const attachRemoveMatch = /^\/api\/annotations\/([^/]+)\/attachments\/([^/]+)$/.exec(path);
+  if (method === 'DELETE' && attachRemoveMatch) {
+    const annotationId = decodeURIComponent(attachRemoveMatch[1]!);
+    const attachmentId = decodeURIComponent(attachRemoveMatch[2]!);
+    const annotation = review.annotations.get(annotationId);
+    if (!annotation) {
+      sendText(response, 404, `Unknown Annotation ${annotationId}`);
+      return;
+    }
+    const session = sessions.findByArtifactRevision(annotation.artifactId, annotation.writtenRevision);
+    if (!session || !authorize(context, session.sessionId, url)) {
+      sendText(response, 401, 'Unauthorized');
+      return;
+    }
+    const updated = review.annotations.removeAttachment(annotationId, attachmentId);
+    sendJson(response, 200, { annotation: updated });
+    return;
+  }
+
+  const attachmentGetMatch = /^\/api\/attachments\/([^/]+)$/.exec(path);
+  if (method === 'GET' && attachmentGetMatch) {
+    const attachmentId = decodeURIComponent(attachmentGetMatch[1]!);
+    const bytes = review.attachments.read(attachmentId);
+    if (!bytes) {
+      sendText(response, 404, 'Unknown attachment');
+      return;
+    }
+    response.writeHead(200, {
+      'content-type': bytes.mediaType,
+      'content-length': String(bytes.bytes.byteLength),
+      'x-content-type-options': 'nosniff'
+    });
+    response.end(bytes.bytes);
+    return;
+  }
+
+  if (method === 'POST' && path === '/api/intents') {
+    const session = authorizedOrRefuse(context, url.searchParams.get('session') ?? '', url);
+    if (!session) {
+      return;
+    }
+    const body = await readJsonBody(request, response);
+    if (body === undefined) {
+      return;
+    }
+    const envelopeJson = (body as { envelope?: unknown }).envelope ?? body;
+    try {
+      const submitted = await review.submitEnvelope(envelopeJson, { host: 'browser' });
+      sendJson(response, 200, submitted);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'submit failed';
       sendText(response, message.startsWith('Invalid Visual Intent Envelope') ? 400 : 409, message);
     }
     return;
   }
-  const statusMatch = /^\/api\/intents\/([^/]+)$/.exec(url.pathname);
-  if (method === 'GET' && statusMatch) {
-    const session = authorizedApiSession(request, url, sessions);
-    if (!session) {
-      sendText(response, 401, 'Unauthorized');
-      return;
-    }
+
+  const legacyStatusMatch = /^\/api\/intents\/([^/]+)$/.exec(path);
+  if (method === 'GET' && legacyStatusMatch) {
     try {
-      sendJson(response, 200, review.getIntent(decodeURIComponent(statusMatch[1]!)));
+      sendJson(response, 200, review.getBatchStatus(decodeURIComponent(legacyStatusMatch[1]!)));
     } catch (error) {
       sendText(response, 404, error instanceof Error ? error.message : 'not found');
     }
     return;
   }
-  const resolutionsMatch = /^\/api\/intents\/([^/]+)\/resolutions$/.exec(url.pathname);
-  if (method === 'POST' && resolutionsMatch) {
-    const session = authorizedApiSession(request, url, sessions);
-    if (!session) {
-      sendText(response, 401, 'Unauthorized');
-      return;
-    }
-    const body = await readBoundedBody(request, response);
+  const legacyAckMatch = /^\/api\/intents\/([^/]+)\/acknowledge$/.exec(path);
+  if (method === 'POST' && legacyAckMatch) {
+    const body = await readJsonBody(request, response);
     if (body === undefined) {
       return;
     }
-    const parsed = JSON.parse(body) as { revision?: string; candidates?: ResolutionCandidate[] };
-    if (typeof parsed.revision !== 'string' || !Array.isArray(parsed.candidates)) {
-      sendText(response, 400, 'Expected { revision: string, candidates: ResolutionCandidate[] }');
+    const agentId = (body as { agentId?: unknown }).agentId;
+    if (typeof agentId !== 'string') {
+      sendText(response, 400, 'Expected { agentId: string }');
       return;
     }
-    try {
-      const envelopeId = decodeURIComponent(resolutionsMatch[1]!);
-      const record = review.store.get(envelopeId);
-      if (!record) {
-        sendText(response, 404, `Unknown envelope ${envelopeId}`);
-        return;
-      }
-      review.store.recordSourceRevision(envelopeId, parsed.revision);
-      const resolutions = record.envelope.targets.map((target) => {
-        const result = resolveTarget(target, parsed.candidates ?? []);
-        return {
-          targetId: target.targetId,
-          outcome: result.outcome,
-          candidateCount: result.candidates.length
-        };
-      });
-      const updated = review.store.recordResolution(envelopeId, resolutions);
-      sendJson(response, 200, { envelopeId, status: updated.status, resolutions: updated.resolutions });
-    } catch (error) {
-      sendText(response, 400, error instanceof Error ? error.message : 'resolution failed');
-    }
-    return;
-  }
-  const verifyMatch = /^\/api\/intents\/([^/]+)\/verify$/.exec(url.pathname);
-  if (method === 'POST' && verifyMatch) {
-    const session = authorizedApiSession(request, url, sessions);
-    if (!session) {
+    const envelopeId = decodeURIComponent(legacyAckMatch[1]!);
+    const batch = review.annotations.getBatch(envelopeId);
+    const session = batch
+      ? sessions.findByArtifactRevision(batch.envelope.artifact.id, batch.envelope.artifact.revision)
+      : undefined;
+    if (!session || !authorize(context, session.sessionId, url)) {
       sendText(response, 401, 'Unauthorized');
       return;
     }
-    const body = await readBoundedBody(request, response);
-    if (body === undefined) {
-      return;
-    }
-    const parsed = JSON.parse(body) as { verdict?: string; successorId?: string };
-    const verdict = parsed.verdict;
-    if (!isVerdict(verdict)) {
-      sendText(response, 400, 'Invalid verdict: expected approve, reject, another-pass, supersede, or obsolete');
-      return;
-    }
-    try {
-      const record = review.store.verify(decodeURIComponent(verifyMatch[1]!), verdict, {
-        successorId: parsed.successorId
-      });
-      sendJson(response, 200, { envelopeId: record.envelopeId, status: record.status });
-    } catch (error) {
-      sendText(response, 409, error instanceof Error ? error.message : 'verification refused');
-    }
+    sendJson(response, 200, await review.acknowledge(envelopeId, agentId));
     return;
   }
-  const sessionMatch = /^\/api\/sessions\/([^/]+)$/.exec(url.pathname);
-  if (method === 'GET' && sessionMatch) {
-    const session = sessions.authorized(sessionMatch[1]!, url.searchParams.get('cap'));
-    if (!session) {
-      sendText(response, 401, 'Unauthorized');
-      return;
-    }
-    sendJson(response, 200, await sessionStatus(session));
-    return;
-  }
+
   sendText(response, 404, 'Not found');
 }
 
-function isVerdict(value: unknown): value is 'approve' | 'reject' | 'another-pass' | 'supersede' | 'obsolete' {
-  return (
-    value === 'approve' ||
-    value === 'reject' ||
-    value === 'another-pass' ||
-    value === 'supersede' ||
-    value === 'obsolete'
-  );
+function annotationSnapshot(review: ReviewService, session: SessionRecord): Record<string, unknown> {
+  const annotations = review.annotations.listArtifact(session.artifactId);
+  return {
+    sessionId: session.sessionId,
+    artifact: {
+      id: session.artifactId,
+      kind: session.kind,
+      revision: session.revision,
+      displayName: session.displayName,
+      source: session.source
+    },
+    annotations,
+    summaries: annotations.map(summarise),
+    agent: review.agentPosition(session.sessionId),
+    migration: review.annotations.migrationReport(),
+    batches: review.annotations.listBatches()
+  };
 }
 
-function authorizedApiSession(
-  request: IncomingMessage,
-  url: URL,
-  sessions: SessionRecords
-): SessionRecord | undefined {
-  const headerCap = request.headers['x-session-cap'];
-  const cap = (Array.isArray(headerCap) ? headerCap[0] : headerCap) ?? url.searchParams.get('cap');
-  const sessionId = sessionIdFrom(request, url);
-  if (!sessionId) {
+async function policyFor(session: SessionRecord, policies: Map<string, RemoteOrigins>): Promise<Record<string, unknown>> {
+  const cached = policies.get(session.sessionId);
+  if (cached) {
+    return policyPayload(cached);
+  }
+  const remote = await computeRemoteOrigins(session);
+  policies.set(session.sessionId, remote);
+  return policyPayload(remote);
+}
+
+function policyPayload(remote: RemoteOrigins): Record<string, unknown> {
+  const allowed = [...new Set([...remote.stylesheet, ...remote.font, ...remote.image])];
+  return {
+    remoteOrigins: allowed,
+    byKind: remote,
+    contactsRemote: allowed.length > 0
+  };
+}
+
+async function computeRemoteOrigins(session: SessionRecord): Promise<RemoteOrigins> {
+  if (session.kind !== 'saved-html') {
+    return emptyRemoteOrigins();
+  }
+  const absolute = artifactFile(session);
+  if (!absolute || !existsSync(absolute)) {
+    return emptyRemoteOrigins();
+  }
+  try {
+    const html = readFileSync(absolute, 'utf8');
+    const base = `/artifact/${session.sessionId}`;
+    const dir = dirnameOf(absolute);
+    const analysis = rewriteHtml(html, base, (relative) => {
+      const confined = confinePath(dir, join(dir, relative));
+      if (!confined || !existsSync(confined) || lstatSync(confined).size > MAX_ASSET_BYTES) {
+        return undefined;
+      }
+      return readFileSync(confined, 'utf8');
+    });
+    return analysis.remote;
+  } catch {
+    return emptyRemoteOrigins();
+  }
+}
+
+function authorizedOrRefuse(context: RequestContext, sessionId: string, url: URL): SessionRecord | undefined {
+  const session = authorize(context, sessionId, url);
+  if (!session) {
+    sendText(context.response, 401, 'Unauthorized: missing or invalid session capability');
     return undefined;
   }
-  return sessions.authorized(sessionId, cap);
+  return session;
 }
 
-function sessionIdFrom(request: IncomingMessage, url: URL): string | undefined {
-  const header = request.headers['x-session-id'];
+function authorize(context: RequestContext, sessionId: string, url: URL): SessionRecord | undefined {
+  const capability = capabilityFrom(context.request, url);
+  if (!sessionId || !capability) {
+    return undefined;
+  }
+  return context.sessions.authorized(sessionId, capability);
+}
+
+function capabilityFrom(request: IncomingMessage, url: URL): string | undefined {
+  const header = request.headers['x-session-cap'];
   const fromHeader = Array.isArray(header) ? header[0] : header;
-  return fromHeader ?? url.searchParams.get('session') ?? undefined;
+  if (fromHeader) {
+    return fromHeader;
+  }
+  const fromQuery = url.searchParams.get('cap');
+  if (fromQuery) {
+    return fromQuery;
+  }
+  const cookie = parseCookies(request.headers.cookie ?? '');
+  return cookie['vil_cap'];
+}
+
+function parseCookies(header: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const part of header.split(';')) {
+    const index = part.indexOf('=');
+    if (index === -1) {
+      continue;
+    }
+    const name = part.slice(0, index).trim();
+    const value = part.slice(index + 1).trim();
+    if (name) {
+      out[name] = decodeURIComponent(value);
+    }
+  }
+  return out;
+}
+
+function rememberSessionCookie(response: ServerResponse, session: SessionRecord): void {
+  response.setHeader('set-cookie', [
+    `vil_session=${encodeURIComponent(session.sessionId)}; Path=/; HttpOnly; SameSite=Strict`,
+    `vil_cap=${encodeURIComponent(session.capability)}; Path=/; HttpOnly; SameSite=Strict`
+  ]);
 }
 
 function isAllowedHost(request: IncomingMessage): boolean {
@@ -391,28 +817,36 @@ async function sessionStatus(session: SessionRecord): Promise<Record<string, unk
 
 function serveReviewShell(response: ServerResponse, session: SessionRecord): void {
   const template = readUiFile('shell.html');
-  const artifactSrc = `/artifact/${session.sessionId}?cap=${session.capability}`;
   const html = template
-    .replaceAll('__SESSION_ID__', escapeHtml(session.sessionId))
-    .replaceAll('__CAPABILITY__', escapeHtml(session.capability))
-    .replaceAll('__ARTIFACT_SRC__', escapeHtml(artifactSrc))
-    .replaceAll('__ARTIFACT_NAME__', escapeHtml(session.displayName))
-    .replaceAll('__ARTIFACT_REVISION__', escapeHtml(session.revision));
+    .replaceAll('__SESSION_ID__', encodeHtml(session.sessionId))
+    .replaceAll('__CAPABILITY__', encodeHtml(session.capability))
+    .replaceAll('__ARTIFACT_ID__', encodeHtml(session.artifactId))
+    .replaceAll('__ARTIFACT_NAME__', encodeHtml(session.displayName))
+    .replaceAll('__ARTIFACT_REVISION__', encodeHtml(session.revision))
+    .replaceAll('__ARTIFACT_KIND__', encodeHtml(session.kind))
+    .replaceAll('__ARTIFACT_SRC__', encodeHtml(`/artifact/${session.sessionId}`));
   response.writeHead(200, {
     'content-type': 'text/html; charset=utf-8',
-    'content-security-policy': "default-src 'self'; frame-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'",
+    'content-security-policy':
+      "default-src 'self'; frame-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'",
     'x-content-type-options': 'nosniff'
   });
   response.end(html);
 }
 
-function serveArtifact(response: ServerResponse, session: SessionRecord): void {
+function serveArtifactDocument(
+  response: ServerResponse,
+  session: SessionRecord,
+  policies: Map<string, RemoteOrigins>,
+  review: ReviewService
+): void {
+  if (session.kind === 'react-vite-app') {
+    response.writeHead(302, { location: `/app/${session.sessionId}/`, 'x-content-type-options': 'nosniff' });
+    response.end();
+    return;
+  }
   const absolute = artifactFile(session);
   if (!absolute) {
-    if (session.kind === 'react-vite-app') {
-      serveAppRelay(response, session);
-      return;
-    }
     sendText(response, 501, 'Unknown artifact kind');
     return;
   }
@@ -430,27 +864,119 @@ function serveArtifact(response: ServerResponse, session: SessionRecord): void {
     sendText(response, 413, 'Artifact exceeds the bounded size for local review');
     return;
   }
-  response.writeHead(200, {
-    'content-type': 'text/html; charset=utf-8',
-    'content-security-policy':
-      "sandbox allow-scripts allow-same-origin; default-src 'none'; script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline' 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'none'",
-    'x-content-type-options': 'nosniff'
+  const base = `/artifact/${session.sessionId}`;
+  const dir = dirnameOf(confined);
+  const analysis = rewriteHtml(bytes.toString('utf8'), base, (relative) => {
+    const cssPath = confinePath(dir, join(dir, relative));
+    if (!cssPath || !existsSync(cssPath) || lstatSync(cssPath).size > MAX_ASSET_BYTES) {
+      return undefined;
+    }
+    return readFileSync(cssPath, 'utf8');
   });
-  response.end(bytes);
-}
-
-function serveAppRelay(response: ServerResponse, session: SessionRecord): void {
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8" /><title>Application review relay</title><style>html,body{margin:0;height:100%}iframe{width:100%;height:100%;border:0}.note{font:12px system-ui;padding:.4rem .8rem;background:#fef3c7}</style></head><body><div class="note">Reviewing the running app at ${escapeHtml(session.source)}. Cross-origin selection needs the instrumented adapter runtime; Rendered Grounding stays available.</div><iframe title="Running application" src="${escapeHtml(session.source)}"></iframe></body></html>`;
+  policies.set(session.sessionId, analysis.remote);
+  if (session.kind === 'saved-html') {
+    review.snapshots.save(session.artifactId, session.revision, bytes);
+  }
+  const currentRevision = computeRevision(bytes, []);
+  const html = injectArtifactLayerScript(analysis.html, session.sessionId, {
+    'data-revision': currentRevision,
+    'data-mode': 'after'
+  });
   response.writeHead(200, {
     'content-type': 'text/html; charset=utf-8',
-    'content-security-policy':
-      "default-src 'self'; frame-src http://127.0.0.1:* http://localhost:* https://127.0.0.1:* https://localhost:*; style-src 'unsafe-inline'",
+    'content-security-policy': contentSecurityPolicyFor(analysis.remote),
     'x-content-type-options': 'nosniff'
   });
   response.end(html);
 }
 
-function serveAsset(response: ServerResponse, session: SessionRecord, requested: string): void {
+function serveArtifactBefore(
+  response: ServerResponse,
+  review: ReviewService,
+  session: SessionRecord,
+  policies: Map<string, RemoteOrigins>
+): void {
+  const snapshot = review.snapshots.read(session.artifactId, session.revision);
+  if (!snapshot) {
+    serveArtifactDocument(response, session, policies, review);
+    return;
+  }
+  const base = `/artifact/${session.sessionId}`;
+  const analysis = rewriteHtml(snapshot.toString('utf8'), base);
+  const html = injectArtifactLayerScript(analysis.html, session.sessionId, {
+    'data-revision': session.revision,
+    'data-mode': 'before'
+  });
+  response.writeHead(200, {
+    'content-type': 'text/html; charset=utf-8',
+    'content-security-policy': contentSecurityPolicyFor(analysis.remote),
+    'x-content-type-options': 'nosniff'
+  });
+  response.end(html);
+}
+
+async function serveAppProxy(
+  context: RequestContext,
+  session: SessionRecord,
+  upstreamPath: string,
+  search: string
+): Promise<void> {
+  const { response } = context;
+  if (session.kind !== 'react-vite-app') {
+    sendText(response, 404, 'Not an application session');
+    return;
+  }
+  let upstream: URL;
+  try {
+    assertLocalAppUrl(session.source);
+    upstream = new URL(`/${upstreamPath.replace(/^\/+/, '')}${search}`, session.source);
+    assertLocalAppUrl(upstream.toString());
+  } catch (error) {
+    sendText(response, 403, error instanceof Error ? error.message : 'refused upstream');
+    return;
+  }
+  try {
+    const upstreamResponse = await fetch(upstream, { redirect: 'manual' });
+    const bytes = Buffer.from(await upstreamResponse.arrayBuffer());
+    if (bytes.byteLength > MAX_ASSET_BYTES) {
+      sendText(response, 413, 'Upstream asset exceeds the bounded size for local review');
+      return;
+    }
+    const contentType = upstreamResponse.headers.get('content-type') ?? '';
+    if (contentType.includes('text/html')) {
+      const base = `/app/${session.sessionId}`;
+      const analysis = rewriteHtml(bytes.toString('utf8'), base);
+      const html = injectArtifactLayerScript(analysis.html, session.sessionId, {
+        'data-revision': session.revision,
+        'data-mode': 'after'
+      });
+      response.writeHead(upstreamResponse.status, {
+        'content-type': contentType,
+        'x-content-type-options': 'nosniff'
+      });
+      response.end(html);
+      return;
+    }
+    if (contentType.includes('text/css')) {
+      const rewritten = rewriteCss(bytes.toString('utf8'), `/app/${session.sessionId}`);
+      response.writeHead(upstreamResponse.status, {
+        'content-type': contentType,
+        'x-content-type-options': 'nosniff'
+      });
+      response.end(rewritten.css);
+      return;
+    }
+    response.writeHead(upstreamResponse.status, {
+      'content-type': contentType || 'application/octet-stream',
+      'x-content-type-options': 'nosniff'
+    });
+    response.end(bytes);
+  } catch (error) {
+    sendText(response, 502, error instanceof Error ? error.message : 'upstream unreachable');
+  }
+}
+
+function serveArtifactAsset(response: ServerResponse, session: SessionRecord, requested: string): void {
   const absolute = artifactFile(session);
   if (!absolute) {
     sendText(response, 501, 'Only saved HTML artifacts serve local assets');
@@ -459,7 +985,7 @@ function serveAsset(response: ServerResponse, session: SessionRecord, requested:
   const base = dirnameOf(absolute);
   const confined = confinePath(base, join(base, requested));
   if (!confined || !existsSync(confined)) {
-    sendText(response, 403, 'Asset path is outside the artifact directory');
+    sendText(response, 404, 'Asset not found');
     return;
   }
   const stat = lstatSync(confined);
@@ -467,12 +993,15 @@ function serveAsset(response: ServerResponse, session: SessionRecord, requested:
     sendText(response, 413, 'Asset exceeds the bounded size for local review');
     return;
   }
-  const bytes = readFileSync(confined);
-  response.writeHead(200, {
-    'content-type': MIME[extname(confined).toLowerCase()] ?? 'application/octet-stream',
-    'x-content-type-options': 'nosniff'
-  });
-  response.end(bytes);
+  const type = MIME[extname(confined).toLowerCase()] ?? 'application/octet-stream';
+  if (type.startsWith('text/css')) {
+    const rewritten = rewriteCss(readFileSync(confined, 'utf8'), `/artifact/${session.sessionId}`);
+    response.writeHead(200, { 'content-type': type, 'x-content-type-options': 'nosniff' });
+    response.end(rewritten.css);
+    return;
+  }
+  response.writeHead(200, { 'content-type': type, 'x-content-type-options': 'nosniff' });
+  response.end(readFileSync(confined));
 }
 
 export function confinePath(baseDir: string, requestedPath: string): string | undefined {
@@ -497,25 +1026,48 @@ export function confinePath(baseDir: string, requestedPath: string): string | un
 }
 
 function serveUiAsset(response: ServerResponse, name: string): void {
-  if (!/^[\w.-]+\.(js|css)$/.test(name)) {
+  if (!/^[\w.-]+\.(js|css|html|map)$/.test(name)) {
     sendText(response, 404, 'Not found');
     return;
   }
   try {
-    const bytes = readUiFile(name);
-    response.writeHead(200, {
-      'content-type': name.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8',
-      'x-content-type-options': 'nosniff'
-    });
-    response.end(bytes);
+    const file = readUiFile(name);
+    const type = name.endsWith('.js')
+      ? 'text/javascript; charset=utf-8'
+      : name.endsWith('.css')
+        ? 'text/css; charset=utf-8'
+        : name.endsWith('.html')
+          ? 'text/html; charset=utf-8'
+          : 'application/json; charset=utf-8';
+    response.writeHead(200, { 'content-type': type, 'x-content-type-options': 'nosniff' });
+    response.end(file);
   } catch {
     sendText(response, 404, 'Not found');
   }
 }
 
+function serveGallery(response: ServerResponse): void {
+  try {
+    const html = readUiFile('gallery.html');
+    response.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8',
+      'content-security-policy': "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'",
+      'x-content-type-options': 'nosniff'
+    });
+    response.end(html);
+  } catch {
+    sendText(response, 404, 'Gallery bundle missing; run npm run build');
+  }
+}
+
 function readUiFile(name: string): string {
   const here = dirname(fileURLToPath(import.meta.url));
-  const candidates = [join(here, '..', 'ui', name), join(here, 'ui', name)];
+  const candidates = [
+    join(here, '..', 'ui', name),
+    join(here, 'ui', name),
+    join(process.cwd(), 'dist', 'ui', name),
+    join(process.cwd(), 'src', 'ui', name)
+  ];
   for (const candidate of candidates) {
     try {
       return readFileSync(candidate, 'utf8');
@@ -524,6 +1076,41 @@ function readUiFile(name: string): string {
     }
   }
   throw new Error(`UI asset missing: ${name}`);
+}
+
+async function readBoundedBinary(
+  request: IncomingMessage,
+  response: ServerResponse,
+  limit: number
+): Promise<Buffer | undefined> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of request) {
+    const buffer = chunk as Buffer;
+    total += buffer.byteLength;
+    if (total > limit) {
+      sendText(response, 413, 'Request body exceeds the attachment limit');
+      return undefined;
+    }
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks);
+}
+
+async function readJsonBody(request: IncomingMessage, response: ServerResponse): Promise<unknown | undefined> {
+  const body = await readBoundedBody(request, response);
+  if (body === undefined) {
+    return undefined;
+  }
+  if (body.trim().length === 0) {
+    return {};
+  }
+  try {
+    return JSON.parse(body) as unknown;
+  } catch {
+    sendText(response, 400, 'Invalid JSON body');
+    return undefined;
+  }
 }
 
 async function readBoundedBody(request: IncomingMessage, response: ServerResponse): Promise<string | undefined> {
@@ -551,11 +1138,52 @@ function sendJson(response: ServerResponse, status: number, value: unknown): voi
   response.end(JSON.stringify(value, null, 2));
 }
 
+function isVerdict(value: unknown): value is 'approve' | 'reject' | 'another-pass' | 'supersede' | 'obsolete' {
+  return (
+    value === 'approve' ||
+    value === 'reject' ||
+    value === 'another-pass' ||
+    value === 'supersede' ||
+    value === 'obsolete'
+  );
+}
+
+function isIntent(value: unknown): value is 'next-pass' | 'steering' | 'draft' | 'review-interruption' {
+  return value === 'next-pass' || value === 'steering' || value === 'draft' || value === 'review-interruption';
+}
+
+function normalizeMedia(value: string | undefined): string {
+  return (value ?? 'application/octet-stream').split(';')[0]!.trim().toLowerCase();
+}
+
+function normalizeTargets(raw: unknown[]): AnnotationTarget[] {
+  return raw.map((entry, index) => {
+    const candidate = (entry ?? {}) as Record<string, unknown>;
+    const grounding = (candidate['renderedGrounding'] ?? candidate['grounding'] ?? {
+      selectors: [],
+      boundingBox: { x: 0, y: 0, width: 0, height: 0 }
+    }) as AnnotationTarget['renderedGrounding'];
+    const provenance = candidate['sourceProvenance'] as AnnotationTarget['sourceProvenance'] | undefined;
+    const confidence = candidate['provenanceConfidence'];
+    const regionEvidence = candidate['regionEvidence'] as AnnotationTarget['regionEvidence'] | undefined;
+    return {
+      targetId: typeof candidate['targetId'] === 'string' && candidate['targetId'].length > 0 ? candidate['targetId'] : `t-${index + 1}`,
+      kind: candidate['kind'] === 'text-range' || candidate['kind'] === 'region' ? candidate['kind'] : 'element',
+      renderedGrounding: grounding,
+      provenanceConfidence:
+        confidence === 'exact' || confidence === 'inferred' ? confidence : provenance ? 'exact' : 'unavailable',
+      ...(provenance ? { sourceProvenance: provenance } : {}),
+      ...(typeof candidate['label'] === 'string' && candidate['label'].length > 0 ? { label: candidate['label'] } : {}),
+      ...(regionEvidence ? { regionEvidence } : {})
+    } satisfies AnnotationTarget;
+  });
+}
+
 function dirnameOf(path: string): string {
   const index = path.lastIndexOf(sep);
   return index === -1 ? '.' : path.slice(0, index) || sep;
 }
 
-function escapeHtml(value: string): string {
+function encodeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

@@ -15,3 +15,7 @@
 Implemented (implemented in 8b70d52): Alt-drag region marquees with spatial evidence, Shift-click multi-target sets (src/ui/selection.ts), region kind end-to-end in composer/schema/resolver; selection panel stays visible while writing.
 
 Verification note: scroll/zoom/reflow/overlap ticked on grounding evidence (viewport+DPR+bbox captured), resolver reflow tolerance (benchmarked), and topmost-click plus explicit region fallback; live-browser matrix confirmation rides with dogfood in ticket 17.
+
+Superseded: region and multi-target selection are unchanged as capabilities, with one addition: a drawn region now records the artifact revision and scroll position it was drawn at as evidence (ADR-0016).
+
+See `.scratch/review-surface/spec.md`.

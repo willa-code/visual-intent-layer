@@ -10,15 +10,35 @@ _Avoid_: Developer, non-technical user, reviewer, vibe coder
 
 **Visual Direction Loop**:
 The cycle in which a Builder-Reviewer visually expresses intent about an artifact, an agent performs or revises the work, and the Builder-Reviewer verifies the result. The cycle may begin with agent-produced work or with a human-selected transformation.
-_Avoid_: Feedback loop, annotation workflow, review pipeline, agent setup
+_Avoid_: Feedback loop, review pipeline, agent setup
+
+**Review Surface**:
+The independent browser surface in which a Builder-Reviewer inspects an Artifact, composes Annotations, and verifies a resulting revision. It is the complete local experience and never depends on a Harness embedding it.
+_Avoid_: Review UI, viewer, inspector, design mode
+
+**Review**:
+The Review Surface state in which the artifact is exercised normally and Annotations are composed, queued, and sent.
+_Avoid_: Annotate mode, edit mode, direct mode, design mode
+
+**Verify**:
+The Review Surface state in which a resulting artifact revision is compared against the Annotations written for it and each Annotation is individually accepted, rejected, superseded, or marked obsolete.
+_Avoid_: Approval screen, review mode, diff view
 
 **Visual Intent Layer**:
 A product layer that converts what a Builder-Reviewer points to, selects, arranges, or demonstrates on a visible artifact into contextual instructions an agent can act on. It exists to preserve intent that would be lossy or slow to express using words alone.
 _Avoid_: HTML annotator, visual editor, MCP transport
 
 **Visual Intent Envelope**:
-A portable representation of visually grounded human intent. It identifies the artifact and visible target, preserves spatial and semantic evidence, expresses the desired transformation and constraints, and communicates uncertainty when the target cannot be identified safely.
-_Avoid_: Prompt, annotation payload, DOM selector
+A portable representation of visually grounded human intent, and the delivery batch that carries one or more Annotations. It identifies the artifact and visible target, preserves spatial and semantic evidence, expresses the desired transformation and constraints, and communicates uncertainty when the target cannot be identified safely.
+_Avoid_: Prompt, DOM selector
+
+**Annotation**:
+A durable, individually verifiable unit of visually grounded direction: one or more visible targets, a written note, optional references, and optional Relational Intent. An Annotation is composed in the Review Surface and verified on its own.
+_Avoid_: Comment, mark, note, task, visual edit, item
+
+**Annotation Queue**:
+The ordered set of Annotations a Builder-Reviewer has composed but not yet sent.
+_Avoid_: Cart, basket, backlog, inbox
 
 **Artifact**:
 Visible work that a Builder-Reviewer can direct and verify. Different artifact types may provide different levels of targeting fidelity while participating in the same Visual Direction Loop.
@@ -33,7 +53,7 @@ A Visual Direction Loop over a running browser application whose visible output 
 _Avoid_: HTML mode, website mode, arbitrary app support
 
 **Intent Preview**:
-A reversible visual proposal showing the transformation a Builder-Reviewer means before it is delivered to an agent. Moving or resizing an Intent Preview expresses a desired visible relationship; it does not directly mutate authoritative source.
+A reversible visual proposal showing the transformation a Builder-Reviewer means before it is delivered to an agent. An Intent Preview is how Relational Intent is expressed in the Review state — by manipulating targets directly — rather than a separate mode, and it never mutates authoritative source.
 _Avoid_: Direct edit, WYSIWYG change, canvas object
 
 **Baseline Compatibility**:
@@ -81,12 +101,12 @@ Evidence identifying a target within the visible artifact without claiming knowl
 _Avoid_: Source provenance, exact source, weak provenance
 
 **Provenance Confidence**:
-The product's explicit assessment of whether source evidence is exact, recovered, ambiguous, unavailable, or stale. Uncertainty must remain visible to both the Builder-Reviewer and agent.
+The product's explicit assessment of source evidence as an exact source span, inferred, or unavailable. This axis is separate from Target Resolution and never shares the word "exact" with it. Uncertainty must remain visible to both the Builder-Reviewer and the agent.
 _Avoid_: Best guess, likely file
 
 **Target Resolution**:
-The act of locating the same intended target in another artifact revision. A resolution must communicate whether it is exact, recovered, ambiguous, stale, or deleted rather than silently choosing an uncertain target.
-_Avoid_: Selector match, reattachment
+The act of locating the same intended target in another artifact revision. A resolution reports whether the target was matched exactly, recovered on weaker evidence, or left unresolved, and never chooses an uncertain target: an unresolved target carries its candidates, and one without candidates is deleted. Whether an Annotation was written against the revision being compared is a separate, Annotation-level fact.
+_Avoid_: Selector match, reattachment, best guess
 
 **Relational Intent**:
 Intent expressed through a relationship among targets, such as alignment, ordering, spacing, containment, or equivalence.

@@ -1,8 +1,14 @@
 # Visual Intent Layer
 
-A local-first **Visual Direction Loop**: point at visible targets in an
-agent-produced interface, deliver a versioned **Visual Intent Envelope** over MCP,
-and verify the result by hand. No prose location descriptions, no lost context.
+A local-first **Visual Direction Loop**: open a review surface on an
+agent-produced interface, point at visible targets, compose **Annotations**, and
+verify the result by hand. No prose location descriptions, no lost context.
+
+The **Annotation** is the unit of work. A Builder-Reviewer selects one or more
+visible targets, drafts a note in a card anchored to the target, attaches
+references, expresses a relationship by manipulating the targets, and queues the
+result. Sending delivers one **Visual Intent Envelope** carrying each Annotation
+with its own identity. Each Annotation is verified on its own.
 
 ## Install
 
@@ -50,145 +56,155 @@ entry is compared against the entry setup would write: a matching entry is
 reported as current and left byte-identical, and a differing entry is reported as
 outdated — naming the fields that differ — and repaired on re-run, so an entry
 left by an older release or copied from a snippet heals without hand-editing.
-`.mcp.json` is a single write that serves pi and Claude Code together; Claude
-Code requires first-use approval for project-scoped servers, and the report says
-so. Claude Code's state file is never hand-edited: setup delegates to Claude's
-own writer command, or prints the exact command when the binary is absent.
-opencode files containing hand-written comments are never rewritten; setup
-prints the exact entry to paste.
 
 ### Transport
 
 Setup registers whichever transport will actually work on this machine. When
 `visual-intent` resolves on `PATH` the entry is `command: "visual-intent"` with
 args `["mcp"]`; otherwise it is the packaged
-`npx -y --package visual-intent-layer@<version> visual-intent-mcp` form, so a
-machine with no global install still gets a server that spawns. The chosen
-transport is printed on every run.
+`npx -y --package visual-intent-layer@<version> visual-intent-mcp` form.
 
 ### Setup flags
 
 - `--global` — user-global scope instead of the current project.
-- `--harness <name>` — restrict the matrix to named harnesses (`pi`, `codex`,
-  `claude-code`, `opencode`); repeatable.
-- `--status` — read-only: report each harness's registration state, location,
-  transport, and detection evidence without writing anything.
+- `--harness <name>` — restrict the matrix to named harnesses; repeatable.
+- `--status` — read-only: report registration state, location, transport, evidence.
 - `--print-only` — show every planned write without touching disk.
 - `--no-skill` — skip the pi Skill install.
 
-### Packaged snippet
-
-On a machine without a global install, paste the packaged `mcp.json` snippet
-(shipped with the package) into your harness's config. It uses the same
-`npx -y --package visual-intent-layer@<version> visual-intent-mcp` transport that
-setup selects automatically when no `visual-intent` binary is on `PATH`.
-
-### Pre-release channel
-
-Pre-release builds publish to the `next` dist-tag:
-
-```sh
-npm install -g visual-intent-layer@next
-```
-
-`latest` only moves when a validated pre-release is promoted to a stable
-version, so `npm install visual-intent-layer` always gets a release that was
-dogfooded on `next` first.
-
-### Stays manual
-
-- Harnesses beyond the four above (Cursor, VS Code, Windsurf, Zed, Gemini CLI):
-  their paths and entry schemas are recorded in the background research, and the
-  packaged snippet is the documented path until a spec adds writers.
-- Zed settings-file edits (`context_servers`), IDE marketplace listings, and
-  one-click or deep-link installs.
-- OAuth, tokens, and any credential-bearing setup step.
-- Windows-specific config paths. Setup does accept Windows command shims when
-  looking for a harness command.
-- Interactive harness selection: setup is deterministic and scriptable, and
-  `--harness` is the override.
-
-Setup support means the server is reachable with **Baseline Compatibility**, not
-that a harness carries a **Certified Experience**. No host certification claims
-are made here.
-
-pi users: MCP is provided via `pi-mcp-adapter`, which reads the standard MCP
-files above. The local browser carries the complete V0 experience; no embedded
-UI is required. Alternatively, add this package to pi's `packages` setting —
-its `pi.skills` manifest exposes the Skill automatically.
-
-> Maintainer: releases go out via the Publish workflow (npm trusted publishing),
-> with the process in the `/maintenance` skill. Pre-releases
-> (`gh release create vX.Y.Z-next.N --prerelease`) publish to `next`; stable
-> releases publish to `latest`. Bump the version and the pinned version in
-> `mcp.json` together — `node scripts/check-bins.js` fails CI otherwise — then
-> push to `main` and `gh release create vX.Y.Z --generate-notes`. Verify with a
-> clean-machine `npm install -g visual-intent-layer@latest` and the ticket 16
-> checklist.
-
 ## Use
 
-Ask your agent to open visual review, or start it yourself:
+Start a session yourself, or let the agent open one:
 
 ```sh
-visual-intent open --html ./checkout.html     # prints a review URL
+visual-intent open --html ./checkout.html     # opens the browser, prints the URL
 visual-intent open --app http://localhost:5173
 visual-intent serve --port 3742               # local service only
 ```
 
-In the review surface:
+Starting a session **launches the default browser on this machine** and prints
+the review URL as well, so the loop is a product experience rather than a
+URL to copy. Automatic opening is suppressed with `--no-open` or
+`VISUAL_INTENT_NO_OPEN=1` for headless, remote and scripted use; the URL is
+still printed. Reopening the same artifact revision reuses the open session and
+its URL, so a review does not accumulate tabs.
 
-The `visual-intent` command is a local operator for the human (serve/open) plus
-the MCP stdio entry point for agent hosts. It is not an agent-facing CLI
-fallback; that remains a documented principle, not a V0 deliverable.
+### The two states
 
-1. **Explore** the artifact normally, then enter **Select** (press `2`).
-2. Click elements, select exact text, `Alt`-drag a region, `Shift`-click for
-   multi-target sets. Grounding evidence shows before anything is sent.
-3. Relate targets (align, order, spacing, containment, equivalence, sizing),
-   write direction, pick delivery timing, and submit.
-4. After the agent saves, the new revision resolves each target as exact,
-   recovered, ambiguous, stale, or deleted. Only you can approve, reject,
-   request another pass, supersede, or mark the intent obsolete.
+The Review Surface has exactly two states.
+
+**Review** is where the artifact is exercised normally and Annotations are
+composed. The tool row is Pointer, Element, Text, Region, Arrange. Selecting a
+target opens an Annotation card next to it; typing and pressing Enter queues the
+Annotation; `Cmd/Ctrl+Enter` queues and sends the whole queue.
+
+**Verify** is where a resulting revision is compared against the Annotations
+written for it. The pre-change and post-change revisions are toggleable in place,
+each Annotation's target is marked in both, and each Annotation is decided
+separately: approve, reject with another pass, supersede, or mark obsolete.
+
+Escape unwinds exactly one level — close the card, then clear the selection,
+then leave Verify — and never discards unsent writing.
+
+### The Annotation model
+
+- An Annotation is durable and individually identified: targets, note,
+  references, optional Relational Intent, delivery state and resolution.
+- Unsent text survives a surface reload, a service restart and a browser
+  restart. Nothing discards a note silently.
+- Several targets can be gathered into one Annotation; a region records the
+  revision and scroll position it was drawn at.
+- Reference images are added by picker, paste or drop, are content-addressed by
+  their own bytes, and are refused visibly (and unread) when disallowed or
+  oversized.
+- Relational Intent is expressed by manipulating the selected targets —
+  ordering, alignment, equal spacing, containment, shared property and
+  comparative size — shown back as one plain sentence and stored
+  implementation-neutral, with no pixel fields. The relation type and operator
+  pickers no longer exist.
+- The product never writes style values into the artifact or its source.
+
+### Resolution, honesty and the agent
+
+When the artifact changes, each target is located again and reported as
+**Matched**, **Recovered**, **Ambiguous** (with its candidates, never
+auto-selected) or **Deleted**. Whether an Annotation was written before the
+revision now on screen is a separate, Annotation-level fact shown as such.
+Provenance Confidence — exact source span, inferred, or unavailable — is a
+separate axis and never shares the word "exact" with target resolution.
+
+The surface states the agent's position in a sentence. Where the host can hold
+the call the agent is **awaiting you** and sending is urgent; where it cannot,
+the surface says the agent has **stepped away** and the Annotations are queued
+durably. Agent acknowledgement is never presented as implementation or as
+verification, and the workflow never requires the agent to be waiting.
+
+A single drawer, hidden while it has nothing to report and badge-counted when it
+does, carries what needs a decision: everything that will leave the machine, any
+unresolved or ambiguous Annotation, and the fact that the artifact has moved on.
+Rare actions — end session, reload artifact, copy artifact path, copy evidence —
+live in the overflow menu.
 
 ## Envelope schema
 
-The portable contract is `schema/envelope-v0.1.schema.json` (experimental,
-versioned). TypeScript types are generated from it (`npm run build:types`).
-Canvas-, host-, browser-, and framework-specific records travel as optional
-extensions, never required semantics.
+The portable contract is `schema/envelope-v0.2.schema.json` (experimental,
+versioned). One envelope carries one or more Annotations, each with its own
+identity, targets, note, relationships, references and attachments. TypeScript
+types are generated from it (`npm run build:types`).
+
+## Security and privacy
+
+Reviewing is local-first. The service binds to loopback only, requires an
+unguessable per-session capability, and confines file access to the artifact
+directory. A saved HTML artifact keeps its own relative and root-relative assets
+and may load the remote stylesheet, font and image origins it declares — and
+those origins are disclosed in the surface *before* the artifact contacts them.
+Runtime data requests stay blocked by the artifact's content policy. A running
+local development server may be reverse-proxied through the review service's own
+origin so its DOM is selectable; only loopback development origins are proxied
+and authenticated production applications are refused.
+
+See `SECURITY.md` for the full policy.
 
 ## Develop
 
 ```sh
 npm install
-npm test            # full suite
+npm test            # full suite, including the browser-driven primary seam
 npm run typecheck
+npm run build       # compile the service and bundle the shell + artifact layer
 npm run benchmark   # target-resolution mutation benchmark
 npm run instrument  # latency / reliability / token-efficiency signals
 npm run eval:invocation
 ```
 
-The primary test seam is `tests/loop.test.ts`: one black-box Visual Direction
-Loop through the public MCP entry tool, HTTP API, and browser UI logic against
-a controlled artifact.
+The primary test seam is `tests/browser-loop.test.ts`: the Visual Direction
+Loop is driven end to end in a real browser engine against the locally running
+service — the served asset graph must load, the artifact must render with its
+styles, and a human path (select, annotate, queue, send, re-resolve, verify,
+restart) is performed through the DOM the product actually serves. A surface
+that cannot load its own scripts fails CI rather than shipping.
+
+The design gallery is at `/gallery` on a running service. It is not part of the
+product's navigation. `tests/gallery-snapshot.test.ts` pins every design token
+exactly and fails on a screenshot difference, so a drifting token or an
+undocumented new state fails loudly.
 
 ## Layout
 
-- `src/envelope/` — versioned schema, generated types, validation, fixtures
-- `src/artifact/` — stable identity, content-addressed BLAKE3 revisions
-- `src/resolution/` — confidence-bearing target resolution
-- `src/lifecycle/` — durable delivery lifecycle, human verification
-- `src/mcp/` — MCP server, entry tool, delivery tools, stdio transport
-- `src/service/` — loopback HTTP service, sessions, security boundary
-- `src/ui/` — product-owned review overlay, selection, composer, previews
+- `design.md` — normative Review Surface design contract (tokens, roles, states)
+- `schema/` — versioned Visual Intent Envelope contracts
+- `src/annotation/` — the Annotation model, durable store, attachments, migration
+- `src/artifact/` — identity, content-addressed revisions, fidelity rewriting, snapshots
+- `src/resolution/` — target resolution and its reduced vocabulary
+- `src/mcp/` — MCP server, entry tool, stdio transport
+- `src/service/` — loopback HTTP service, sessions, security boundary, browser opening
+- `src/ui/` — product-owned shell, artifact interaction layer, design gallery
 - `src/adapters/` — React/Vite Source Provenance adapter
 - `src/host/` — capability negotiation and honest degradation
 - `src/benchmark/` — mutation benchmark matrix
-- `src/eval/` — invocation policy eval
 - `src/instrumentation/` — product-boundary measurements
-- `skills/` — thin optional Skill for agents (pi-loadable via the `pi.skills` manifest)
-- `fixtures/` — controlled artifacts, including malicious security fixtures
+- `skills/` — thin optional Skill for agents
 
 ## License
 

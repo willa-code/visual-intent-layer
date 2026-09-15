@@ -14,3 +14,7 @@
 ## Comments
 
 Agent work in 8b70d52: comparison template + preview verdict table at .scratch/visual-intent-layer/dogfood.md; preview interactionEvidence recorded on envelopes; benchmark/eval/instrumentation signals in place. Real corrections, repeat-use observation, and keep-or-kill verdicts need the builder. Moved to ready-for-human.
+
+Superseded: the recorded dogfood and Intent Preview verdicts were produced against a Review Surface whose JavaScript never executed, so they cannot be carried forward, and the preview verdicts are structurally obsolete now that previews are the relation input. Both must be re-recorded (ADR-0016).
+
+See `.scratch/review-surface/spec.md`.

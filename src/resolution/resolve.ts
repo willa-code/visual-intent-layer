@@ -1,5 +1,5 @@
 import type { Envelope } from '../envelope/validate.js';
-import type { ResolutionOutcome } from '../lifecycle/store.js';
+import type { TargetMatch } from './model.js';
 
 export type BoundingBox = {
   x: number;
@@ -31,43 +31,67 @@ export type ScoredCandidate = {
   matchedAnchors: string[];
 };
 
-export type ResolutionResult = {
+export type TargetResolutionRecord = {
   targetId: string;
-  outcome: ResolutionOutcome;
-  selected?: ResolutionCandidate;
+  match: TargetMatch;
   candidates: ScoredCandidate[];
+  selectedNodeId?: string;
+  resolvedAt: string;
 };
 
-type Target = Envelope['targets'][number];
+type Target = Envelope['annotations'][number]['targets'][number];
 
 const EXACT_THRESHOLD = 0.92;
 const RECOVERED_THRESHOLD = 0.55;
 const AMBIGUITY_MARGIN = 0.12;
-const STALE_FLOOR = 0.25;
+const MATCH_FLOOR = 0.25;
+const MAX_CANDIDATES = 5;
 
 const GENERATED_CLASS = /\.(css-[a-z0-9_-]{4,}|[a-z]-{1,2}[a-z0-9]{5,}|sc-[a-z0-9-]{5,})/i;
 
-export function resolveTarget(target: Target, candidates: ResolutionCandidate[]): ResolutionResult {
+export function resolveTarget(
+  target: Target,
+  candidates: ResolutionCandidate[],
+  options: { at?: string } = {}
+): TargetResolutionRecord {
+  const resolvedAt = options.at ?? new Date().toISOString();
   const scored = candidates
     .map((candidate) => scoreCandidate(target, candidate))
     .sort((a, b) => b.score - a.score || strongAnchorCount(b) - strongAnchorCount(a));
-  const best = scored[0];
-  if (!best || best.score < STALE_FLOOR) {
-    return { targetId: target.targetId, outcome: 'deleted', candidates: scored };
+  const matched = scored.filter((entry) => entry.score >= MATCH_FLOOR);
+  const best = matched[0];
+  if (!best) {
+    return { targetId: target.targetId, match: 'unresolved', candidates: [], resolvedAt };
   }
-  const runnerUp = scored[1];
+  const runnerUp = matched[1];
   const contested = runnerUp !== undefined && best.score - runnerUp.score < AMBIGUITY_MARGIN;
   if (contested && !hasUniqueStrongAnchor(best, runnerUp)) {
-    const contenders = scored.filter((entry) => best.score - entry.score < AMBIGUITY_MARGIN);
-    return { targetId: target.targetId, outcome: 'ambiguous', candidates: contenders };
+    const contenders = matched.filter((entry) => best.score - entry.score < AMBIGUITY_MARGIN);
+    return {
+      targetId: target.targetId,
+      match: 'unresolved',
+      candidates: contenders.slice(0, MAX_CANDIDATES),
+      resolvedAt
+    };
   }
   if (best.score >= EXACT_THRESHOLD && isExactMatch(target, best)) {
-    return { targetId: target.targetId, outcome: 'exact', selected: best.candidate, candidates: scored };
+    return { targetId: target.targetId, match: 'exact', candidates: scored, selectedNodeId: best.candidate.nodeId, resolvedAt };
   }
   if (best.score >= RECOVERED_THRESHOLD) {
-    return { targetId: target.targetId, outcome: 'recovered', selected: best.candidate, candidates: scored };
+    return {
+      targetId: target.targetId,
+      match: 'recovered',
+      candidates: scored,
+      selectedNodeId: best.candidate.nodeId,
+      resolvedAt
+    };
   }
-  return { targetId: target.targetId, outcome: 'stale', candidates: scored };
+  return {
+    targetId: target.targetId,
+    match: 'unresolved',
+    candidates: matched.slice(0, MAX_CANDIDATES),
+    resolvedAt
+  };
 }
 
 export function scoreCandidate(target: Target, candidate: ResolutionCandidate): ScoredCandidate {
@@ -119,6 +143,10 @@ export function scoreCandidate(target: Target, candidate: ResolutionCandidate): 
     matchedAnchors.push('geometry');
   }
   return { candidate, score: Math.min(1, score), matchedAnchors };
+}
+
+export function chosenCandidate(record: TargetResolutionRecord, nodeId: string): ResolutionCandidate | undefined {
+  return record.candidates.find((entry) => entry.candidate.nodeId === nodeId)?.candidate;
 }
 
 function strongAnchorCount(entry: ScoredCandidate): number {

@@ -35,15 +35,36 @@ third-party code is not audited by this product.
 - The service binds to loopback (`127.0.0.1`) only and validates `Host` and
   `Origin` on every request, so random websites cannot drive it.
 - Review, artifact, asset, and API routes require an unguessable per-session
-  capability minted at open time and compared in constant time.
-- Rendered artifacts run inside `sandbox` without top-navigation, with
-  `connect-src 'none'` in Artifact Mode, so hostile markup cannot exfiltrate over
-  the network or escape the frame by default.
+  capability minted at open time and compared in constant time. The capability
+  is set as a scoped, `HttpOnly`, `SameSite=Strict` cookie when the shell is
+  served, and is also accepted as a query parameter or header.
+- Rendered artifacts run inside `sandbox` without top-navigation and with
+  `connect-src 'none'`, `form-action 'none'`, `base-uri 'none'` and
+  `frame-src 'none'`, so hostile markup cannot exfiltrate over the network or
+  escape the frame by default.
 - File access is confined to the artifact directory by canonical path. Symlinks
   that resolve outside are refused. Request bodies are capped at 1MB; served
-  artifacts and assets are capped at 5MB.
+  artifacts and assets are capped at 5MB; attachments are capped at 5MB.
 - The default data plane is local. Nothing uploads implicitly. The review UI
   discloses exactly which evidence an envelope carries before delivery.
+
+**Remote-origin policy (amendment to the local data plane).** A saved HTML
+artifact keeps its own relative and root-relative assets and may load the remote
+stylesheet, font and image origins it *declares*. Those origins are collected by
+inspecting the artifact and its local stylesheets, disclosed to the
+Builder-Reviewer before the artifact loads, and added only to the relevant
+content-policy directives (`style-src`, `font-src`, `img-src`). Runtime data
+requests stay blocked: `connect-src` remains `'none'`, scripts may not load from
+a remote origin, and a declared stylesheet origin cannot be turned into a data
+channel. No screenshot is ever captured implicitly; screenshot evidence remains
+out of scope for V0.
+
+**Reverse-proxy scope (amendment to ADR-0003).** Application Mode proxies a
+running local development server through the review service's own origin so the
+application's DOM is selectable rather than cross-origin and opaque. Proxy scope
+is restricted to loopback development origins (`localhost`, `127.0.0.1`, `::1`)
+and re-validated on every proxied request, including redirect targets. Anything
+else is refused, so authenticated production applications remain out of scope.
 
 **Explicitly out of scope for V0:** SBOMs, reproducible builds, attestations,
 fuzz testing, signed binaries, multi-user authentication, and protection against

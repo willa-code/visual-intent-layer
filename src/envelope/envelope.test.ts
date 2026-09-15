@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { validateEnvelope } from './validate.js';
 import { representativeEnvelope } from './fixtures.js';
 
-describe('Visual Intent Envelope schema conformance', () => {
+describe('Visual Intent Envelope schema conformance (v0.2)', () => {
   it('accepts the representative envelope fixture', () => {
     const result = validateEnvelope(representativeEnvelope);
     expect(result.ok).toBe(true);
@@ -11,57 +11,61 @@ describe('Visual Intent Envelope schema conformance', () => {
 
   it('rejects an envelope missing required revision identity', () => {
     const broken = structuredClone(representativeEnvelope) as unknown as Record<string, unknown>;
-    const artifact = broken['artifact'] as Record<string, unknown>;
-    delete artifact['revision'];
-    const result = validateEnvelope(broken);
-    expect(result.ok).toBe(false);
+    delete (broken['artifact'] as Record<string, unknown>)['revision'];
+    expect(validateEnvelope(broken).ok).toBe(false);
   });
 
-  it('rejects an envelope with no targets', () => {
+  it('rejects an envelope with no annotations', () => {
+    const broken = structuredClone(representativeEnvelope) as unknown as Record<string, unknown>;
+    broken['annotations'] = [];
+    expect(validateEnvelope(broken).ok).toBe(false);
+  });
+
+  it('rejects a batch that carries the retired envelope-level targets array', () => {
     const broken = structuredClone(representativeEnvelope) as unknown as Record<string, unknown>;
     broken['targets'] = [];
-    const result = validateEnvelope(broken);
-    expect(result.ok).toBe(false);
+    expect(validateEnvelope(broken).ok).toBe(false);
   });
 
   it('rejects unknown delivery intent', () => {
     const broken = structuredClone(representativeEnvelope) as unknown as Record<string, unknown>;
-    const delivery = broken['delivery'] as Record<string, unknown>;
-    delivery['intent'] = 'teleport';
-    const result = validateEnvelope(broken);
-    expect(result.ok).toBe(false);
+    (broken['delivery'] as Record<string, unknown>)['intent'] = 'teleport';
+    expect(validateEnvelope(broken).ok).toBe(false);
   });
 
-  it('preserves optional canvas, host, browser, and framework extensions without requiring them', () => {
-    const withExtensions = structuredClone(representativeEnvelope) as unknown as Record<string, unknown>;
-    withExtensions['extensions'] = {
-      canvas: { engine: 'custom-overlay', overlayVersion: '0.1.0' },
-      host: { name: 'pi', adapter: 'pi-mcp-adapter' },
-      browser: { userAgent: 'test-agent' },
-      framework: { name: 'react', version: '19.0.0' }
-    };
-    const result = validateEnvelope(withExtensions);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.value.extensions).toMatchObject({
-        canvas: { engine: 'custom-overlay' },
-        framework: { name: 'react' }
-      });
-    }
+  it('rejects the retired resolution words on provenance confidence', () => {
+    const broken = structuredClone(representativeEnvelope) as unknown as Record<string, unknown>;
+    const annotation = (broken['annotations'] as Array<Record<string, unknown>>)[0]!;
+    (annotation['targets'] as Array<Record<string, unknown>>)[0]!['provenanceConfidence'] = 'ambiguous';
+    expect(validateEnvelope(broken).ok).toBe(false);
+  });
+
+  it('rejects the retired relation operators', () => {
+    const broken = structuredClone(representativeEnvelope) as unknown as Record<string, unknown>;
+    const annotation = (broken['annotations'] as Array<Record<string, unknown>>)[1]!;
+    (annotation['relationships'] as Array<Record<string, unknown>>)[0]!['operator'] = 'preserved-rhythm';
+    expect(validateEnvelope(broken).ok).toBe(false);
   });
 
   it('rejects a target that claims exact provenance without source evidence', () => {
     const broken = structuredClone(representativeEnvelope) as unknown as Record<string, unknown>;
-    const targets = broken['targets'] as Array<Record<string, unknown>>;
-    delete targets[0]!['sourceProvenance'];
-    targets[0]!['provenanceConfidence'] = 'exact';
-    const result = validateEnvelope(broken);
-    expect(result.ok).toBe(false);
+    const annotation = (broken['annotations'] as Array<Record<string, unknown>>)[0]!;
+    const target = (annotation['targets'] as Array<Record<string, unknown>>)[0]!;
+    target['provenanceConfidence'] = 'exact';
+    expect(validateEnvelope(broken).ok).toBe(false);
+  });
+
+  it('accepts a content-addressed attachment reference', () => {
+    const withAttachment = structuredClone(representativeEnvelope) as unknown as Record<string, unknown>;
+    const annotation = (withAttachment['annotations'] as Array<Record<string, unknown>>)[0]!;
+    annotation['attachments'] = [
+      { attachmentId: 'att-1', mediaType: 'image/png', byteLength: 1024, sha256: 'a'.repeat(64), name: 'reference.png' }
+    ];
+    expect(validateEnvelope(withAttachment).ok).toBe(true);
   });
 
   it('round-trips the fixture through JSON without loss', () => {
-    const json = JSON.stringify(representativeEnvelope);
-    const parsed: unknown = JSON.parse(json);
+    const parsed: unknown = JSON.parse(JSON.stringify(representativeEnvelope));
     const result = validateEnvelope(parsed);
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -69,10 +73,12 @@ describe('Visual Intent Envelope schema conformance', () => {
     }
   });
 
-  it('schema file exists on disk as the versioned contract', () => {
-    const raw = readFileSync('schema/envelope-v0.1.schema.json', 'utf8');
-    const schema = JSON.parse(raw) as { $id?: string; 'x-version'?: string };
+  it('ships the 0.2 schema file as the versioned contract', () => {
+    const schema = JSON.parse(readFileSync('schema/envelope-v0.2.schema.json', 'utf8')) as {
+      $id?: string;
+      'x-version'?: string;
+    };
     expect(schema.$id).toContain('visual-intent-envelope');
-    expect(schema['x-version'] ?? schema.$id).toContain('0.1');
+    expect(schema['x-version']).toBe('0.2.0');
   });
 });

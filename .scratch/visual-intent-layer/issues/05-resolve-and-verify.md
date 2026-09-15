@@ -14,3 +14,7 @@
 ## Comments
 
 Implemented (implemented in 8b70d52): BLAKE3 content-addressed revisions (src/artifact/revision.ts), revision polling + banner, POST /api/intents/:id/resolutions re-resolves every target as exact/recovered/ambiguous/stale/deleted (src/resolution/resolve.ts, never silently picks uncertain targets), human-only verify approve/reject/another-pass/supersede/obsolete with deleted/ambiguous blocking approval; history survives restart (tests/loop.test.ts).
+
+Superseded: the five resolution outcomes are replaced by `match` (`exact` / `recovered` / `unresolved`) with candidates plus an Annotation-level revision relation, and verification is per Annotation rather than per envelope (ADR-0016). Abstention, blocked approval for missing targets, and explicit disposition of ambiguity still hold.
+
+See `.scratch/review-surface/spec.md`.

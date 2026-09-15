@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { runBenchmark, type BenchmarkCase } from './run.js';
+import { buildMatrix } from './matrix.js';
 import { resolveTarget, type ResolutionCandidate } from '../resolution/resolve.js';
+import { deriveResolutionLabel } from '../resolution/model.js';
 import type { Envelope } from '../envelope/validate.js';
 
-type Target = Envelope['targets'][number];
+type Target = Envelope['annotations'][number]['targets'][number];
 
 function target(overrides: Partial<Target> = {}): Target {
   return {
@@ -37,42 +39,32 @@ function candidate(overrides: Partial<ResolutionCandidate> = {}): ResolutionCand
   };
 }
 
+function decoy(overrides: Partial<ResolutionCandidate> = {}): ResolutionCandidate {
+  return {
+    nodeId: 'n-decoy',
+    selectors: ['footer a.help'],
+    tag: 'a',
+    semanticRole: 'link',
+    accessibleName: 'Help',
+    text: 'Help center',
+    ancestorChain: ['body', 'footer'],
+    siblingIndex: 0,
+    siblingCount: 2,
+    boundingBox: { x: 8, y: 760, width: 60, height: 20 },
+    ...overrides
+  };
+}
+
 describe('mutation benchmark', () => {
-  it('recovers across wrapper insertion', () => {
-    const moved = candidate({
-      selectors: ['main > div.wrapper > button.checkout-submit'],
-      ancestorChain: ['body', 'main.checkout', 'div.wrapper'],
-      siblingIndex: 0,
-      siblingCount: 1
-    });
-    const result = resolveTarget(target(), [moved]);
-    expect(['exact', 'recovered']).toContain(result.outcome);
+  it('keeps the derived labels aligned with the stored model', () => {
+    expect(deriveResolutionLabel(resolveTarget(target(), [candidate()]))).toBe('matched');
+    expect(deriveResolutionLabel(resolveTarget(target(), [candidate({ nodeId: 'n-a' }), candidate({ nodeId: 'n-b' })]))).toBe('ambiguous');
+    expect(
+      deriveResolutionLabel(resolveTarget(target(), [decoy()]))
+    ).toBe('deleted');
   });
 
-  it('abstains on ambiguous duplication', () => {
-    const first = candidate({ nodeId: 'n-a', siblingIndex: 1, siblingCount: 2 });
-    const second = candidate({ nodeId: 'n-b', siblingIndex: 2, siblingCount: 2 });
-    const result = resolveTarget(target(), [first, second]);
-    expect(result.outcome).toBe('ambiguous');
-  });
-
-  it('detects deletion', () => {
-    const result = resolveTarget(target(), [
-      candidate({
-        nodeId: 'n-other',
-        selectors: ['footer a.help'],
-        tag: 'a',
-        semanticRole: 'link',
-        accessibleName: 'Help',
-        text: 'Help',
-        ancestorChain: ['body', 'footer'],
-        boundingBox: { x: 8, y: 760, width: 60, height: 20 }
-      })
-    ]);
-    expect(result.outcome).toBe('deleted');
-  });
-
-  it('runs the full matrix and reports abstention-rewarding metrics', () => {
+  it('rewards exact resolution, recovered resolution, correct ambiguity and correct abstention', () => {
     const cases: BenchmarkCase[] = [
       { name: 'unique-element/no-change', target: target(), candidates: [candidate()], expectedNodeId: 'n-target', acceptable: ['exact'] },
       {
@@ -87,22 +79,24 @@ describe('mutation benchmark', () => {
         target: target(),
         candidates: [candidate({ nodeId: 'n-a' }), candidate({ nodeId: 'n-b' })],
         expectedNodeId: undefined,
-        acceptable: ['ambiguous']
+        acceptable: ['unresolved']
       },
       {
         name: 'deleted-target/target-deletion',
         target: target(),
-        candidates: [candidate({ nodeId: 'n-other', selectors: ['footer a.help'], tag: 'a', semanticRole: 'link', accessibleName: 'Help', text: 'Help' })],
+        candidates: [decoy({ nodeId: 'n-other', selectors: ['footer a.help'], tag: 'a', semanticRole: 'link', accessibleName: 'Help', text: 'Help' })],
         expectedNodeId: undefined,
-        acceptable: ['deleted', 'stale']
+        acceptable: ['unresolved']
       }
     ];
     const report = runBenchmark(cases);
     expect(report.total).toBe(4);
     expect(report.correct).toBe(4);
     expect(report.confidentlyWrong).toBe(0);
-    expect(report.byOutcome['ambiguous']).toBe(1);
-    expect(report.latencyMs.p50).toBeGreaterThanOrEqual(0);
+    expect(report.correctAmbiguity).toBe(1);
+    expect(report.correctAbstention).toBe(1);
+    expect(report.byMatch.exact + report.byMatch.recovered).toBe(2);
+    expect(report.byLabel).toMatchObject({ matched: 2, ambiguous: 1, deleted: 1 });
     expect(report.signals.correctRateTarget).toBe(0.95);
     expect(report.signals.confidentlyWrongLimit).toBe(0.01);
   });
@@ -119,5 +113,11 @@ describe('mutation benchmark', () => {
     ]);
     expect(report.correct).toBe(0);
     expect(report.confidentlyWrong).toBe(1);
+  });
+
+  it('runs the shipped matrix without a confidently-wrong resolution', () => {
+    const report = runBenchmark(buildMatrix());
+    expect(report.total).toBeGreaterThan(10);
+    expect(report.confidentlyWrong).toBe(0);
   });
 });

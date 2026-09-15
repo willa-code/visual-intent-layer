@@ -23,8 +23,8 @@ describe('product instrumentation', () => {
 
   it('exercises stress shapes without losing or duplicating intent', async () => {
     const report = await collectInstrumentation({ dataDir: mkdtempSync(join(tmpdir(), 'vil-inst-stress-')) });
-    expect(report.stress.manyTargetsAccepted).toBe(50);
+    expect(report.stress.manyAnnotationsAccepted).toBe(50);
     expect(report.stress.rapidSavesTracked).toBe(true);
-    expect(report.stress.envelopesIntact).toBe(true);
+    expect(report.stress.annotationsIntact).toBe(true);
   }, 60000);
 });
