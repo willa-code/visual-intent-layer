@@ -73,7 +73,7 @@ No unified cross-harness config file standard was found in the fetched primary s
 ## 10. Recommendation for `visual-intent setup`
 
 - **Write directly:** Codex (`~/.codex/config.toml` global, `.codex/config.toml` project; TOML `[mcp_servers.visual-intent-layer]` with `command = "visual-intent"`, `args = ["mcp"]`), Claude project `.mcp.json` (already works; optionally also offer `claude mcp add-json --scope user`), Cursor (`.cursor/mcp.json` project, `~/.cursor/mcp.json` global), VS Code (`.vscode/mcp.json` project with the `"servers"` key; global via `code --add-mcp` or instruct `MCP: Open User Configuration`), Gemini CLI (`.gemini/settings.json` project `mcpServers` merge, `~/.gemini/settings.json` global), Windsurf (`~/.codeium/windsurf/mcp_config.json` merge, global only).
-- **Behavior:** merge-never-overwrite per file; refuse on invalid JSON; detect installed harnesses by config-file/binary presence and only write (or offer `--print-only`) for those found; keep one `--global` vs project matrix per harness, since scopes differ (Codex TOML layering, Claude scopes, Cursor merge rule).
+- **Behavior:** merge-never-overwrite per file; refuse on invalid JSON; detect installed harnesses from their configuration files and commands and only write (or offer `--print-only`) for those found; keep one `--global` vs project matrix per harness, since scopes differ (Codex TOML layering, Claude scopes, Cursor merge rule).
 - **Stay manual:** Zed settings-file edits (hand users the exact `context_servers` JSON), pi `packages` setting, IDE marketplace listings, OAuth/token steps. Prefer shelling out to `claude mcp add` / `codex mcp add` where available so flag/format drift is the harness's problem, not ours.
 - **Note:** prefer the `visual-intent` bin entry over the `npx -y --package …` snippet for locally-installed users (matches current writer), but keep the npx form as the documented fallback for machines without a global install.
 
@@ -86,3 +86,41 @@ No unified cross-harness config file standard was found in the fetched primary s
 - Zed project-scoped settings (`.zed/settings.json`) interaction with `context_servers`.
 - A specific SEP/standards proposal for unified MCP config discovery (spec URL 404'd; registry confirmed only as a directory).
 - Individual install docs for Context7, Figma, Sentry, Notion (listed as examples on the Codex page but not individually fetched); the survey leans on Playwright + GitHub + reference servers + harness galleries.
+
+## 11. Detection evidence and environment overrides (addendum, 2026-09-16)
+
+Section 7's "detect installed harnesses by configuration file and command" was too
+coarse: hand-rolled `~/.codex`, `~/.claude`, and `~/.config/opencode` checks miss
+a harness configured under a non-default configuration home, and an unverified
+`PATH` walk accepts a directory or a non-executable file as a command. ADR-0014
+and `.scratch/harness-detection/spec.md` replace it with a union of signals,
+grounded in two first-party implementations read at implementation time.
+
+Sources:
+
+- [herdr `src/integration/registry.rs`](https://github.com/herdrdev/herdr): `command_available` walks `PATH` and verifies an executable file; `command_path_candidates` adds Windows `.exe`/`.cmd`/`.bat`/`.ps1` candidates; per-target command aliases (`kilo`/`kilo-code`, `cursor-agent`, four qoder names); `codex_standalone_binary_available` probes `~/.codex/packages/standalone/releases/*/bin/codex` for an install that is not on `PATH`; `hermes_install_layout_available` probes app-relative binaries.
+- [vercel-labs/skills `src/agents.ts`](https://github.com/vercel-labs/skills): one descriptor per agent with a `detectInstalled` closure; configuration-directory detection only (no `PATH` check); `$CODEX_HOME || ~/.codex` plus `/etc/codex`; `$CLAUDE_CONFIG_DIR || ~/.claude`; `xdg-basedir` for opencode specifically "to match OpenCode/Amp/Goose behavior on all platforms"; `~/.pi/agent` for pi; `/Applications/*.app` probes for GUI harnesses.
+
+Neither source alone is sufficient: herdr misses a harness that is installed but
+off `PATH`, and skills misses one that is on `PATH` but never configured.
+
+Per-harness detection evidence now in `src/harness-registry.ts`:
+
+| Harness | Configuration (env override) | Project-local | Command | Extra |
+| --- | --- | --- | --- | --- |
+| pi | `$PI_CODING_AGENT_DIR`, else `~/.pi/agent`, `~/.pi` | `.pi/` | `pi` | — |
+| Codex | `$CODEX_HOME`, else `~/.codex` | `.codex/config.toml` | `codex` | `/etc/codex`; `~/.codex/packages/standalone/releases/*/bin/codex` |
+| Claude Code | `$CLAUDE_CONFIG_DIR`, else `~/.claude`; plus `~/.claude.json` | — | `claude` | — |
+| opencode | `($XDG_CONFIG_HOME \|\| ~/.config)/opencode` | `opencode.json(c)` | `opencode`, `opencode2` | — |
+
+`~` is expanded in an override value. A command counts only when it resolves to
+an executable file (symlinks followed), so a directory or a non-executable file
+with a harness's name is not presence. Absolute system locations such as
+`/etc/codex` are checked directly and cannot be isolated by a test fixture; tests
+assert their effect conditionally on the host.
+
+Detection results are also now reported to the user (detected, absent with the
+checked evidence, and an explicit line when nothing was detected), and
+registration is content-verified against the entry setup would write rather than
+trusted because the server key exists. Both are recorded in
+[ADR-0014](../../docs/adr/0014-union-harness-detection-and-content-verified-registration.md).

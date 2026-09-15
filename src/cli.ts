@@ -2,7 +2,7 @@
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applySetup, formatPlan, formatResult, parseHarnessFilter, planSetup } from './cli-setup.js';
+import { applySetup, formatPlan, formatResult, formatStatus, parseHarnessFilter, planSetup } from './cli-setup.js';
 import { createReviewService } from './mcp/service.js';
 import { startLocalService } from './service/http.js';
 
@@ -12,10 +12,12 @@ Usage:
   visual-intent serve [--port 3742]              Start the local review service
   visual-intent open --html <path>               Open a saved HTML artifact and print the review URL
   visual-intent open --app <localhost-url>       Open a running React/Vite app and print the review URL
-  visual-intent setup [--global] [--no-skill] [--print-only] [--harness <name>]
-      Register the MCP server with detected harnesses (pi, codex, claude-code,
-      opencode) and install the pi Skill. --harness is repeatable and restricts
-      the matrix to the named harnesses.
+  visual-intent setup [--global] [--no-skill] [--print-only] [--status] [--harness <name>]
+      Detect the harnesses on this machine (pi, codex, claude-code, opencode),
+      report what was detected and what was not, and register the MCP server
+      with each configured harness. --harness is repeatable and restricts the
+      matrix to the named harnesses. --status reports registration without
+      writing anything.
   visual-intent mcp                              Run the MCP server over stdio (used by agent hosts)
   visual-intent --help                           Show this help
 
@@ -64,18 +66,21 @@ async function main(): Promise<void> {
       homeDir: homedir(),
       projectDir: process.cwd(),
       global: args.includes('--global'),
-      printOnly: args.includes('--print-only'),
+      printOnly: args.includes('--print-only') || args.includes('--status'),
       withSkill: !args.includes('--no-skill'),
       harnesses
     };
     const plan = planSetup(setupOptions);
+    if (args.includes('--status')) {
+      console.log(formatStatus(plan));
+      return;
+    }
     if (setupOptions.printOnly) {
-      console.log('visual-intent setup preview');
       console.log(formatPlan(plan));
       return;
     }
     const result = applySetup(plan, setupOptions);
-    console.log(formatResult(result));
+    console.log(formatResult(result, plan));
     for (const note of plan.notes) {
       console.log(`note: ${note}`);
     }

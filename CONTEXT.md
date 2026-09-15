@@ -44,6 +44,18 @@ _Avoid_: Full compatibility, universal experience
 A host-and-version combination on which the complete supported interaction and delivery behavior has been tested and published. Certification describes verified behavior rather than restricting which agents may connect.
 _Avoid_: Supported agents, exclusive integration
 
+**Harness**:
+A CLI agent host whose own native configuration determines whether the product's server is reachable, such as pi, Codex, Claude Code, or opencode.
+_Avoid_: Agent host, host, client, integration target
+
+**Harness Detection**:
+The determination, before any write, of which Harnesses are present on a machine, from their own configuration locations and their own commands.
+_Avoid_: Discovery, scan, auto-detect
+
+**Harness Registration**:
+The product's server entry present in a Harness's own native configuration, at a named scope on a specific machine. A Registration is current when its entry matches the entry the installed product would write, and outdated when it differs.
+_Avoid_: Install, integration, connection, already-present
+
 **Draft Intent**:
 A Visual Intent Envelope saved locally but not yet delivered to an agent.
 _Avoid_: Unsent prompt, pending feedback

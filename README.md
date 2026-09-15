@@ -14,12 +14,27 @@ visual-intent setup            # register in this project
 visual-intent setup --global   # register for every project on this machine
 ```
 
-`setup` detects which harnesses are present and registers the server with each
-one natively. A harness counts as present when its binary resolves on `PATH` or
-its config file or directory already exists, so setup never scatters config for
-a harness you have not installed. Without a harness filter, every detected
-in-scope harness is configured; when nothing is detected, project scope still
-writes the shared `.mcp.json` so pi and Claude Code keep working by default.
+`setup` looks for each harness in scope and registers the server with each one
+natively. A harness counts as present when any of these is true, and the report
+names which one matched:
+
+| Harness     | Configuration location (env override)                                          | Command                            | Extra                                          |
+| ----------- | ------------------------------------------------------------------------------ | ---------------------------------- | ---------------------------------------------- |
+| pi          | `$PI_CODING_AGENT_DIR`, else `~/.pi/agent` or `~/.pi`; project `.pi/`          | `pi`                               | —                                              |
+| Codex       | `$CODEX_HOME`, else `~/.codex`; project `.codex/config.toml`                   | `codex`                            | `/etc/codex`; `~/.codex/packages/standalone/releases/*/bin/codex` |
+| Claude Code | `$CLAUDE_CONFIG_DIR`, else `~/.claude`; plus `~/.claude.json`                  | `claude`                           | —                                              |
+| opencode    | `($XDG_CONFIG_HOME or ~/.config)/opencode`; project `opencode.json(c)`         | `opencode`, `opencode2`            | —                                              |
+
+A command only counts when a real executable file resolves, so a directory or a
+non-executable file with a harness's name is ignored. Writes land in the same
+locations detection checks, so an override that detection honours is also where
+setup writes and where status looks. Without a harness filter,
+every detected in-scope harness is configured. Every run prints its own package
+version, the detected harnesses, each known-but-absent harness with the evidence
+that was checked, and an explicit line when nothing was detected — so a
+pi-only result is never ambiguous between a detection result and a fallback.
+When nothing is detected, project scope still writes the shared `.mcp.json` so
+pi and Claude Code keep working by default, and the report says so.
 
 | Harness     | Project scope                              | Global scope                                                       |
 | ----------- | ------------------------------------------ | ------------------------------------------------------------------ |
@@ -29,29 +44,44 @@ writes the shared `.mcp.json` so pi and Claude Code keep working by default.
 | opencode    | `opencode.json`                            | `~/.config/opencode/opencode.json`                                 |
 
 Every write merges the server entry and preserves existing servers. Setup never
-overwrites another server's configuration, refuses a file holding invalid JSON
-or TOML (naming the harness and path) instead of touching it, and reports an
-already-registered server without rewriting the file. `.mcp.json` is a single
-write that serves pi and Claude Code together; Claude Code requires first-use
-approval for project-scoped servers, and the report says so. Claude Code's state
-file is never hand-edited: setup delegates to Claude's own writer command, or
-prints the exact command when the binary is absent. opencode files containing
-hand-written comments are never rewritten; setup prints the exact entry to paste.
+overwrites another server's configuration and refuses a file holding invalid JSON
+or TOML (naming the harness and path) instead of touching it. An existing server
+entry is compared against the entry setup would write: a matching entry is
+reported as current and left byte-identical, and a differing entry is reported as
+outdated — naming the fields that differ — and repaired on re-run, so an entry
+left by an older release or copied from a snippet heals without hand-editing.
+`.mcp.json` is a single write that serves pi and Claude Code together; Claude
+Code requires first-use approval for project-scoped servers, and the report says
+so. Claude Code's state file is never hand-edited: setup delegates to Claude's
+own writer command, or prints the exact command when the binary is absent.
+opencode files containing hand-written comments are never rewritten; setup
+prints the exact entry to paste.
+
+### Transport
+
+Setup registers whichever transport will actually work on this machine. When
+`visual-intent` resolves on `PATH` the entry is `command: "visual-intent"` with
+args `["mcp"]`; otherwise it is the packaged
+`npx -y --package visual-intent-layer@<version> visual-intent-mcp` form, so a
+machine with no global install still gets a server that spawns. The chosen
+transport is printed on every run.
 
 ### Setup flags
 
 - `--global` — user-global scope instead of the current project.
 - `--harness <name>` — restrict the matrix to named harnesses (`pi`, `codex`,
   `claude-code`, `opencode`); repeatable.
+- `--status` — read-only: report each harness's registration state, location,
+  transport, and detection evidence without writing anything.
 - `--print-only` — show every planned write without touching disk.
 - `--no-skill` — skip the pi Skill install.
 
 ### Packaged snippet
 
 On a machine without a global install, paste the packaged `mcp.json` snippet
-(shipped with the package) into your harness's config. It uses the
-`npx -y --package visual-intent-layer@<version> visual-intent-mcp` form so no
-binary needs to be on `PATH`.
+(shipped with the package) into your harness's config. It uses the same
+`npx -y --package visual-intent-layer@<version> visual-intent-mcp` transport that
+setup selects automatically when no `visual-intent` binary is on `PATH`.
 
 ### Pre-release channel
 
@@ -67,10 +97,16 @@ dogfooded on `next` first.
 
 ### Stays manual
 
+- Harnesses beyond the four above (Cursor, VS Code, Windsurf, Zed, Gemini CLI):
+  their paths and entry schemas are recorded in the background research, and the
+  packaged snippet is the documented path until a spec adds writers.
 - Zed settings-file edits (`context_servers`), IDE marketplace listings, and
   one-click or deep-link installs.
 - OAuth, tokens, and any credential-bearing setup step.
-- Windows-specific config paths.
+- Windows-specific config paths. Setup does accept Windows command shims when
+  looking for a harness command.
+- Interactive harness selection: setup is deterministic and scriptable, and
+  `--harness` is the override.
 
 Setup support means the server is reachable with **Baseline Compatibility**, not
 that a harness carries a **Certified Experience**. No host certification claims

@@ -1,21 +1,37 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  applySetup,
+  HARNESSES,
   detectHarnesses,
+  type Harness,
+  type HarnessPresence
+} from './harness-registry.js';
+import {
+  applySetup,
   formatPlan,
   formatResult,
+  formatStatus,
   mergeMcpConfig,
   parseHarnessFilter,
   planSetup,
   type CommandResult,
-  type Harness,
-  type SetupOptions
+  type SetupOptions,
+  type SetupPlan
 } from './cli-setup.js';
 
 type RunnerCall = { command: string; args: string[] };
+
+const packageManifest = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8')
+) as { version: string };
+const npxArgs = [
+  '-y',
+  '--package',
+  `visual-intent-layer@${packageManifest.version}`,
+  'visual-intent-mcp'
+];
 
 function options(overrides: Partial<SetupOptions> = {}): SetupOptions {
   return {
@@ -25,7 +41,7 @@ function options(overrides: Partial<SetupOptions> = {}): SetupOptions {
     global: false,
     printOnly: false,
     withSkill: true,
-    pathEnv: '',
+    pathEnv: fakeBinaryDir('visual-intent'),
     ...overrides
   };
 }
@@ -33,7 +49,9 @@ function options(overrides: Partial<SetupOptions> = {}): SetupOptions {
 function fakeBinaryDir(...names: string[]): string {
   const dir = mkdtempSync(join(tmpdir(), 'vil-bin-'));
   for (const name of names) {
-    writeFileSync(join(dir, name), '');
+    const path = join(dir, name);
+    writeFileSync(path, '#!/bin/sh\n');
+    chmodSync(path, 0o755);
   }
   return dir;
 }
@@ -57,6 +75,36 @@ function fileTarget(plan: ReturnType<typeof planSetup>, suffix: string) {
 
 function harnessesOf(plan: ReturnType<typeof planSetup>, suffix: string): Harness[] {
   return fileTarget(plan, suffix).harnesses;
+}
+
+function presence(
+  harness: Harness,
+  present: boolean,
+  evidence: HarnessPresence['evidence'] = []
+): HarnessPresence {
+  return { harness, present, evidence };
+}
+
+function planFixture(overrides: Partial<SetupPlan> = {}): SetupPlan {
+  return {
+    scope: 'project',
+    version: '9.9.9',
+    transport: { command: 'visual-intent', args: ['mcp'] },
+    presence: HARNESSES.map((harness) => presence(harness, false)),
+    harnesses: ['pi'],
+    filtered: false,
+    targets: [
+      {
+        kind: 'file',
+        harnesses: ['pi'],
+        path: '/tmp/plan-fixture/.mcp.json',
+        content: '{}\n',
+        disposition: 'write'
+      }
+    ],
+    notes: [],
+    ...overrides
+  };
 }
 
 describe('setup detection and filtering', () => {
@@ -256,7 +304,7 @@ describe('setup Codex', () => {
     const calls: RunnerCall[] = [];
     const opts = options({
       global: true,
-      pathEnv: fakeBinaryDir('codex'),
+      pathEnv: fakeBinaryDir('codex', 'visual-intent'),
       runCommand: recordingRunner(calls)
     });
     const plan = planSetup(opts);
@@ -269,11 +317,11 @@ describe('setup Codex', () => {
     expect(existsSync(join(opts.homeDir, '.codex', 'config.toml'))).toBe(false);
   });
 
-  it('reports an existing table as already-present without delegating', () => {
+  it('reports an existing table as current without delegating', () => {
     const calls: RunnerCall[] = [];
     const opts = options({
       global: true,
-      pathEnv: fakeBinaryDir('codex'),
+      pathEnv: fakeBinaryDir('codex', 'visual-intent'),
       runCommand: recordingRunner(calls)
     });
     mkdirSync(join(opts.homeDir, '.codex'), { recursive: true });
@@ -308,7 +356,7 @@ describe('setup Codex', () => {
   it('fails loudly when delegation exits non-zero', () => {
     const opts = options({
       global: true,
-      pathEnv: fakeBinaryDir('codex'),
+      pathEnv: fakeBinaryDir('codex', 'visual-intent'),
       runCommand: recordingRunner([], 1)
     });
     expect(() => applySetup(planSetup(opts), opts)).toThrow(/codex delegation failed/);
@@ -434,7 +482,7 @@ describe('setup Claude Code', () => {
   const userCommand = `claude mcp add-json visual-intent-layer ${payload} --scope user`;
 
   it('notes the first-use approval for project scope', () => {
-    const opts = options({ pathEnv: fakeBinaryDir('claude') });
+    const opts = options({ pathEnv: fakeBinaryDir('claude', 'visual-intent') });
     const plan = planSetup(opts);
     expect(harnessesOf(plan, '.mcp.json')).toEqual(['claude-code']);
     expect(plan.notes.join(' ')).toMatch(/approval/i);
@@ -444,7 +492,7 @@ describe('setup Claude Code', () => {
     const calls: RunnerCall[] = [];
     const opts = options({
       global: true,
-      pathEnv: fakeBinaryDir('claude'),
+      pathEnv: fakeBinaryDir('claude', 'visual-intent'),
       runCommand: recordingRunner(calls)
     });
     const plan = planSetup(opts);
@@ -480,12 +528,12 @@ describe('setup Claude Code', () => {
     const calls: RunnerCall[] = [];
     const opts = options({
       global: true,
-      pathEnv: fakeBinaryDir('claude'),
+      pathEnv: fakeBinaryDir('claude', 'visual-intent'),
       runCommand: recordingRunner(calls)
     });
     writeFileSync(
       join(opts.homeDir, '.claude.json'),
-      `${JSON.stringify({ mcpServers: { 'visual-intent-layer': { command: 'visual-intent' } } })}\n`
+      `${JSON.stringify({ mcpServers: { 'visual-intent-layer': { command: 'visual-intent', args: ['mcp'] } } })}\n`
     );
     const result = applySetup(planSetup(opts), opts);
     expect(calls).toEqual([]);
@@ -495,14 +543,14 @@ describe('setup Claude Code', () => {
   it('fails loudly when delegation exits non-zero', () => {
     const opts = options({
       global: true,
-      pathEnv: fakeBinaryDir('claude'),
+      pathEnv: fakeBinaryDir('claude', 'visual-intent'),
       runCommand: recordingRunner([], 1)
     });
     expect(() => applySetup(planSetup(opts), opts)).toThrow(/claude-code delegation failed/);
   });
 
   it('writes nothing at global scope in preview mode', () => {
-    const opts = options({ global: true, printOnly: true, pathEnv: fakeBinaryDir('claude') });
+    const opts = options({ global: true, printOnly: true, pathEnv: fakeBinaryDir('claude', 'visual-intent') });
     const plan = planSetup(opts);
     expect(applySetup(plan, opts).outcomes).toEqual([]);
     expect(existsSync(join(opts.homeDir, '.claude.json'))).toBe(false);
@@ -538,7 +586,362 @@ describe('setup report rendering', () => {
 
   it('renders the applied outcome report', () => {
     const opts = options({ harnesses: ['codex'] });
-    const rendered = formatResult(applySetup(planSetup(opts), opts));
+    const plan = planSetup(opts);
+    const rendered = formatResult(applySetup(plan, opts), plan);
     expect(rendered).toContain('codex: wrote');
+  });
+});
+describe('setup detection reporting', () => {
+  it('prints the running package version', () => {
+    const opts = options();
+    const plan = planSetup(opts);
+    expect(plan.version).toBe(packageManifest.version);
+    expect(formatPlan(plan)).toContain(`visual-intent setup ${packageManifest.version}`);
+  });
+
+  it('names the detected harnesses and the absent ones with the checked evidence', () => {
+    const rendered = formatPlan(
+      planFixture({
+        presence: [
+          presence('pi', false, [
+            { kind: 'config', detail: '/home/u/.pi/agent', matched: false },
+            { kind: 'command', detail: 'pi', matched: false }
+          ]),
+          presence('codex', true, [{ kind: 'command', detail: 'codex', matched: true }]),
+          presence('claude-code', false, []),
+          presence('opencode', false, [])
+        ]
+      })
+    );
+    expect(rendered).toContain('detected: codex');
+    expect(rendered).toContain('absent: pi (checked /home/u/.pi/agent, command pi)');
+  });
+
+  it('states the shared default when nothing is detected', () => {
+    const rendered = formatPlan(planFixture());
+    expect(rendered).toContain('detected: (none)');
+    expect(rendered).toContain('no harness detected: writing the shared .mcp.json default');
+  });
+
+  it('states that there is nothing to register when nothing is detected and nothing is written', () => {
+    const rendered = formatPlan(planFixture({ harnesses: [], targets: [] }));
+    expect(rendered).toContain('no harness detected: nothing to register');
+    expect(rendered).not.toContain('shared .mcp.json default');
+  });
+
+  it('names the filtered harnesses when nothing is detected but the filter requests them', () => {
+    const rendered = formatPlan(planFixture({ harnesses: ['opencode'], filtered: true }));
+    expect(rendered).toContain('no harness detected: registering the harnesses named by --harness (opencode)');
+    expect(rendered).not.toContain('shared .mcp.json default');
+  });
+
+  it('reports the configured harnesses separately from the detected ones', () => {
+    const rendered = formatPlan(planFixture({ harnesses: ['codex'] }));
+    expect(rendered).toContain('configured: codex');
+    expect(rendered).toContain('detected: (none)');
+  });
+
+  it('shows the same detection header in preview and in the applied report', () => {
+    const opts = options({ pathEnv: fakeBinaryDir('visual-intent', 'codex') });
+    const plan = planSetup(opts);
+    const preview = formatPlan(plan).split('\n').slice(0, 5);
+    const applied = formatResult(applySetup(plan, opts), plan).split('\n').slice(0, 5);
+    expect(preview).toEqual(applied);
+    expect(preview.join('\n')).toContain('detected: codex');
+  });
+});
+
+describe('setup registration fidelity', () => {
+  const staleSnippet = {
+    'visual-intent-layer': {
+      command: 'npx',
+      args: ['-y', '--package', 'visual-intent-layer@0.1.1', 'visual-intent-mcp']
+    }
+  };
+
+  it('reports an outdated shared entry with the differing fields and repairs it', () => {
+    const opts = options();
+    writeFileSync(
+      join(opts.projectDir, '.mcp.json'),
+      `${JSON.stringify({ mcpServers: { other: { command: 'other' }, ...staleSnippet } }, null, 2)}\n`
+    );
+    const plan = planSetup(opts);
+    const target = fileTarget(plan, '.mcp.json');
+    expect(target.disposition).toBe('repair');
+    expect(target.diff).toMatch(/differs in command/);
+
+    const result = applySetup(plan, opts);
+    expect(result.outcomes[0]?.action).toBe('repaired');
+    const parsed = JSON.parse(readFileSync(join(opts.projectDir, '.mcp.json'), 'utf8')) as {
+      mcpServers: Record<string, unknown>;
+    };
+    expect(parsed.mcpServers['visual-intent-layer']).toEqual({
+      command: 'visual-intent',
+      args: ['mcp']
+    });
+    expect(parsed.mcpServers['other']).toEqual({ command: 'other' });
+  });
+
+  it('is current again after a repair', () => {
+    const opts = options();
+    writeFileSync(
+      join(opts.projectDir, '.mcp.json'),
+      `${JSON.stringify({ mcpServers: staleSnippet }, null, 2)}\n`
+    );
+    applySetup(planSetup(opts), opts);
+    const second = planSetup(opts);
+    expect(fileTarget(second, '.mcp.json').disposition).toBe('current');
+    expect(applySetup(second, opts).outcomes[0]?.action).toBe('skipped');
+  });
+
+  it('treats an entry with an unexpected field as outdated', () => {
+    const opts = options();
+    writeFileSync(
+      join(opts.projectDir, '.mcp.json'),
+      `${JSON.stringify(
+        {
+          mcpServers: {
+            'visual-intent-layer': { command: 'visual-intent', args: ['mcp'], env: { OLD: '1' } }
+          }
+        },
+        null,
+        2
+      )}\n`
+    );
+    const target = fileTarget(planSetup(opts), '.mcp.json');
+    expect(target.disposition).toBe('repair');
+    expect(target.diff).toMatch(/env/);
+  });
+
+  it('repairs an outdated opencode entry and names the differing field', () => {
+    const opts = options({ harnesses: ['opencode'] });
+    writeFileSync(
+      join(opts.projectDir, 'opencode.json'),
+      `${JSON.stringify({ mcp: { 'visual-intent-layer': { type: 'remote', url: 'http://old' } } }, null, 2)}\n`
+    );
+    const plan = planSetup(opts);
+    const target = fileTarget(plan, 'opencode.json');
+    expect(target.disposition).toBe('repair');
+    expect(target.diff).toMatch(/type/);
+
+    expect(applySetup(plan, opts).outcomes[0]?.action).toBe('repaired');
+    const parsed = JSON.parse(readFileSync(join(opts.projectDir, 'opencode.json'), 'utf8')) as {
+      mcp: Record<string, unknown>;
+    };
+    expect(parsed.mcp['visual-intent-layer']).toEqual({
+      type: 'local',
+      command: ['visual-intent', 'mcp'],
+      enabled: true
+    });
+  });
+
+  it('repairs an outdated codex table without dropping its comments', () => {
+    const opts = options({ harnesses: ['codex'] });
+    const configPath = join(opts.projectDir, '.codex', 'config.toml');
+    mkdirSync(join(opts.projectDir, '.codex'), { recursive: true });
+    writeFileSync(
+      configPath,
+      'model = "gpt-5"\n[mcp_servers.visual-intent-layer]\n# ours\ncommand = "npx"\nargs = ["-y"]\n'
+    );
+    const plan = planSetup(opts);
+    const target = fileTarget(plan, join('.codex', 'config.toml'));
+    expect(target.disposition).toBe('repair');
+    expect(target.diff).toMatch(/differs in command, args/);
+
+    expect(applySetup(plan, opts).outcomes[0]?.action).toBe('repaired');
+    const repaired = readFileSync(configPath, 'utf8');
+    expect(repaired).toContain('model = "gpt-5"');
+    expect(repaired).toContain('# ours');
+    expect(repaired).toContain('command = "visual-intent"');
+    expect(repaired).toContain('args = ["mcp"]');
+    expect(fileTarget(planSetup(opts), join('.codex', 'config.toml')).disposition).toBe('current');
+  });
+
+  it('repairs an outdated Claude user entry by delegating to the harness command', () => {
+    const calls: RunnerCall[] = [];
+    const opts = options({
+      global: true,
+      pathEnv: fakeBinaryDir('claude', 'visual-intent'),
+      runCommand: recordingRunner(calls)
+    });
+    writeFileSync(
+      join(opts.homeDir, '.claude.json'),
+      `${JSON.stringify({
+        mcpServers: { 'visual-intent-layer': { command: 'visual-intent', args: ['mcp', '--stale'] } }
+      })}\n`
+    );
+    const plan = planSetup(opts);
+    const target = plan.targets.find((candidate) => candidate.kind === 'exec');
+    expect(target?.kind === 'exec' ? target.disposition : undefined).toBe('delegate');
+    expect(target?.kind === 'exec' ? target.diff : undefined).toMatch(/args/);
+
+    const result = applySetup(plan, opts);
+    expect(calls).toEqual([
+      {
+        command: 'claude',
+        args: [
+          'mcp',
+          'add-json',
+          'visual-intent-layer',
+          '{"command":"visual-intent","args":["mcp"]}',
+          '--scope',
+          'user'
+        ]
+      }
+    ]);
+    expect(result.outcomes[0]?.action).toBe('delegated');
+  });
+});
+
+describe('setup transport selection', () => {
+  it('uses the installed binary when it resolves on the path', () => {
+    const opts = options();
+    const plan = planSetup(opts);
+    expect(plan.transport).toEqual({ command: 'visual-intent', args: ['mcp'] });
+    expect(formatPlan(plan)).toContain('transport: visual-intent mcp');
+    applySetup(plan, opts);
+    const parsed = JSON.parse(readFileSync(join(opts.projectDir, '.mcp.json'), 'utf8')) as {
+      mcpServers: Record<string, unknown>;
+    };
+    expect(parsed.mcpServers['visual-intent-layer']).toEqual({
+      command: 'visual-intent',
+      args: ['mcp']
+    });
+  });
+
+  it('falls back to the packaged npx transport when the binary does not resolve', () => {
+    const opts = options({ harnesses: ['codex'], pathEnv: fakeBinaryDir('codex') });
+    const plan = planSetup(opts);
+    expect(plan.transport).toEqual({ command: 'npx', args: npxArgs });
+    expect(formatPlan(plan)).toContain(`transport: npx ${npxArgs.join(' ')}`);
+    applySetup(plan, opts);
+    const content = readFileSync(join(opts.projectDir, '.codex', 'config.toml'), 'utf8');
+    expect(content).toContain('command = "npx"');
+    expect(content).toContain(
+      `args = ["-y", "--package", "visual-intent-layer@${packageManifest.version}", "visual-intent-mcp"]`
+    );
+  });
+
+  it('applies the packaged transport to the shared file as well', () => {
+    const opts = options({ pathEnv: '' });
+    const target = fileTarget(planSetup(opts), '.mcp.json');
+    const parsed = JSON.parse(target.content) as { mcpServers: Record<string, unknown> };
+    expect(parsed.mcpServers['visual-intent-layer']).toEqual({ command: 'npx', args: npxArgs });
+  });
+});
+
+describe('setup status', () => {
+  it('reports registration state and locations without writing anything', () => {
+    const opts = options();
+    const rendered = formatStatus(planSetup(opts));
+    expect(rendered).toContain('registrations:');
+    expect(rendered).toContain(`pi: not registered ${join(opts.projectDir, '.mcp.json')}`);
+    expect(rendered).toContain('transport: visual-intent mcp');
+    expect(existsSync(join(opts.projectDir, '.mcp.json'))).toBe(false);
+    expect(existsSync(join(opts.homeDir, '.pi', 'agent', 'skills'))).toBe(false);
+  });
+
+  it('reports a current registration as current', () => {
+    const opts = options();
+    writeFileSync(
+      join(opts.projectDir, '.mcp.json'),
+      `${JSON.stringify({
+        mcpServers: { 'visual-intent-layer': { command: 'visual-intent', args: ['mcp'] } }
+      })}\n`
+    );
+    expect(formatStatus(planSetup(opts))).toContain('pi: current');
+  });
+
+  it('reports an outdated registration with the differing field', () => {
+    const opts = options();
+    writeFileSync(
+      join(opts.projectDir, '.mcp.json'),
+      `${JSON.stringify({ mcpServers: { 'visual-intent-layer': { command: 'npx' } } })}\n`
+    );
+    const rendered = formatStatus(planSetup(opts));
+    expect(rendered).toContain('pi: outdated');
+    expect(rendered).toContain('entry differs in');
+  });
+
+  it('reports how a present harness was detected', () => {
+    const opts = options({ pathEnv: fakeBinaryDir('visual-intent', 'codex') });
+    const rendered = formatStatus(planSetup(opts));
+    expect(rendered).toContain('evidence: codex via command codex');
+    expect(rendered).toContain('codex: not registered');
+  });
+});
+
+describe('setup writes to the same configuration homes it detects', () => {
+  it('writes the Codex global config under CODEX_HOME', () => {
+    const codexDir = mkdtempSync(join(tmpdir(), 'vil-codex-'));
+    const opts = options({
+      global: true,
+      withSkill: false,
+      env: { CODEX_HOME: codexDir }
+    });
+    const plan = planSetup(opts);
+    const target = fileTarget(plan, 'config.toml');
+    expect(target.path).toBe(join(codexDir, 'config.toml'));
+
+    applySetup(plan, opts);
+    expect(existsSync(join(codexDir, 'config.toml'))).toBe(true);
+    expect(existsSync(join(opts.homeDir, '.codex', 'config.toml'))).toBe(false);
+  });
+
+  it('writes the opencode global config under XDG_CONFIG_HOME', () => {
+    const xdgDir = mkdtempSync(join(tmpdir(), 'vil-xdg-'));
+    mkdirSync(join(xdgDir, 'opencode'), { recursive: true });
+    const opts = options({
+      global: true,
+      withSkill: false,
+      env: { XDG_CONFIG_HOME: xdgDir }
+    });
+    const plan = planSetup(opts);
+    const target = fileTarget(plan, 'opencode.json');
+    expect(target.path).toBe(join(xdgDir, 'opencode', 'opencode.json'));
+
+    applySetup(plan, opts);
+    expect(existsSync(target.path)).toBe(true);
+    expect(existsSync(join(opts.homeDir, '.config', 'opencode', 'opencode.json'))).toBe(false);
+  });
+
+  it('installs the Skill under PI_CODING_AGENT_DIR', () => {
+    const piDir = mkdtempSync(join(tmpdir(), 'vil-pi-agent-'));
+    const opts = options({ withSkill: true, env: { PI_CODING_AGENT_DIR: piDir } });
+    const plan = planSetup(opts);
+    const skill = plan.targets.find((target) => target.kind === 'skill');
+    expect(skill?.path).toBe(join(piDir, 'skills', 'visual-intent', 'SKILL.md'));
+
+    applySetup(plan, opts);
+    expect(existsSync(join(piDir, 'skills', 'visual-intent', 'SKILL.md'))).toBe(true);
+  });
+
+  it('detects a harness at an overridden home and writes there in the same run', () => {
+    const codexDir = mkdtempSync(join(tmpdir(), 'vil-codex-'));
+    mkdirSync(codexDir, { recursive: true });
+    const opts = options({
+      global: true,
+      withSkill: false,
+      env: { CODEX_HOME: codexDir },
+      pathEnv: fakeBinaryDir('visual-intent')
+    });
+    const plan = planSetup(opts);
+    expect(plan.harnesses).toContain('codex');
+    expect(fileTarget(plan, 'config.toml').path).toBe(join(codexDir, 'config.toml'));
+  });
+});
+
+describe('setup no-detection reporting for the skill', () => {
+  it('says only the pi Skill is installed when nothing is detected and nothing else is written', () => {
+    const rendered = formatPlan(
+      planFixture({
+        harnesses: [],
+        targets: [
+          { kind: 'skill', harnesses: ['pi'], source: '/pkg/skills/visual-intent/SKILL.md', path: '/home/u/.pi/agent/skills/visual-intent/SKILL.md' }
+        ]
+      })
+    );
+    expect(rendered).toContain('no harness detected: installing the pi Skill only');
+    expect(rendered).not.toContain('nothing to register');
   });
 });

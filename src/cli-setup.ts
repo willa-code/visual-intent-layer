@@ -1,14 +1,25 @@
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { delimiter, dirname, join } from 'node:path';
+import { dirname, join } from 'node:path';
+import {
+  HARNESSES,
+  claudeUserStatePath,
+  codexHome,
+  describeCheckedEvidence,
+  detectHarnessPresence,
+  opencodeConfigDir,
+  piAgentDir,
+  resolveCommand,
+  type Harness,
+  type HarnessPresence,
+  type SetupEnvironment
+} from './harness-registry.js';
 
 export const SERVER_NAME = 'visual-intent-layer';
 export const SKILL_DIR = 'visual-intent';
 
-export type Harness = 'pi' | 'codex' | 'claude-code' | 'opencode';
-export const HARNESSES: readonly Harness[] = ['pi', 'codex', 'claude-code', 'opencode'];
-
 export type Scope = 'project' | 'global';
+export type Transport = { command: string; args: string[] };
 
 export type CommandResult = { status: number | null };
 export type CommandRunner = (command: string, args: string[]) => CommandResult;
@@ -22,10 +33,17 @@ export type SetupOptions = {
   withSkill: boolean;
   harnesses?: Harness[];
   pathEnv?: string;
+  env?: SetupEnvironment;
   runCommand?: CommandRunner;
 };
 
-export type SetupAction = 'wrote' | 'skipped' | 'delegated' | 'manual' | 'refused';
+export type SetupAction =
+  | 'wrote'
+  | 'repaired'
+  | 'skipped'
+  | 'delegated'
+  | 'manual'
+  | 'refused';
 
 export type SetupOutcome = {
   harnesses: Harness[];
@@ -35,12 +53,16 @@ export type SetupOutcome = {
   instructions?: string;
 };
 
+export type FileDisposition = 'write' | 'repair' | 'current' | 'manual' | 'refuse';
+export type ExecDisposition = 'delegate' | 'current' | 'manual';
+
 export type FileTarget = {
   kind: 'file';
   harnesses: Harness[];
   path: string;
   content: string;
-  disposition: 'write' | 'already-present' | 'refuse' | 'manual';
+  disposition: FileDisposition;
+  diff?: string;
   reason?: string;
   snippet?: string;
   instructions?: string;
@@ -51,7 +73,8 @@ export type ExecTarget = {
   harnesses: Harness[];
   command: string;
   args: string[];
-  disposition: 'delegate' | 'already-present' | 'manual';
+  disposition: ExecDisposition;
+  diff?: string;
   reason?: string;
   snippet?: string;
   instructions?: string;
@@ -68,7 +91,11 @@ export type SetupTarget = FileTarget | ExecTarget | SkillTarget;
 
 export type SetupPlan = {
   scope: Scope;
+  version: string;
+  transport: Transport;
+  presence: HarnessPresence[];
   harnesses: Harness[];
+  filtered: boolean;
   targets: SetupTarget[];
   notes: string[];
 };
@@ -77,52 +104,47 @@ export type ApplyResult = {
   outcomes: SetupOutcome[];
 };
 
-export function serverEntry(): Record<string, unknown> {
+export function packageVersion(packageDir: string): string {
+  try {
+    const manifest = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8')) as {
+      version?: unknown;
+    };
+    return typeof manifest.version === 'string' && manifest.version.length > 0
+      ? manifest.version
+      : 'latest';
+  } catch {
+    return 'latest';
+  }
+}
+
+function pathEnvOf(options: Pick<SetupOptions, 'pathEnv' | 'env'>): string | undefined {
+  return options.pathEnv ?? (options.env ?? process.env)['PATH'];
+}
+
+export function selectTransport(
+  options: Pick<SetupOptions, 'packageDir' | 'pathEnv' | 'env'>
+): Transport {
+  if (resolveCommand('visual-intent', pathEnvOf(options)) !== undefined) {
+    return { command: 'visual-intent', args: ['mcp'] };
+  }
   return {
-    [SERVER_NAME]: {
-      command: 'visual-intent',
-      args: ['mcp']
-    }
+    command: 'npx',
+    args: [
+      '-y',
+      '--package',
+      `visual-intent-layer@${packageVersion(options.packageDir)}`,
+      'visual-intent-mcp'
+    ]
   };
+}
+
+export function serverEntry(transport: Transport): Record<string, unknown> {
+  return { [SERVER_NAME]: { command: transport.command, args: [...transport.args] } };
 }
 
 export function defaultRunner(command: string, args: string[]): CommandResult {
   const result = spawnSync(command, args, { stdio: 'inherit' });
   return { status: result.status };
-}
-
-function hasBinary(name: string, pathEnv: string | undefined): boolean {
-  const raw = pathEnv ?? process.env['PATH'] ?? '';
-  if (raw.length === 0) {
-    return false;
-  }
-  return raw.split(delimiter).some((dir) => dir.length > 0 && existsSync(join(dir, name)));
-}
-
-export function detectHarnesses(
-  options: Pick<SetupOptions, 'homeDir' | 'projectDir' | 'pathEnv'>
-): Harness[] {
-  const { homeDir, projectDir, pathEnv } = options;
-  const present: Record<Harness, boolean> = {
-    pi:
-      hasBinary('pi', pathEnv) ||
-      existsSync(join(homeDir, '.pi')) ||
-      existsSync(join(projectDir, '.pi')),
-    codex:
-      hasBinary('codex', pathEnv) ||
-      existsSync(join(homeDir, '.codex')) ||
-      existsSync(join(projectDir, '.codex', 'config.toml')),
-    'claude-code':
-      hasBinary('claude', pathEnv) ||
-      existsSync(join(homeDir, '.claude.json')) ||
-      existsSync(join(homeDir, '.claude')),
-    opencode:
-      hasBinary('opencode', pathEnv) ||
-      existsSync(join(homeDir, '.config', 'opencode')) ||
-      existsSync(join(projectDir, 'opencode.json')) ||
-      existsSync(join(projectDir, 'opencode.jsonc'))
-  };
-  return HARNESSES.filter((harness) => present[harness]);
 }
 
 export function parseHarnessFilter(values: string[]): Harness[] {
@@ -143,13 +165,11 @@ function commandLine(command: string, args: string[]): string {
   return [command, ...args].join(' ');
 }
 
-export function effectiveHarnesses(
-  options: Pick<SetupOptions, 'global' | 'harnesses' | 'homeDir' | 'projectDir' | 'pathEnv'>
-): Harness[] {
+function effectiveHarnesses(options: SetupOptions, presence: HarnessPresence[]): Harness[] {
   if (options.harnesses !== undefined) {
     return canonicalHarnesses(options.harnesses);
   }
-  const detected = detectHarnesses(options);
+  const detected = presence.filter((item) => item.present).map((item) => item.harness);
   if (detected.length > 0) {
     return detected;
   }
@@ -166,7 +186,85 @@ function sharedConfigPath(options: SetupOptions): string {
     : join(options.projectDir, '.mcp.json');
 }
 
-function planSharedFile(options: SetupOptions, harnesses: Harness[]): FileTarget | undefined {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function equalEntries(left: unknown, right: unknown): boolean {
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((item, index) => equalEntries(item, right[index]))
+    );
+  }
+  if (isRecord(left) || isRecord(right)) {
+    if (!isRecord(left) || !isRecord(right)) {
+      return false;
+    }
+    const keys = Object.keys(left);
+    return (
+      keys.length === Object.keys(right).length &&
+      keys.every((key) => Object.hasOwn(right, key) && equalEntries(left[key], right[key]))
+    );
+  }
+  return left === right;
+}
+
+function describeEntryDiff(existing: unknown, intended: unknown, label: string): string {
+  if (!isRecord(existing) || !isRecord(intended)) {
+    return `${label} differs`;
+  }
+  const fields = [...new Set([...Object.keys(existing), ...Object.keys(intended)])];
+  const differing = fields.filter((field) => !equalEntries(existing[field], intended[field]));
+  return differing.length === 0 ? `${label} differs` : `${label} differs in ${differing.join(', ')}`;
+}
+
+function parseMcpConfig(existingJson: string): {
+  root: Record<string, unknown>;
+  servers: Record<string, unknown>;
+} {
+  if (existingJson.trim().length === 0) {
+    return { root: {}, servers: {} };
+  }
+  let root: unknown;
+  try {
+    root = JSON.parse(existingJson);
+  } catch {
+    throw new Error('Existing MCP config is not valid JSON; refusing to overwrite it.');
+  }
+  if (!isRecord(root)) {
+    throw new Error('Existing MCP config is not a JSON object; refusing to overwrite it.');
+  }
+  const group = root['mcpServers'];
+  if (group !== undefined && !isRecord(group)) {
+    throw new Error('Existing MCP config has an invalid mcpServers field; refusing to overwrite it.');
+  }
+  return { root, servers: (group ?? {}) as Record<string, unknown> };
+}
+
+export function mergeMcpConfig(existingJson: string, entry: Record<string, unknown>): string {
+  const { root, servers } = parseMcpConfig(existingJson);
+  return `${JSON.stringify({ ...root, mcpServers: { ...servers, ...entry } }, null, 2)}\n`;
+}
+
+function readUserScopedEntry(path: string, name: string): unknown {
+  if (!existsSync(path)) {
+    return undefined;
+  }
+  try {
+    return parseMcpConfig(readFileSync(path, 'utf8')).servers[name];
+  } catch {
+    return undefined;
+  }
+}
+
+function planSharedFile(
+  options: SetupOptions,
+  harnesses: Harness[],
+  transport: Transport
+): FileTarget | undefined {
   const readers: Harness[] = options.global ? ['pi'] : ['pi', 'claude-code'];
   const scoped = inScope(harnesses, readers);
   if (scoped.length === 0) {
@@ -174,17 +272,10 @@ function planSharedFile(options: SetupOptions, harnesses: Harness[]): FileTarget
   }
   const path = sharedConfigPath(options);
   const existing = existsSync(path) ? readFileSync(path, 'utf8') : '';
-  if (isRegisteredInJson(existing, 'mcpServers')) {
-    return { kind: 'file', harnesses: scoped, path, content: existing, disposition: 'already-present' };
-  }
+  const intended = serverEntry(transport);
+  let servers: Record<string, unknown>;
   try {
-    return {
-      kind: 'file',
-      harnesses: scoped,
-      path,
-      content: mergeMcpConfig(existing, serverEntry()),
-      disposition: 'write'
-    };
+    servers = parseMcpConfig(existing).servers;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     return {
@@ -196,41 +287,148 @@ function planSharedFile(options: SetupOptions, harnesses: Harness[]): FileTarget
       reason: `${scoped.join(', ')} ${path}: ${detail}`
     };
   }
+  const current = servers[SERVER_NAME];
+  if (current !== undefined && equalEntries(current, intended[SERVER_NAME])) {
+    return { kind: 'file', harnesses: scoped, path, content: existing, disposition: 'current' };
+  }
+  const content = mergeMcpConfig(existing, intended);
+  if (current === undefined) {
+    return { kind: 'file', harnesses: scoped, path, content, disposition: 'write' };
+  }
+  return {
+    kind: 'file',
+    harnesses: scoped,
+    path,
+    content,
+    disposition: 'repair',
+    diff: describeEntryDiff(current, intended[SERVER_NAME], 'entry')
+  };
 }
 
-function isRegisteredInJson(existing: string, key: string): boolean {
-  if (existing.trim().length === 0) {
-    return false;
-  }
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(existing) as Record<string, unknown>;
-  } catch {
-    return false;
-  }
-  const group = parsed[key];
-  return typeof group === 'object' && group !== null && Object.hasOwn(group, SERVER_NAME);
+function setupEnvironment(options: Pick<SetupOptions, 'env'>): SetupEnvironment {
+  return options.env ?? process.env;
 }
 
 function codexConfigPath(options: SetupOptions): string {
   return options.global
-    ? join(options.homeDir, '.codex', 'config.toml')
+    ? join(codexHome(options.homeDir, setupEnvironment(options)), 'config.toml')
     : join(options.projectDir, '.codex', 'config.toml');
 }
 
-function codexTable(): string {
-  return `[mcp_servers.${SERVER_NAME}]\ncommand = "visual-intent"\nargs = ["mcp"]\n`;
+function tomlString(value: string): string {
+  return JSON.stringify(value);
 }
 
-function hasCodexTable(existing: string): boolean {
-  return new RegExp(`^\\s*\\[mcp_servers\\.${SERVER_NAME}\\]\\s*$`, 'm').test(existing);
+function codexFields(transport: Transport): { command: string; args: string } {
+  return {
+    command: `command = ${tomlString(transport.command)}`,
+    args: `args = [${transport.args.map(tomlString).join(', ')}]`
+  };
 }
 
-function planCodex(options: SetupOptions): SetupTarget {
+function codexTable(transport: Transport): string {
+  const fields = codexFields(transport);
+  return `[mcp_servers.${SERVER_NAME}]\n${fields.command}\n${fields.args}\n`;
+}
+
+function appendCodexTable(existing: string, transport: Transport): string {
+  const separator = existing.length === 0 || existing.endsWith('\n') ? '' : '\n';
+  return `${existing}${separator}${codexTable(transport)}`;
+}
+
+function parseTomlStringArray(body: string): string[] | undefined {
+  const trimmed = body.trim();
+  if (trimmed.length === 0) {
+    return [];
+  }
+  const items = trimmed.split(',').map((item) => /^\s*"(.*)"\s*$/.exec(item)?.[1]);
+  if (items.some((item) => item === undefined)) {
+    return undefined;
+  }
+  return items as string[];
+}
+
+function codexTableBounds(lines: string[]): { header: number; end: number } | undefined {
+  const header = lines.findIndex((line) => line.trim() === `[mcp_servers.${SERVER_NAME}]`);
+  if (header === -1) {
+    return undefined;
+  }
+  let end = header + 1;
+  while (end < lines.length && !lines[end]!.trim().startsWith('[')) {
+    end += 1;
+  }
+  return { header, end };
+}
+
+function readCodexTable(existing: string): { command?: string; args?: string[] } | undefined {
+  const lines = existing.split('\n');
+  const bounds = codexTableBounds(lines);
+  if (bounds === undefined) {
+    return undefined;
+  }
+  const table: { command?: string; args?: string[] } = {};
+  for (let index = bounds.header + 1; index < bounds.end; index += 1) {
+    const line = lines[index]!.trim();
+    const command = /^command\s*=\s*"(.*)"$/.exec(line);
+    if (command !== null) {
+      table.command = command[1];
+    }
+    const args = /^args\s*=\s*\[(.*)\]$/.exec(line);
+    if (args !== null) {
+      const parsed = parseTomlStringArray(args[1]!);
+      if (parsed !== undefined) {
+        table.args = parsed;
+      }
+    }
+  }
+  return table;
+}
+
+function repairCodexTable(existing: string, transport: Transport): string {
+  const lines = existing.split('\n');
+  const bounds = codexTableBounds(lines);
+  if (bounds === undefined) {
+    return appendCodexTable(existing, transport);
+  }
+  const fields = codexFields(transport);
+  const replaced = { command: false, args: false };
+  const body = lines.slice(bounds.header + 1, bounds.end).map((line) => {
+    if (/^\s*command\s*=/.test(line)) {
+      replaced.command = true;
+      return fields.command;
+    }
+    if (/^\s*args\s*=/.test(line)) {
+      replaced.args = true;
+      return fields.args;
+    }
+    return line;
+  });
+  if (!replaced.command) {
+    body.push(fields.command);
+  }
+  if (!replaced.args) {
+    body.push(fields.args);
+  }
+  return [...lines.slice(0, bounds.header + 1), ...body, ...lines.slice(bounds.end)].join('\n');
+}
+
+function planCodex(options: SetupOptions, transport: Transport): SetupTarget {
   const path = codexConfigPath(options);
   const existing = existsSync(path) ? readFileSync(path, 'utf8') : '';
-  if (hasCodexTable(existing)) {
-    return { kind: 'file', harnesses: ['codex'], path, content: existing, disposition: 'already-present' };
+  const intended = { command: transport.command, args: transport.args };
+  const table = readCodexTable(existing);
+  if (table !== undefined) {
+    if (table.command === intended.command && equalEntries(table.args, intended.args)) {
+      return { kind: 'file', harnesses: ['codex'], path, content: existing, disposition: 'current' };
+    }
+    return {
+      kind: 'file',
+      harnesses: ['codex'],
+      path,
+      content: repairCodexTable(existing, transport),
+      disposition: 'repair',
+      diff: describeEntryDiff(table, intended, 'table')
+    };
   }
   if (/^\s*mcp_servers\s*=/m.test(existing)) {
     return {
@@ -242,22 +440,15 @@ function planCodex(options: SetupOptions): SetupTarget {
       reason: `codex ${path}: existing config defines mcp_servers as a value; refusing to append`
     };
   }
-  if (options.global && hasBinary('codex', options.pathEnv)) {
-    const args = ['mcp', 'add', SERVER_NAME, '--', 'visual-intent', 'mcp'];
-    return {
-      kind: 'exec',
-      harnesses: ['codex'],
-      command: 'codex',
-      args,
-      disposition: 'delegate'
-    };
+  if (options.global && resolveCommand('codex', pathEnvOf(options)) !== undefined) {
+    const args = ['mcp', 'add', SERVER_NAME, '--', transport.command, ...transport.args];
+    return { kind: 'exec', harnesses: ['codex'], command: 'codex', args, disposition: 'delegate' };
   }
-  const separator = existing.length === 0 || existing.endsWith('\n') ? '' : '\n';
   return {
     kind: 'file',
     harnesses: ['codex'],
     path,
-    content: `${existing}${separator}${codexTable()}`,
+    content: appendCodexTable(existing, transport),
     disposition: 'write'
   };
 }
@@ -273,22 +464,25 @@ function planSkill(options: SetupOptions, harnesses: Harness[]): SkillTarget | u
     kind: 'skill',
     harnesses: ['pi'],
     source: join(options.packageDir, 'skills', SKILL_DIR, 'SKILL.md'),
-    path: join(options.homeDir, '.pi', 'agent', 'skills', SKILL_DIR, 'SKILL.md')
+    path: join(
+      piAgentDir(options.homeDir, setupEnvironment(options)),
+      'skills',
+      SKILL_DIR,
+      'SKILL.md'
+    )
   };
 }
 
-function opencodeEntry(): Record<string, unknown> {
-  return { type: 'local', command: ['visual-intent', 'mcp'], enabled: true };
+function opencodeEntry(transport: Transport): Record<string, unknown> {
+  return { type: 'local', command: [transport.command, ...transport.args], enabled: true };
 }
 
 function opencodePath(options: SetupOptions): string {
-  if (options.global) {
-    const dir = join(options.homeDir, '.config', 'opencode');
-    const jsonc = join(dir, 'opencode.jsonc');
-    return existsSync(jsonc) ? jsonc : join(dir, 'opencode.json');
-  }
-  const jsonc = join(options.projectDir, 'opencode.jsonc');
-  return existsSync(jsonc) ? jsonc : join(options.projectDir, 'opencode.json');
+  const dir = options.global
+    ? opencodeConfigDir(options.homeDir, setupEnvironment(options))
+    : options.projectDir;
+  const jsonc = join(dir, 'opencode.jsonc');
+  return existsSync(jsonc) ? jsonc : join(dir, 'opencode.json');
 }
 
 function hasJsonComments(text: string): boolean {
@@ -317,26 +511,34 @@ function hasJsonComments(text: string): boolean {
   return false;
 }
 
-function opencodeSnippet(): string {
-  return `${JSON.stringify({ mcp: { [SERVER_NAME]: opencodeEntry() } }, null, 2)}\n`;
+function opencodeSnippet(transport: Transport): string {
+  return `${JSON.stringify({ mcp: { [SERVER_NAME]: opencodeEntry(transport) } }, null, 2)}\n`;
 }
 
-function planClaudeGlobal(options: SetupOptions): ExecTarget {
-  const json = JSON.stringify({ command: 'visual-intent', args: ['mcp'] });
-  const args = ['mcp', 'add-json', SERVER_NAME, json, '--scope', 'user'];
-  const statePath = join(options.homeDir, '.claude.json');
-  const existing = existsSync(statePath) ? readFileSync(statePath, 'utf8') : '';
-  if (isRegisteredInJson(existing, 'mcpServers')) {
+function planClaudeGlobal(options: SetupOptions, transport: Transport): ExecTarget {
+  const intended = { command: transport.command, args: [...transport.args] };
+  const args = ['mcp', 'add-json', SERVER_NAME, JSON.stringify(intended), '--scope', 'user'];
+  const registered = readUserScopedEntry(claudeUserStatePath(options.homeDir), SERVER_NAME);
+  if (registered !== undefined && equalEntries(registered, intended)) {
     return {
       kind: 'exec',
       harnesses: ['claude-code'],
       command: 'claude',
       args,
-      disposition: 'already-present'
+      disposition: 'current'
     };
   }
-  if (hasBinary('claude', options.pathEnv)) {
-    return { kind: 'exec', harnesses: ['claude-code'], command: 'claude', args, disposition: 'delegate' };
+  const diff =
+    registered === undefined ? undefined : describeEntryDiff(registered, intended, 'entry');
+  if (resolveCommand('claude', pathEnvOf(options)) !== undefined) {
+    return {
+      kind: 'exec',
+      harnesses: ['claude-code'],
+      command: 'claude',
+      args,
+      disposition: 'delegate',
+      diff
+    };
   }
   return {
     kind: 'exec',
@@ -344,13 +546,14 @@ function planClaudeGlobal(options: SetupOptions): ExecTarget {
     command: 'claude',
     args,
     disposition: 'manual',
+    diff,
     snippet: commandLine('claude', args),
     instructions:
       'Install Claude Code, then run this command to register the server at user scope. Claude Code state files are never hand-edited by setup.'
   };
 }
 
-function planOpencode(options: SetupOptions): FileTarget {
+function planOpencode(options: SetupOptions, transport: Transport): FileTarget {
   const path = opencodePath(options);
   const existing = existsSync(path) ? readFileSync(path, 'utf8') : '';
   if (hasJsonComments(existing)) {
@@ -360,14 +563,18 @@ function planOpencode(options: SetupOptions): FileTarget {
       path,
       content: existing,
       disposition: 'manual',
-      snippet: opencodeSnippet(),
+      snippet: opencodeSnippet(transport),
       instructions: `Add this entry under the "mcp" key in ${path} by hand; setup leaves commented opencode config untouched.`
     };
   }
   let parsed: Record<string, unknown> = {};
   if (existing.trim().length > 0) {
     try {
-      parsed = JSON.parse(existing) as Record<string, unknown>;
+      const decoded = JSON.parse(existing) as unknown;
+      if (!isRecord(decoded)) {
+        throw new Error('not a JSON object');
+      }
+      parsed = decoded;
     } catch {
       return {
         kind: 'file',
@@ -380,7 +587,7 @@ function planOpencode(options: SetupOptions): FileTarget {
     }
   }
   const mcp = parsed['mcp'];
-  if (mcp !== undefined && (typeof mcp !== 'object' || mcp === null || Array.isArray(mcp))) {
+  if (mcp !== undefined && !isRecord(mcp)) {
     return {
       kind: 'file',
       harnesses: ['opencode'],
@@ -391,34 +598,52 @@ function planOpencode(options: SetupOptions): FileTarget {
     };
   }
   const servers = (mcp ?? {}) as Record<string, unknown>;
-  if (Object.hasOwn(servers, SERVER_NAME)) {
-    return { kind: 'file', harnesses: ['opencode'], path, content: existing, disposition: 'already-present' };
+  const intended = opencodeEntry(transport);
+  const current = servers[SERVER_NAME];
+  if (current !== undefined && equalEntries(current, intended)) {
+    return { kind: 'file', harnesses: ['opencode'], path, content: existing, disposition: 'current' };
+  }
+  const content = `${JSON.stringify(
+    { ...parsed, mcp: { ...servers, [SERVER_NAME]: intended } },
+    null,
+    2
+  )}\n`;
+  if (current === undefined) {
+    return { kind: 'file', harnesses: ['opencode'], path, content, disposition: 'write' };
   }
   return {
     kind: 'file',
     harnesses: ['opencode'],
     path,
-    content: `${JSON.stringify({ ...parsed, mcp: { ...servers, [SERVER_NAME]: opencodeEntry() } }, null, 2)}\n`,
-    disposition: 'write'
+    content,
+    disposition: 'repair',
+    diff: describeEntryDiff(current, intended, 'entry')
   };
 }
 
 export function planSetup(options: SetupOptions): SetupPlan {
   const scope: Scope = options.global ? 'global' : 'project';
-  const harnesses = effectiveHarnesses(options);
+  const transport = selectTransport(options);
+  const presence = detectHarnessPresence({
+    homeDir: options.homeDir,
+    projectDir: options.projectDir,
+    pathEnv: options.pathEnv,
+    env: options.env
+  });
+  const harnesses = effectiveHarnesses(options, presence);
   const targets: SetupTarget[] = [];
-  const shared = planSharedFile(options, harnesses);
+  const shared = planSharedFile(options, harnesses, transport);
   if (shared !== undefined) {
     targets.push(shared);
   }
   if (harnesses.includes('codex')) {
-    targets.push(planCodex(options));
+    targets.push(planCodex(options, transport));
   }
   if (scope === 'global' && harnesses.includes('claude-code')) {
-    targets.push(planClaudeGlobal(options));
+    targets.push(planClaudeGlobal(options, transport));
   }
   if (harnesses.includes('opencode')) {
-    targets.push(planOpencode(options));
+    targets.push(planOpencode(options, transport));
   }
   const skill = planSkill(options, harnesses);
   if (skill !== undefined) {
@@ -430,24 +655,16 @@ export function planSetup(options: SetupOptions): SetupPlan {
       'Claude Code requires first-use approval for project-scoped servers: open Claude Code in this project and approve the visual-intent-layer server.'
     );
   }
-  return { scope, harnesses, targets, notes };
-}
-
-export function mergeMcpConfig(existingJson: string, entry: Record<string, unknown>): string {
-  let parsed: { mcpServers?: Record<string, unknown> };
-  if (existingJson.trim().length === 0) {
-    parsed = {};
-  } else {
-    try {
-      parsed = JSON.parse(existingJson) as { mcpServers?: Record<string, unknown> };
-    } catch {
-      throw new Error('Existing MCP config is not valid JSON; refusing to overwrite it.');
-    }
-  }
-  if (parsed.mcpServers !== undefined && (typeof parsed.mcpServers !== 'object' || parsed.mcpServers === null)) {
-    throw new Error('Existing MCP config has an invalid mcpServers field; refusing to overwrite it.');
-  }
-  return JSON.stringify({ ...parsed, mcpServers: { ...(parsed.mcpServers ?? {}), ...entry } }, null, 2) + '\n';
+  return {
+    scope,
+    version: packageVersion(options.packageDir),
+    transport,
+    presence,
+    harnesses,
+    filtered: options.harnesses !== undefined,
+    targets,
+    notes
+  };
 }
 
 export function applySetup(plan: SetupPlan, options: SetupOptions): ApplyResult {
@@ -458,16 +675,21 @@ export function applySetup(plan: SetupPlan, options: SetupOptions): ApplyResult 
   const run = options.runCommand ?? defaultRunner;
   for (const target of plan.targets) {
     if (target.kind === 'file') {
-      if (target.disposition === 'write') {
+      if (target.disposition === 'write' || target.disposition === 'repair') {
         mkdirSync(dirname(target.path), { recursive: true });
         writeFileSync(target.path, target.content, 'utf8');
-        outcomes.push({ harnesses: target.harnesses, action: 'wrote', target: target.path });
-      } else if (target.disposition === 'already-present') {
+        outcomes.push({
+          harnesses: target.harnesses,
+          action: target.disposition === 'repair' ? 'repaired' : 'wrote',
+          target: target.path,
+          detail: target.diff
+        });
+      } else if (target.disposition === 'current') {
         outcomes.push({
           harnesses: target.harnesses,
           action: 'skipped',
           target: target.path,
-          detail: 'already registered'
+          detail: 'already current'
         });
       } else if (target.disposition === 'manual') {
         outcomes.push({
@@ -494,13 +716,18 @@ export function applySetup(plan: SetupPlan, options: SetupOptions): ApplyResult 
             `${target.harnesses.join(', ')} delegation failed: ${line} (exit ${String(status)})`
           );
         }
-        outcomes.push({ harnesses: target.harnesses, action: 'delegated', target: line });
-      } else if (target.disposition === 'already-present') {
+        outcomes.push({
+          harnesses: target.harnesses,
+          action: 'delegated',
+          target: line,
+          detail: target.diff
+        });
+      } else if (target.disposition === 'current') {
         outcomes.push({
           harnesses: target.harnesses,
           action: 'skipped',
           target: line,
-          detail: 'already registered'
+          detail: 'already current'
         });
       } else {
         outcomes.push({
@@ -531,15 +758,68 @@ function indent(text: string): string {
     .join('\n');
 }
 
+function matchedEvidence(presence: HarnessPresence): string {
+  return presence.evidence
+    .filter((item) => item.matched)
+    .map((item) => (item.kind === 'command' ? `command ${item.detail}` : item.detail))
+    .join(', ');
+}
+
+function detectionHeader(plan: SetupPlan): string[] {
+  const detected = plan.presence.filter((presence) => presence.present);
+  const lines = [
+    `visual-intent setup ${plan.version}`,
+    `scope: ${plan.scope}`,
+    `configured: ${plan.harnesses.join(', ') || '(none)'}`,
+    `transport: ${commandLine(plan.transport.command, plan.transport.args)}`,
+    `detected: ${detected.map((presence) => presence.harness).join(', ') || '(none)'}`
+  ];
+  if (detected.length === 0) {
+    const writesSharedDefault = plan.targets.some(
+      (target) => target.kind === 'file' && target.path.endsWith('.mcp.json')
+    );
+    const writesSkillOnly =
+      plan.targets.length === 1 && plan.targets[0]?.kind === 'skill';
+    if (plan.targets.length === 0) {
+      lines.push('no harness detected: nothing to register');
+    } else if (plan.filtered) {
+      lines.push(
+        `no harness detected: registering the harnesses named by --harness (${plan.harnesses.join(', ')})`
+      );
+    } else if (writesSharedDefault) {
+      lines.push(
+        'no harness detected: writing the shared .mcp.json default so pi and Claude Code work'
+      );
+    } else if (writesSkillOnly) {
+      lines.push('no harness detected: installing the pi Skill only');
+    } else {
+      lines.push('no harness detected: nothing to register');
+    }
+  }
+  for (const presence of plan.presence.filter((item) => !item.present)) {
+    lines.push(`absent: ${presence.harness} (checked ${describeCheckedEvidence(presence)})`);
+  }
+  return lines;
+}
+
+function describeDiff(diff: string | undefined): string {
+  return diff === undefined ? '' : ` (${diff})`;
+}
+
 export function formatPlan(plan: SetupPlan): string {
-  const lines = [`scope: ${plan.scope}`, `harnesses: ${plan.harnesses.join(', ') || '(none)'}`];
+  const lines = detectionHeader(plan);
   for (const target of plan.targets) {
     if (target.kind === 'file') {
       if (target.disposition === 'write') {
         lines.push(`${target.harnesses.join(', ')}: would write ${target.path}`);
         lines.push(indent(target.content));
-      } else if (target.disposition === 'already-present') {
-        lines.push(`${target.harnesses.join(', ')}: already registered in ${target.path}`);
+      } else if (target.disposition === 'repair') {
+        lines.push(
+          `${target.harnesses.join(', ')}: would repair ${target.path}${describeDiff(target.diff)}`
+        );
+        lines.push(indent(target.content));
+      } else if (target.disposition === 'current') {
+        lines.push(`${target.harnesses.join(', ')}: already current in ${target.path}`);
       } else if (target.disposition === 'manual') {
         lines.push(`${target.harnesses.join(', ')}: manual paste required for ${target.path}`);
         lines.push(indent(target.snippet ?? ''));
@@ -547,16 +827,20 @@ export function formatPlan(plan: SetupPlan): string {
           lines.push(indent(target.instructions));
         }
       } else {
-        lines.push(`${target.harnesses.join(', ')}: refuse ${target.path} (${target.reason ?? 'refused'})`);
+        lines.push(
+          `${target.harnesses.join(', ')}: refuse ${target.path} (${target.reason ?? 'refused'})`
+        );
       }
     } else if (target.kind === 'exec') {
       const line = commandLine(target.command, target.args);
       if (target.disposition === 'delegate') {
-        lines.push(`${target.harnesses.join(', ')}: would delegate ${line}`);
-      } else if (target.disposition === 'already-present') {
-        lines.push(`${target.harnesses.join(', ')}: already registered (${line})`);
+        lines.push(
+          `${target.harnesses.join(', ')}: would delegate ${line}${describeDiff(target.diff)}`
+        );
+      } else if (target.disposition === 'current') {
+        lines.push(`${target.harnesses.join(', ')}: already current (${line})`);
       } else {
-        lines.push(`${target.harnesses.join(', ')}: manual command required`);
+        lines.push(`${target.harnesses.join(', ')}: manual command required${describeDiff(target.diff)}`);
         lines.push(indent(target.snippet ?? line));
         if (target.instructions !== undefined) {
           lines.push(indent(target.instructions));
@@ -569,11 +853,12 @@ export function formatPlan(plan: SetupPlan): string {
   return lines.join('\n');
 }
 
-export function formatResult(result: ApplyResult): string {
+export function formatResult(result: ApplyResult, plan: SetupPlan): string {
+  const lines = detectionHeader(plan);
   if (result.outcomes.length === 0) {
-    return 'nothing written.';
+    lines.push('nothing written.');
+    return lines.join('\n');
   }
-  const lines: string[] = [];
   for (const outcome of result.outcomes) {
     lines.push(`${outcome.harnesses.join(', ')}: ${outcome.action} ${outcome.target}`);
     if (outcome.detail !== undefined && outcome.detail !== outcome.target) {
@@ -582,6 +867,47 @@ export function formatResult(result: ApplyResult): string {
     if (outcome.instructions !== undefined) {
       lines.push(indent(outcome.instructions));
     }
+  }
+  return lines.join('\n');
+}
+
+function registrationLabel(disposition: FileDisposition | ExecDisposition): string {
+  if (disposition === 'write' || disposition === 'delegate') {
+    return 'not registered';
+  }
+  if (disposition === 'repair') {
+    return 'outdated';
+  }
+  if (disposition === 'current') {
+    return 'current';
+  }
+  if (disposition === 'manual') {
+    return 'manual';
+  }
+  return 'refused (invalid config)';
+}
+
+export function formatStatus(plan: SetupPlan): string {
+  const lines = detectionHeader(plan);
+  lines.push('registrations:');
+  if (plan.targets.length === 0) {
+    lines.push('    (none)');
+  }
+  for (const target of plan.targets) {
+    if (target.kind === 'file') {
+      lines.push(
+        `    ${target.harnesses.join(', ')}: ${registrationLabel(target.disposition)} ${target.path}${describeDiff(target.diff)}`
+      );
+    } else if (target.kind === 'exec') {
+      lines.push(
+        `    ${target.harnesses.join(', ')}: ${registrationLabel(target.disposition)} ${commandLine(target.command, target.args)}${describeDiff(target.diff)}`
+      );
+    } else {
+      lines.push(`    pi: skill ${target.path}`);
+    }
+  }
+  for (const presence of plan.presence.filter((item) => item.present)) {
+    lines.push(`evidence: ${presence.harness} via ${matchedEvidence(presence)}`);
   }
   return lines.join('\n');
 }
