@@ -4,12 +4,12 @@
 
 **Blocked by:** 04 (Submit written direction and deliver the envelope), 05 (Observe revisions, re-resolve targets, verify by hand)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Draft Intent saves locally with no agent-side effect; Next-Pass Intent waits in a durable queue for a later turn
-- [ ] Killing and restarting the process at any lifecycle boundary loses no acknowledged intent and duplicates none
-- [ ] Steering is offered only where the host exposes it and is labelled as next-safe-boundary, never instant cancellation
-- [ ] Review Interruption is an explicit disruptive action shown only where it can be represented honestly
+- [x] Draft Intent saves locally with no agent-side effect; Next-Pass Intent waits in a durable queue for a later turn
+- [x] Killing and restarting the process at any lifecycle boundary loses no acknowledged intent and duplicates none
+- [x] Steering is offered only where the host exposes it and is labelled as next-safe-boundary, never instant cancellation
+- [x] Review Interruption is an explicit disruptive action shown only where it can be represented honestly
 
 ## Comments
 

@@ -4,12 +4,12 @@
 
 **Blocked by:** 04 (Submit written direction and deliver the envelope)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Saving the artifact produces a new content-addressed revision that the review surface observes and reloads
-- [ ] Original targets re-resolve against the new revision as exact, recovered, ambiguous, stale, or deleted, never silently picking an uncertain target
-- [ ] The Builder-Reviewer compares requested intent with the resulting revision and can approve, reject, request another pass, supersede, or mark obsolete
-- [ ] Agent acknowledgement or source modification alone never completes the intent; verification history survives restart
+- [x] Saving the artifact produces a new content-addressed revision that the review surface observes and reloads
+- [x] Original targets re-resolve against the new revision as exact, recovered, ambiguous, stale, or deleted, never silently picking an uncertain target
+- [x] The Builder-Reviewer compares requested intent with the resulting revision and can approve, reject, request another pass, supersede, or mark obsolete
+- [x] Agent acknowledgement or source modification alone never completes the intent; verification history survives restart
 
 ## Comments
 

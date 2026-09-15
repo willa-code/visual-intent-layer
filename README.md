@@ -10,23 +10,24 @@ Requires Node 20+. No Rust toolchain, no hosted account.
 
 ```sh
 npm install -g visual-intent-layer
+visual-intent setup --global     # MCP registration for every project + Skill install
 ```
 
-Connect your agent host over stdio (see `mcp.json` in this package):
+`setup` merges the server entry into `~/.config/mcp/mcp.json` (or the current
+project's `.mcp.json` without `--global`) and copies the Skill to
+`~/.pi/agent/skills/visual-intent/`. It never overwrites existing servers and
+refuses to touch invalid JSON. Use `--print-only` to preview, `--no-skill` to
+skip the Skill. The raw snippet also ships as `mcp.json` in the package.
 
-```json
-{
-  "mcpServers": {
-    "visual-intent-layer": {
-      "command": "npx",
-      "args": ["-y", "visual-intent-layer@0.1.0", "mcp"]
-    }
-  }
-}
-```
+pi users: MCP is provided via `pi-mcp-adapter`, which reads the standard MCP
+files above. The local browser carries the complete V0 experience; no embedded
+UI is required. Alternatively, add this package to pi's `packages` setting —
+its `pi.skills` manifest exposes the Skill automatically.
 
-pi users: add the above to your MCP configuration via `pi-mcp-adapter`.
-The local browser carries the complete V0 experience; no embedded UI is required.
+> Maintainer: the package is not published yet. Publish checklist: `npm login`,
+> `npm publish --access public` (name `visual-intent-layer` verified available),
+> then `npm install -g visual-intent-layer` from a clean machine and run the
+> ticket 16 checklist.
 
 ## Use
 
@@ -89,7 +90,7 @@ a controlled artifact.
 - `src/benchmark/` — mutation benchmark matrix
 - `src/eval/` — invocation policy eval
 - `src/instrumentation/` — product-boundary measurements
-- `skill/` — thin optional Skill for agents
+- `skills/` — thin optional Skill for agents (pi-loadable via the `pi.skills` manifest)
 - `fixtures/` — controlled artifacts, including malicious security fixtures
 
 ## License

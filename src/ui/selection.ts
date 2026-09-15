@@ -53,6 +53,7 @@ export function attachSelection(doc: Document, sink: SelectionSink): SelectionHa
     if (!active()) {
       return;
     }
+    mark('visual-intent:hover');
     const element = event.target as HTMLElement | null;
     if (!element || element === doc.documentElement || element === doc.body) {
       clearHover();
@@ -64,6 +65,8 @@ export function attachSelection(doc: Document, sink: SelectionSink): SelectionHa
     }
     hovered = element;
     hovered.classList.add('hover-outline');
+    mark('visual-intent:hover-handled');
+    measureHover();
     sink.onHover(element);
   }
 
@@ -230,6 +233,22 @@ function drawMarquee(doc: Document, x1: number, y1: number, x2: number, y2: numb
 
 function removeMarquee(doc: Document): void {
   doc.getElementById('visual-intent-marquee')?.remove();
+}
+
+function mark(name: string): void {
+  try {
+    performance.mark(name);
+  } catch {
+    return;
+  }
+}
+
+function measureHover(): void {
+  try {
+    performance.measure('visual-intent:pointer-feedback', 'visual-intent:hover', 'visual-intent:hover-handled');
+  } catch {
+    return;
+  }
 }
 
 export function extractCandidates(doc: Document, options: { limit?: number } = {}): ResolutionCandidate[] {

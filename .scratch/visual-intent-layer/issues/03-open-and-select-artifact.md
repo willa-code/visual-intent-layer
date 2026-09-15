@@ -4,12 +4,12 @@
 
 **Blocked by:** 02 (Scaffold the TypeScript service and envelope schema)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Invoking the entry tool against a saved HTML artifact opens it in Explore mode with ordinary page interaction intact
-- [ ] Entering Select mode is obvious and reversible, and application controls cannot be activated through it
-- [ ] Hovered elements respond immediately with a trustworthy outline, and selecting an element or exact text range keeps the selection visually clear
-- [ ] The visible Rendered Grounding evidence for the selection is shown before anything is sent
+- [x] Invoking the entry tool against a saved HTML artifact opens it in Explore mode with ordinary page interaction intact
+- [x] Entering Select mode is obvious and reversible, and application controls cannot be activated through it
+- [x] Hovered elements respond immediately with a trustworthy outline, and selecting an element or exact text range keeps the selection visually clear
+- [x] The visible Rendered Grounding evidence for the selection is shown before anything is sent
 
 ## Comments
 

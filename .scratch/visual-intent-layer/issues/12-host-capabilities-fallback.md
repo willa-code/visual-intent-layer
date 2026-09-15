@@ -4,11 +4,11 @@
 
 **Blocked by:** 11 (Make Draft and Next-Pass Intent durable and idempotent)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Host support for embedded UI, steering, and subscriptions is detected, and unsupported behavior degrades with explicit labels
-- [ ] The local browser delivers the complete interaction as a first-class experience when the host cannot embed the view
-- [ ] The embedded view is used only on hosts that declare and implement the capability
+- [x] Host support for embedded UI, steering, and subscriptions is detected, and unsupported behavior degrades with explicit labels
+- [x] The local browser delivers the complete interaction as a first-class experience when the host cannot embed the view
+- [x] The embedded view is used only on hosts that declare and implement the capability
 
 ## Comments
 

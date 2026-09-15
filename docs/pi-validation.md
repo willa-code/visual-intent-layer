@@ -6,8 +6,8 @@ needs a live pi session via pi-mcp-adapter.
 ## Prerequisites
 
 - pi with MCP support and `pi-mcp-adapter` installed.
-- This package installed: `npm install -g visual-intent-layer` (Node 20+).
-- MCP configuration from the packaged `mcp.json` added to pi.
+- This package installed: `npm install -g visual-intent-layer` (Node 20+), then `visual-intent setup` in a scratch project (or `setup --global`).
+- MCP configuration registered by `setup` and picked up by `pi-mcp-adapter` (standard `.mcp.json` / `~/.config/mcp/mcp.json` files).
 
 ## Automated evidence already in place
 

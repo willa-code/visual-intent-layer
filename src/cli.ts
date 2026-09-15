@@ -1,5 +1,7 @@
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { applySetup, planSetup } from './cli-setup.js';
 import { createReviewService } from './mcp/service.js';
 import { startLocalService } from './service/http.js';
 
@@ -9,6 +11,7 @@ Usage:
   visual-intent serve [--port 3742]              Start the local review service
   visual-intent open --html <path>               Open a saved HTML artifact and print the review URL
   visual-intent open --app <localhost-url>       Open a running React/Vite app and print the review URL
+  visual-intent setup [--global] [--no-skill]    Register the MCP server and install the Skill
   visual-intent mcp                              Run the MCP server over stdio (used by agent hosts)
   visual-intent --help                           Show this help
 
@@ -24,6 +27,30 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
     console.log(HELP);
+    return;
+  }
+  if (args[0] === 'setup') {
+    const packageDir = join(dirname(fileURLToPath(import.meta.url)), '..');
+    const setupOptions = {
+      packageDir,
+      homeDir: homedir(),
+      projectDir: process.cwd(),
+      global: args.includes('--global'),
+      printOnly: args.includes('--print-only'),
+      withSkill: !args.includes('--no-skill')
+    };
+    const plan = planSetup(setupOptions);
+    const wrote = applySetup(plan, setupOptions);
+    console.log(`MCP config: ${plan.mcpConfigPath}`);
+    console.log(plan.mcpConfigJson);
+    console.log(`Skill: ${plan.skillTarget}`);
+    if (wrote.length === 0) {
+      console.log('print-only: nothing written.');
+    } else {
+      for (const file of wrote) {
+        console.log(`wrote ${file}`);
+      }
+    }
     return;
   }
   const reviewService = createReviewService({ dataDir });

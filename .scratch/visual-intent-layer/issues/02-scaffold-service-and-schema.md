@@ -4,12 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A fresh checkout installs dependencies and connects the MCP server over stdio with the entry tool listed and described
-- [ ] The versioned experimental envelope schema validates a representative envelope fixture and rejects malformed input
-- [ ] Generated TypeScript types compile and round-trip the fixture without hand-written drift
-- [ ] Optional canvas-, host-, browser-, and framework-specific records survive validation as extensions without becoming required semantics
+- [x] A fresh checkout installs dependencies and connects the MCP server over stdio with the entry tool listed and described
+- [x] The versioned experimental envelope schema validates a representative envelope fixture and rejects malformed input
+- [x] Generated TypeScript types compile and round-trip the fixture without hand-written drift
+- [x] Optional canvas-, host-, browser-, and framework-specific records survive validation as extensions without becoming required semantics
 
 ## Comments
 

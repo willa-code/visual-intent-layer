@@ -1,3 +1,8 @@
+---
+name: visual-intent
+description: Open a visual review loop when pointing at an agent-built interface beats prose. Teaches when to invoke the Visual Direction Loop, delivery timing, host fallback, and human verification.
+---
+
 # Visual Intent Layer
 
 Use the Visual Direction Loop when pointing beats prose. Keep this skill thin: tool

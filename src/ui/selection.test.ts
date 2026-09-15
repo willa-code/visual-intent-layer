@@ -139,4 +139,17 @@ describe('select mode interaction', () => {
     expect(button.classList.contains('target-outline')).toBe(false);
     selection.detach();
   });
+
+  it('records pointer-to-feedback performance marks for instrumentation', () => {
+    fixture();
+    const events = sink();
+    const selection = attachSelection(document, events);
+    selection.setMode('select');
+    const button = document.querySelector('button.checkout-submit') as HTMLElement;
+    button.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+    expect(performance.getEntriesByName('visual-intent:hover-handled').length).toBeGreaterThan(0);
+    selection.detach();
+    performance.clearMarks();
+    performance.clearMeasures();
+  });
 });

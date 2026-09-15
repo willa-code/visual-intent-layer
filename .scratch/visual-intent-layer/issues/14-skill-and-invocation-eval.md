@@ -4,11 +4,11 @@
 
 **Blocked by:** 11 (Make Draft and Next-Pass Intent durable and idempotent), 12 (Negotiate host capabilities with an honest browser fallback)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A thin Skill teaches when visual direction beats prose plus the lifecycle and fallback policy without duplicating tool schemas
-- [ ] Explicit invocation works from the tool description alone with no Skill installed
-- [ ] An invocation eval covers explicit requests, clear spatial tasks, ambiguous visual tasks, and negative cases where plain chat stays faster
+- [x] A thin Skill teaches when visual direction beats prose plus the lifecycle and fallback policy without duplicating tool schemas
+- [x] Explicit invocation works from the tool description alone with no Skill installed
+- [x] An invocation eval covers explicit requests, clear spatial tasks, ambiguous visual tasks, and negative cases where plain chat stays faster
 
 ## Comments
 
