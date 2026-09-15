@@ -19,4 +19,9 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm install -g npm@latest
-      - run: npm publish --provenance --access public
+      - name: Publish pre-release to next
+        if: ${{ github.event.release.prerelease }}
+        run: npm publish --provenance --access public --tag next
+      - name: Publish stable to latest
+        if: ${{ !github.event.release.prerelease }}
+        run: npm publish --provenance --access public

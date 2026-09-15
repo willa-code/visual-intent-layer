@@ -53,6 +53,18 @@ On a machine without a global install, paste the packaged `mcp.json` snippet
 `npx -y --package visual-intent-layer@<version> visual-intent-mcp` form so no
 binary needs to be on `PATH`.
 
+### Pre-release channel
+
+Pre-release builds publish to the `next` dist-tag:
+
+```sh
+npm install -g visual-intent-layer@next
+```
+
+`latest` only moves when a validated pre-release is promoted to a stable
+version, so `npm install visual-intent-layer` always gets a release that was
+dogfooded on `next` first.
+
 ### Stays manual
 
 - Zed settings-file edits (`context_servers`), IDE marketplace listings, and
@@ -69,11 +81,14 @@ files above. The local browser carries the complete V0 experience; no embedded
 UI is required. Alternatively, add this package to pi's `packages` setting —
 its `pi.skills` manifest exposes the Skill automatically.
 
-> Maintainer: releases go out via the Publish workflow (npm trusted publishing).
-> Bump the version (and the pinned version in `mcp.json` — `node scripts/check-bins.js`
-> fails CI otherwise), push to `main`, then `gh release create vX.Y.Z --generate-notes` —
-> publishing to npm happens automatically. Verify with a clean-machine
-> `npm install -g visual-intent-layer@latest` and the ticket 16 checklist.
+> Maintainer: releases go out via the Publish workflow (npm trusted publishing),
+> with the process in the `/maintenance` skill. Pre-releases
+> (`gh release create vX.Y.Z-next.N --prerelease`) publish to `next`; stable
+> releases publish to `latest`. Bump the version and the pinned version in
+> `mcp.json` together — `node scripts/check-bins.js` fails CI otherwise — then
+> push to `main` and `gh release create vX.Y.Z --generate-notes`. Verify with a
+> clean-machine `npm install -g visual-intent-layer@latest` and the ticket 16
+> checklist.
 
 ## Use
 
