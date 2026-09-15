@@ -70,9 +70,10 @@ UI is required. Alternatively, add this package to pi's `packages` setting —
 its `pi.skills` manifest exposes the Skill automatically.
 
 > Maintainer: releases go out via the Publish workflow (npm trusted publishing).
-> Bump the version, push to `main`, then `gh release create vX.Y.Z --generate-notes` —
+> Bump the version (and the pinned version in `mcp.json` — `node scripts/check-bins.js`
+> fails CI otherwise), push to `main`, then `gh release create vX.Y.Z --generate-notes` —
 > publishing to npm happens automatically. Verify with a clean-machine
-> `npm install -g visual-intent-layer` and the ticket 16 checklist.
+> `npm install -g visual-intent-layer@latest` and the ticket 16 checklist.
 
 ## Use
 
