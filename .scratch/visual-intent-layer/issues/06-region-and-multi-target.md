@@ -1,0 +1,11 @@
+# 06: Mark regions and select multiple targets
+
+**What to build:** A visible region can be marked where no element fits, and several targets can be selected together as one set that stays clear while the Builder-Reviewer writes.
+
+**Blocked by:** 03 (Open saved HTML and select elements and text)
+
+**Status:** ready-for-agent
+
+- [ ] A visible region can be marked where no semantic element fits and carries spatial evidence into the envelope
+- [ ] Multiple targets can be selected as one set that stays visually clear while the Builder-Reviewer writes
+- [ ] Selection remains correct under scroll, zoom, responsive reflow, and overlapping layers

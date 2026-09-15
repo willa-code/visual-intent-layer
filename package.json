@@ -1,0 +1,44 @@
+{
+  "name": "visual-intent-layer",
+  "version": "0.1.0",
+  "description": "Local-first Visual Direction Loop: point at visible targets, deliver a versioned Visual Intent Envelope over MCP, verify by hand.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "visual-intent": "./dist/cli.js",
+    "visual-intent-mcp": "./dist/mcp/stdio.js"
+  },
+  "files": [
+    "dist",
+    "schema",
+    "skill",
+    "mcp.json"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/copy-ui-assets.js",
+    "build:types": "node scripts/generate-envelope-types.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "benchmark": "node dist/benchmark/cli.js",
+    "eval:invocation": "node dist/eval/cli.js",
+    "instrument": "node dist/instrumentation/cli.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "@noble/hashes": "^1.8.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "happy-dom": "^15.0.0",
+    "json-schema-to-typescript": "^15.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

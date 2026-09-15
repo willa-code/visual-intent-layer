@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Visual Review — __ARTIFACT_NAME__</title>
+  <link rel="stylesheet" href="/ui/review.css" />
+</head>
+<body data-session="__SESSION_ID__" data-cap="__CAPABILITY__" data-revision="__ARTIFACT_REVISION__">
+  <header class="chrome" role="banner">
+    <div class="modes" role="tablist" aria-label="Review mode">
+      <button id="mode-explore" role="tab" aria-selected="true" title="Interact with the application normally (1)">Explore</button>
+      <button id="mode-select" role="tab" aria-selected="false" title="Select elements, text, or regions (2)">Select</button>
+      <button id="mode-direct" role="tab" aria-selected="false" title="Demonstrate arrangements reversibly (3)">Direct</button>
+    </div>
+    <div class="artifact-meta">__ARTIFACT_NAME__ · <code id="revision-label">__ARTIFACT_REVISION__</code></div>
+  </header>
+  <div id="revision-banner" role="alert" hidden></div>
+  <main class="layout">
+    <section class="stage" aria-label="Artifact under review">
+      <iframe id="artifact-frame" title="Artifact under review" src="__ARTIFACT_SRC__" sandbox="allow-scripts allow-same-origin"></iframe>
+      <div id="overlay-root" hidden></div>
+    </section>
+    <aside class="panel" aria-label="Direction composer">
+      <h2>Direction</h2>
+      <div id="selection-summary" aria-live="polite">No targets selected. Enter Select mode and click the interface.</div>
+      <div id="grounding-evidence"></div>
+      <details id="relationship-builder">
+        <summary>Relate targets (needs 2+)</summary>
+        <label>Type <select id="rel-type">
+          <option value="ordering">Ordering</option>
+          <option value="alignment">Alignment</option>
+          <option value="spacing">Spacing</option>
+          <option value="containment">Containment</option>
+          <option value="equivalence">Equivalence</option>
+          <option value="comparative-size">Comparative size</option>
+        </select></label>
+        <label>Relation <select id="rel-operator">
+          <option value="before">before</option>
+          <option value="after">after</option>
+          <option value="inside">inside</option>
+          <option value="align-left">align left</option>
+          <option value="align-center">align center</option>
+          <option value="align-right">align right</option>
+          <option value="align-top">align top</option>
+          <option value="align-middle">align middle</option>
+          <option value="equal-gap">equal gap</option>
+          <option value="preserved-rhythm">preserved rhythm</option>
+          <option value="member-of">member of group</option>
+          <option value="shared-property">shared property</option>
+          <option value="shared-behavior">shared behavior</option>
+          <option value="same-width">same width</option>
+          <option value="same-height">same height</option>
+        </select></label>
+        <button id="rel-add" type="button">Add relationship</button>
+        <ul id="rel-list"></ul>
+      </details>
+      <label for="direction-text">Written direction</label>
+      <textarea id="direction-text" rows="5" placeholder="Describe the change the agent should make…"></textarea>
+      <label for="delivery-intent">Delivery</label>
+      <select id="delivery-intent">
+        <option value="draft">Draft — save locally, send nothing</option>
+        <option value="next-pass" selected>Next pass — queue for a clean turn</option>
+        <option value="steering">Steering — next safe boundary (host permitting)</option>
+      </select>
+      <details id="evidence-disclosure">
+        <summary>What leaves your machine</summary>
+        <div id="evidence-list">Select targets to preview the envelope evidence.</div>
+      </details>
+      <button id="submit-intent" type="button">Submit intent</button>
+      <div id="delivery-state" aria-live="polite"></div>
+      <section id="verification" aria-label="Verification" hidden>
+        <h3>Verify the result</h3>
+        <div id="resolution-list"></div>
+        <div class="verdicts">
+          <button data-verdict="approve" type="button">Approve</button>
+          <button data-verdict="reject" type="button">Reject</button>
+          <button data-verdict="another-pass" type="button">Another pass</button>
+          <button data-verdict="supersede" type="button">Supersede</button>
+          <button data-verdict="obsolete" type="button">Obsolete</button>
+        </div>
+        <div id="verdict-state" aria-live="polite"></div>
+      </section>
+    </aside>
+  </main>
+  <script type="module" src="/ui/review.js"></script>
+</body>
+</html>

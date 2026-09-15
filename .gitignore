@@ -1,0 +1,9 @@
+# Playwright CLI output (may contain credentials)
+.playwright-cli/
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.scratch/**/baseline-local/
+.visual-intent-data/
+.DS_Store

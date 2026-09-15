@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gallery fixture</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; }
+      .gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+      figure { margin: 0; border: 1px solid #ddd; padding: 0.5rem; }
+    </style>
+  </head>
+  <body>
+    <main class="gallery-page">
+      <h1>Summer gallery</h1>
+      <p class="gallery-note">Order prints before Friday for weekend delivery.</p>
+      <div class="gallery">
+        <figure><img src="thumb-1.png" alt="Harbor at dawn" /><figcaption>Harbor at dawn</figcaption></figure>
+        <figure><img src="thumb-2.png" alt="Alpine meadow" /><figcaption>Alpine meadow</figcaption></figure>
+        <figure><img src="thumb-3.png" alt="Night market" /><figcaption>Night market</figcaption></figure>
+      </div>
+      <button class="checkout-submit" type="button">Place order</button>
+      <p class="shipping-note">Order now. Arrives Thursday if you order today.</p>
+    </main>
+  </body>
+</html>

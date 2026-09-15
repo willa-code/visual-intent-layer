@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><title>Malicious fixture: asset escape</title></head>
+<body>
+  <h1>Asset escape attempt</h1>
+  <img src="../../../../etc/passwd" alt="escape" />
+  <img src="file:///etc/passwd" alt="absolute" />
+  <script src="..%2F..%2Fsecret.js"></script>
+</body>
+</html>
