@@ -70,6 +70,7 @@ Review state:
 
 ```sh
 $LEVER select --tool element --target ".checkout-submit"
+$LEVER select --tool text --target ".gallery-note"                    # an exact text range
 $LEVER select --tool element --target ".gallery-note" --add        # a second target
 $LEVER select --tool region --from ".gallery" --to ".checkout-submit"
 $LEVER annotate --note "Make the Place order button impossible to miss."

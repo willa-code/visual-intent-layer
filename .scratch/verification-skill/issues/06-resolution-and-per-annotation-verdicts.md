@@ -19,3 +19,5 @@
 ## Comments
 
 Live-driven: artifact change, reload, re-resolution, revision relation, before/after toggle, and every verdict path (approve, reject, another-pass, supersede, obsolete) with stored-state read-back. Mapped but not driven live: an ambiguous resolution with candidate choice, and a blocked verdict refusal. `resolution-and-honesty.md` and `verify-each-annotation.md` map them.
+
+Code-review follow-up: `decide` now waits for the verdict to land in stored state and reports an unreachable path if it does not, so a click alone no longer reports success.

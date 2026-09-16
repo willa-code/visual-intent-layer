@@ -52,7 +52,7 @@ Usage:
   lever cleanup [--run <name>]
   lever open --html <path> [--name <label>]        (alias of launch)
 
-  lever select --tool element|region|arrange --target <css> [--add] [--nth <n>]
+  lever select --tool element|text|region|arrange --target <css> [--add] [--nth <n>]
   lever select --tool region --from <css> --to <css>
   lever annotate --note <text>
   lever relate --operator <operator> --from <css> --to <css>
@@ -82,7 +82,7 @@ Usage:
   lever setup [--global|--print-only|--status|--harness <name> ...]
   lever mcp --tool <name> [--args <json>] [--run <name>]
   lever finish --outcome clean|changed|blocked|aborted [--run <name>]
-  lever coverage --driven <feature-id> [--detail <text>] [--run <name>]
+  lever coverage --driven <feature-id> [--sub <id,id>] [--detail <text>] [--run <name>]
   lever press --key <key> [--target <css>] [--frame artifact]
   lever attention
   lever overflow --item <label>
@@ -100,20 +100,37 @@ Exit codes: 0 success, 2 usage error, 3 unmet precondition, 4 unreachable path.
 function findRepoRoot() {
   let dir = dirname(fileURLToPath(import.meta.url));
   for (let depth = 0; depth < 8; depth += 1) {
-    const pkg = join(dir, 'package.json');
-    if (existsSync(pkg)) {
-      try {
-        const parsed = JSON.parse(readFileSync(pkg, 'utf8'));
-        if (parsed.name === 'visual-intent-layer') {
-          return dir;
-        }
-      } catch {
-        // keep walking
-      }
+    if (packageNameAt(dir) === 'visual-intent-layer') {
+      return dir;
     }
     dir = dirname(dir);
   }
   return process.cwd();
+}
+
+function packageNameAt(dir) {
+  const pkg = join(dir, 'package.json');
+  if (!existsSync(pkg)) {
+    return undefined;
+  }
+  return tryJson(readFileSync(pkg, 'utf8'))?.name;
+}
+
+function tryJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+function signalProcess(pid, signal) {
+  try {
+    process.kill(pid, signal);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function nowStamp() {
@@ -173,11 +190,7 @@ function pidAlive(pid) {
 
 function readJson(file, fallback) {
   if (!existsSync(file)) return fallback;
-  try {
-    return JSON.parse(readFileSync(file, 'utf8'));
-  } catch {
-    return fallback;
-  }
+  return tryJson(readFileSync(file, 'utf8')) ?? fallback;
 }
 
 function writeJson(file, value) {
@@ -202,6 +215,24 @@ function resolveRun(runRef) {
     if (existsSync(dir)) return dir;
   }
   fail(EXIT.precondition, 'No Verification Run exists yet.', 'Run `lever launch --html <path>` first.');
+}
+
+function runName(runDir) {
+  return runDir.split(/[/\\]/).pop();
+}
+
+function persistSecret(runDir, secret) {
+  writeJson(secretPath(runDir), secret);
+  chmodSync(secretPath(runDir), 0o600);
+}
+
+function adoptProduct(secret, child, record) {
+  secret.productPid = child.pid;
+  secret.sessionId = record.sessionId;
+  secret.reviewUrl = record.reviewUrl;
+  secret.baseUrl = record.baseUrl;
+  secret.capability = new URL(record.reviewUrl).searchParams.get('cap');
+  persistSecret(secret.runDir, secret);
 }
 
 function secretPath(runDir) {
@@ -266,15 +297,27 @@ function hostCall(secret) {
   };
 }
 
-function recordUnreachableQuiet(runDir, command, precondition) {
+function mutateState(runDir, mutate, options = {}) {
   const file = join(runDir, 'state.json');
   if (!existsSync(file)) return;
   const state = readJson(file, {});
-  state.unreachable = state.unreachable ?? [];
-  state.unreachable.push({ command, precondition, at: new Date().toISOString() });
+  mutate(state);
   writeJson(file, state);
   writeReport(runDir);
-  writeRunRecord(runDir);
+  if (options.runRecord) {
+    writeRunRecord(runDir);
+  }
+}
+
+function recordUnreachableQuiet(runDir, command, precondition) {
+  mutateState(
+    runDir,
+    (state) => {
+      state.unreachable = state.unreachable ?? [];
+      state.unreachable.push({ command, precondition, at: new Date().toISOString() });
+    },
+    { runRecord: true }
+  );
 }
 
 function git(args) {
@@ -367,15 +410,13 @@ function spawnProduct(secret) {
       if (newline !== -1) {
         const line = buffer.slice(0, newline).trim();
         buffer = buffer.slice(newline + 1);
-        try {
-          const record = JSON.parse(line);
+        const record = tryJson(line);
+        if (record) {
           clearTimeout(timer);
           child.stdout.removeAllListeners('data');
           child.stdout.destroy();
           child.unref();
           resolvePromise({ child, record });
-        } catch {
-          // not the launch record yet
         }
       }
     });
@@ -440,6 +481,20 @@ async function productGet(secret, path) {
   return { status: response.status, json };
 }
 
+async function waitForAnnotations(secret, predicate, description, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs;
+  let last = [];
+  while (Date.now() < deadline) {
+    const snapshot = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
+    last = snapshot.json.annotations ?? [];
+    if (last.some(predicate)) {
+      return last;
+    }
+    await sleep(150);
+  }
+  fail(EXIT.unreachable, `Stored state never showed ${description}.`, 'Read `lever state`, then retry after a `lever health` check.');
+}
+
 async function healthReport(runDir) {
   const secret = readSecret(runDir);
   const state = readState(runDir);
@@ -500,7 +555,7 @@ async function assertHealthy(runDir) {
 
 async function commandLaunch(flags) {
   const html = flags.html;
-  const app = app_(flags);
+  const app = appUrl(flags);
   if (!html && !app) {
     fail(EXIT.usage, 'launch needs --html <path> or --app <localhost-url>.', 'Run `lever help` for the surface.');
   }
@@ -552,21 +607,16 @@ async function commandLaunch(flags) {
   };
   const { child, record } = await spawnProduct(secret);
   child.unref();
-  secret.productPid = child.pid;
-  secret.sessionId = record.sessionId;
-  secret.reviewUrl = record.reviewUrl;
-  secret.baseUrl = record.baseUrl;
-  secret.capability = new URL(record.reviewUrl).searchParams.get('cap');
+  adoptProduct(secret, child, record);
   writeJson(lockPath(dataDir), { pid: child.pid, runDir, dataDir, startedAt: new Date().toISOString() });
   const host = await spawnHost(secret, headless);
   secret.hostPid = host.pid;
   secret.hostEndpoint = host.endpoint;
-  writeJson(secretPath(runDir), secret);
-  chmodSync(secretPath(runDir), 0o600);
+  persistSecret(runDir, secret);
   await callHost(host.endpoint, 'POST', '/navigate', { url: secret.reviewUrl });
   const environmentRecord = environment();
   writeJson(join(runDir, 'state.json'), {
-    run: runDir.split('/').pop(),
+    run: runName(runDir),
     startedAt: new Date().toISOString(),
     status: 'running',
     outcome: 'aborted',
@@ -581,15 +631,15 @@ async function commandLaunch(flags) {
     host: { pid: host.pid },
     environment: environmentRecord,
     evidence: [],
-    coverage: { driven: [{ id: 'open-artifact', detail: 'launched and rendered the Artifact', at: new Date().toISOString() }], mapped: MAPPED_FEATURES.map((id) => ({ id })) },
+    coverage: { driven: [{ id: 'open-artifact', detail: 'launched and rendered the Artifact', subFeatures: ['open-html', 'open-identity', 'open-isolation', 'open-faithful', 'open-health'], at: new Date().toISOString() }], mapped: MAPPED_FEATURES.map((id) => ({ id })) },
     unreachable: []
   });
   writeReport(runDir);
-  writeFileSync(join(RUN_ROOT, 'latest'), runDir.split('/').pop(), 'utf8');
+  writeFileSync(join(RUN_ROOT, 'latest'), runName(runDir), 'utf8');
   output({
     ok: true,
     command: 'launch',
-    run: runDir.split('/').pop(),
+    run: runName(runDir),
     runDir: runDir.slice(REPO_ROOT.length + 1),
     baseUrl: record.baseUrl,
     reviewUrl: record.reviewUrl,
@@ -602,7 +652,7 @@ async function commandLaunch(flags) {
   });
 }
 
-function app_(flags) {
+function appUrl(flags) {
   return typeof flags.app === 'string' ? flags.app : undefined;
 }
 
@@ -634,7 +684,7 @@ async function commandSession(flags) {
   output({
     ok: true,
     command: 'session',
-    run: runDir.split('/').pop(),
+    run: runName(runDir),
     sessionId: secret.sessionId,
     baseUrl: secret.baseUrl,
     reviewUrl: sanitizedReviewUrl(secret.reviewUrl),
@@ -670,14 +720,13 @@ async function commandCleanup(flags) {
   const evidence = await verifyEvidence(runDir);
   state.status = 'stopped';
   state.finishedAt = new Date().toISOString();
-  state.outcome = state.outcome === 'aborted' ? 'clean' : state.outcome;
   state.evidenceIntact = evidence.intact;
   writeJson(join(runDir, 'state.json'), state);
   writeReport(runDir);
   output({
     ok: true,
     command: 'cleanup',
-    run: runDir.split('/').pop(),
+    run: runName(runDir),
     evidenceIntact: evidence.intact,
     evidence,
     processRemoved: { productPid: secret.productPid, hostPid: secret.hostPid },
@@ -687,9 +736,7 @@ async function commandCleanup(flags) {
 
 async function terminate(pid) {
   if (!pid || !pidAlive(pid)) return;
-  try {
-    process.kill(pid, 'SIGTERM');
-  } catch {
+  if (!signalProcess(pid, 'SIGTERM')) {
     return;
   }
   const deadline = Date.now() + 5000;
@@ -697,11 +744,7 @@ async function terminate(pid) {
     await sleep(100);
   }
   if (pidAlive(pid)) {
-    try {
-      process.kill(pid, 'SIGKILL');
-    } catch {
-      // already gone
-    }
+    signalProcess(pid, 'SIGKILL');
   }
 }
 
@@ -740,7 +783,7 @@ function writeReport(runDir) {
     '',
     '## Coverage',
     '',
-    `- Driven: ${(state.coverage?.driven ?? []).map((entry) => entry.id).join(', ') || 'none recorded'}`,
+    `- Driven: ${(state.coverage?.driven ?? []).map((entry) => `${entry.id}${entry.subFeatures?.length ? ` [${entry.subFeatures.join(', ')}]` : ''}`).join(', ') || 'none recorded'}`,
     `- Mapped: ${(state.coverage?.mapped ?? []).map((entry) => entry.id).join(', ') || 'none recorded'}`,
     '',
     '## Evidence',
@@ -755,32 +798,30 @@ function writeReport(runDir) {
 }
 
 function recordEvidence(runDir, entry) {
-  const state = readState(runDir);
-  state.evidence = state.evidence ?? [];
-  state.evidence.push({ at: new Date().toISOString(), ...entry });
-  writeJson(join(runDir, 'state.json'), state);
-  writeReport(runDir);
+  mutateState(runDir, (state) => {
+    state.evidence = state.evidence ?? [];
+    state.evidence.push({ at: new Date().toISOString(), ...entry });
+  });
 }
 
-function recordCoverage(runDir, id, action, detail) {
-  const state = readState(runDir);
-  state.coverage = state.coverage ?? { driven: [], mapped: [] };
-  if (action === 'driven' && !state.coverage.driven.some((entry) => entry.id === id)) {
-    state.coverage.driven.push({ id, detail: detail ?? null, at: new Date().toISOString() });
-  }
-  if (action === 'mapped' && !state.coverage.mapped.some((entry) => entry.id === id)) {
-    state.coverage.mapped.push({ id, detail: detail ?? null });
-  }
-  writeJson(join(runDir, 'state.json'), state);
-  writeReport(runDir);
-}
-
-function recordUnreachable(runDir, command, precondition) {
-  const state = readState(runDir);
-  state.unreachable = state.unreachable ?? [];
-  state.unreachable.push({ command, precondition, at: new Date().toISOString() });
-  writeJson(join(runDir, 'state.json'), state);
-  writeReport(runDir);
+function recordCoverage(runDir, id, action, detail, subFeatures = []) {
+  mutateState(runDir, (state) => {
+    state.coverage = state.coverage ?? { driven: [], mapped: [] };
+    if (action === 'driven') {
+      const existing = state.coverage.driven.find((entry) => entry.id === id);
+      if (existing) {
+        existing.subFeatures = [...new Set([...(existing.subFeatures ?? []), ...subFeatures])];
+        if (detail) {
+          existing.detail = detail;
+        }
+      } else {
+        state.coverage.driven.push({ id, detail: detail ?? null, subFeatures, at: new Date().toISOString() });
+      }
+    }
+    if (action === 'mapped' && !state.coverage.mapped.some((entry) => entry.id === id)) {
+      state.coverage.mapped.push({ id, detail: detail ?? null });
+    }
+  });
 }
 
 function targetFromFlags(flags) {
@@ -800,8 +841,8 @@ async function commandSelect(flags) {
   const runDir = resolveRun(flags.run);
   const secret = await assertHealthy(runDir);
   const tool = typeof flags.tool === 'string' ? flags.tool : 'element';
-  if (!['element', 'region', 'arrange'].includes(tool)) {
-    fail(EXIT.usage, `Unsupported selection tool ${tool}.`, 'Use element, region or arrange.');
+  if (!['element', 'text', 'region', 'arrange'].includes(tool)) {
+    fail(EXIT.usage, `Unsupported selection tool ${tool}.`, 'Use element, text, region or arrange.');
   }
   const host = hostCall(secret);
   if (flags['dry-run']) {
@@ -816,6 +857,8 @@ async function commandSelect(flags) {
       frame: 'artifact',
       ...(flags.add ? { modifiers: ['Shift'] } : {})
     });
+  } else if (tool === 'text') {
+    await host('/select-text', { target: targetFromFlags(flags), frame: 'artifact' });
   } else if (tool === 'region') {
     if (typeof flags.from !== 'string' || typeof flags.to !== 'string') {
       fail(EXIT.usage, 'region selection needs --from <css> and --to <css>.', 'Run `lever help` for the surface.');
@@ -826,6 +869,9 @@ async function commandSelect(flags) {
   const shot = await host('/screenshot', { name: `select-${tool}-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: `select-${tool}`, path: shot.path });
   await host('/snapshot', { name: `select-${tool}-${Date.now()}` });
+  if (['element', 'text', 'region'].includes(tool)) {
+    recordCoverage(runDir, 'annotate-and-send', 'driven', `selected with the ${tool} tool`, [flags.add ? 'select-multiple' : `select-${tool}`]);
+  }
   output({ ok: true, command: 'select', tool, screenshot: shot.path });
 }
 
@@ -846,10 +892,10 @@ async function commandAnnotate(flags) {
   const host = hostCall(secret);
   await host('/wait', { target: { selector: '.anchored-card textarea' }, state: 'visible' });
   await host('/fill', { target: { selector: '.anchored-card textarea' }, value: flags.note });
-  await sleep(600);
+  await waitForAnnotations(secret, (annotation) => annotation.note === flags.note, `the note "${flags.note}"`);
   const shot = await host('/screenshot', { name: `annotate-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: 'annotate', path: shot.path });
-  recordCoverage(runDir, 'annotate-and-send', 'driven', 'wrote a note onto a selected target');
+  recordCoverage(runDir, 'annotate-and-send', 'driven', 'wrote a note onto a selected target', ['annotate-note']);
   output({ ok: true, command: 'annotate', note: flags.note, screenshot: shot.path });
 }
 
@@ -865,7 +911,7 @@ async function commandQueue(flags) {
   await host('/wait', { target: { selector: '.queue-item' }, state: 'visible' });
   const shot = await host('/screenshot', { name: `queue-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: 'queue', path: shot.path });
-  recordCoverage(runDir, 'annotate-and-send', 'driven', 'queued an Annotation');
+  recordCoverage(runDir, 'annotate-and-send', 'driven', 'queued an Annotation', ['queue-add']);
   output({ ok: true, command: 'queue', screenshot: shot.path });
 }
 
@@ -882,14 +928,17 @@ async function commandSend(flags) {
     return;
   }
   const host = hostCall(secret);
+  await host('/select-option', { target: { selector: 'select[aria-label="Delivery timing"]' }, value: intent });
   await host('/click', { target: { role: 'button', name: 'Send the queue' } });
   let delivered = false;
+  let deliveredIntent;
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
     const snapshot = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
     const annotations = snapshot.json.annotations ?? [];
     if (annotations.some((annotation) => annotation.state === 'delivered' || annotation.state === 'resolved')) {
       delivered = true;
+      deliveredIntent = (snapshot.json.batches ?? []).at(-1)?.intent;
       break;
     }
     await sleep(200);
@@ -899,7 +948,10 @@ async function commandSend(flags) {
   if (!delivered) {
     fail(EXIT.unreachable, 'The Annotation Queue did not reach a delivered state.', 'Read `lever state` and retry after a `lever health` check.');
   }
-  recordCoverage(runDir, 'annotate-and-send', 'driven', `sent with ${intent}`);
+  if (deliveredIntent !== intent) {
+    fail(EXIT.unreachable, `The queue was delivered as ${deliveredIntent} rather than ${intent}.`, 'Re-select the delivery timing and send again.');
+  }
+  recordCoverage(runDir, 'annotate-and-send', 'driven', `sent with ${intent}`, [`send-${intent}`]);
   output({ ok: true, command: 'send', intent, delivered: true, screenshot: shot.path });
 }
 
@@ -927,13 +979,19 @@ async function commandRelate(flags) {
   await host('/click', { target: { role: 'button', name: 'Arrange tool', exact: false } });
   const drag = dragFor(operator);
   await host('/drag', { from, to, frame: 'artifact', ...drag });
-  await sleep(400);
-  const snapshot = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
-  const relations = (snapshot.json.annotations ?? []).flatMap((annotation) => annotation.relationships ?? []);
-  const match = relations.find((relation) => relation.operator === operator) ?? relations[0];
+  let match;
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline && !match) {
+    const snapshot = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
+    const relations = (snapshot.json.annotations ?? []).flatMap((annotation) => annotation.relationships ?? []);
+    match = relations.find((relation) => relation.operator === operator) ?? relations[0];
+    if (!match) {
+      await sleep(150);
+    }
+  }
   const shot = await host('/screenshot', { name: `relate-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: `relate-${operator}`, path: shot.path });
-  recordCoverage(runDir, 'relational-intent', 'driven', operator);
+  recordCoverage(runDir, 'relational-intent', 'driven', operator, ['relation-sentence', 'relation-stored']);
   if (!match) {
     fail(EXIT.unreachable, `The surface did not record a relation from that manipulation.`, 'Read `lever state` and repeat the manipulation.');
   }
@@ -980,7 +1038,7 @@ async function commandAttach(flags) {
   const attachments = (snapshot.json.annotations ?? []).flatMap((annotation) => annotation.attachments ?? []);
   const shot = await host('/screenshot', { name: `attach-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: 'attach', path: shot.path });
-  recordCoverage(runDir, 'attachments', 'driven', 'attached a reference image');
+  recordCoverage(runDir, 'attachments', 'driven', 'attached a reference image', ['attach-pick', 'attach-stored']);
   output({ ok: true, command: 'attach', attachments, screenshot: shot.path });
 }
 
@@ -998,7 +1056,7 @@ async function commandReload(flags) {
   await sleep(800);
   const shot = await host('/screenshot', { name: `reload-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: 'reload', path: shot.path });
-  recordCoverage(runDir, 'resolution-and-honesty', 'driven', 'reloaded the changed Artifact');
+  recordCoverage(runDir, 'resolution-and-honesty', 'driven', 'reloaded the changed Artifact', ['resolution-reload']);
   output({ ok: true, command: 'reload', screenshot: shot.path });
 }
 
@@ -1011,18 +1069,13 @@ async function commandRestartService(flags) {
   }
   await terminate(secret.productPid);
   const { child, record } = await spawnProduct(secret);
-  secret.productPid = child.pid;
-  secret.sessionId = record.sessionId;
-  secret.reviewUrl = record.reviewUrl;
-  secret.baseUrl = record.baseUrl;
-  secret.capability = new URL(record.reviewUrl).searchParams.get('cap');
-  writeJson(secretPath(runDir), secret);
-  chmodSync(secretPath(runDir), 0o600);
+  child.unref();
+  adoptProduct(secret, child, record);
   writeJson(lockPath(secret.dataDir), { pid: child.pid, runDir, dataDir: secret.dataDir, startedAt: new Date().toISOString() });
   await callHost(secret.hostEndpoint, 'POST', '/navigate', { url: secret.reviewUrl });
   const shot = await hostCall(secret)('/screenshot', { name: `restart-service-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: 'restart-service', path: shot.path });
-  recordCoverage(runDir, 'never-discard-writing', 'driven', 'restarted the service');
+  recordCoverage(runDir, 'never-discard-writing', 'driven', 'restarted the service', ['survive-service-restart']);
   output({ ok: true, command: 'restart-service', productPid: child.pid, baseUrl: record.baseUrl, sessionId: record.sessionId, screenshot: shot.path });
 }
 
@@ -1036,7 +1089,7 @@ async function commandRestartBrowser(flags) {
   const result = await callHost(secret.hostEndpoint, 'POST', '/restart', { url: secret.reviewUrl });
   const shot = await hostCall(secret)('/screenshot', { name: `restart-browser-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: 'restart-browser', path: shot.path });
-  recordCoverage(runDir, 'never-discard-writing', 'driven', 'restarted the browser');
+  recordCoverage(runDir, 'never-discard-writing', 'driven', 'restarted the browser', ['survive-browser-restart']);
   output({ ok: true, command: 'restart-browser', url: result.url, screenshot: shot.path });
 }
 
@@ -1053,7 +1106,7 @@ async function commandReloadSurface(flags) {
   await sleep(600);
   const shot = await host('/screenshot', { name: `reload-surface-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: 'reload-surface', path: shot.path });
-  recordCoverage(runDir, 'never-discard-writing', 'driven', 'reloaded the Review Surface');
+  recordCoverage(runDir, 'never-discard-writing', 'driven', 'reloaded the Review Surface', ['survive-reload']);
   output({ ok: true, command: 'reload-surface', screenshot: shot.path });
 }
 
@@ -1128,7 +1181,7 @@ async function commandReorder(flags) {
   await sleep(300);
   const snapshot = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
   const order = (snapshot.json.annotations ?? []).sort((a, b) => a.order - b.order).map((annotation) => annotation.annotationId);
-  recordCoverage(runDir, 'annotate-and-send', 'driven', `reordered ${direction.toLowerCase()}`);
+  recordCoverage(runDir, 'annotate-and-send', 'driven', `reordered ${direction.toLowerCase()}`, ['queue-reorder']);
   output({ ok: true, command: 'reorder', moved: direction, order });
 }
 
@@ -1139,7 +1192,8 @@ async function commandCoverage(flags) {
     fail(EXIT.usage, 'coverage needs --driven <feature-id>.', 'Use the id from the feature map index.');
   }
   const detail = typeof flags.detail === 'string' ? flags.detail : null;
-  recordCoverage(runDir, id, 'driven', detail);
+  const subFeatures = typeof flags.sub === 'string' ? flags.sub.split(',').map((entry) => entry.trim()).filter(Boolean) : [];
+  recordCoverage(runDir, id, 'driven', detail, subFeatures);
   const state = readState(runDir);
   output({ ok: true, command: 'coverage', driven: id, coverage: state.coverage });
 }
@@ -1156,7 +1210,7 @@ async function commandFinish(flags) {
   writeJson(join(runDir, 'state.json'), state);
   writeRunRecord(runDir);
   writeReport(runDir);
-  writeFileSync(join(RUN_ROOT, 'latest'), runDir.split('/').pop(), 'utf8');
+  writeFileSync(join(RUN_ROOT, 'latest'), runName(runDir), 'utf8');
   output({ ok: true, command: 'finish', outcome, coverage: state.coverage ?? { driven: [], mapped: [] }, unreachable: state.unreachable ?? [] });
 }
 
@@ -1186,7 +1240,7 @@ async function commandVerify(flags) {
   await sleep(500);
   const shot = await host('/screenshot', { name: `verify-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: 'verify', path: shot.path });
-  recordCoverage(runDir, 'verify-each-annotation', 'driven', 'entered Verify');
+  recordCoverage(runDir, 'verify-each-annotation', 'driven', 'entered Verify', ['verify-enter', 'verify-before-after']);
   output({ ok: true, command: 'verify', screenshot: shot.path });
 }
 
@@ -1205,12 +1259,25 @@ async function commandDecide(flags) {
   }
   const host = hostCall(secret);
   await host('/click', { target: { role: 'button', name: label, exact: true, nth: rowIndex } });
-  await sleep(500);
-  const snapshot = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
-  const annotations = snapshot.json.annotations ?? [];
+  const expected = { approve: 'verified', reject: 'rejected', 'another-pass': 'another-pass', supersede: 'superseded', obsolete: 'obsolete' }[verdict];
+  const deadline = Date.now() + 10000;
+  let annotations = [];
+  let landed = false;
+  while (Date.now() < deadline) {
+    const snapshot = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
+    annotations = snapshot.json.annotations ?? [];
+    if (annotations[rowIndex]?.state === expected) {
+      landed = true;
+      break;
+    }
+    await sleep(150);
+  }
   const shot = await host('/screenshot', { name: `decide-${verdict}-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: `decide-${verdict}`, path: shot.path });
-  recordCoverage(runDir, 'verify-each-annotation', 'driven', verdict);
+  if (!landed) {
+    fail(EXIT.unreachable, `The ${verdict} verdict did not land on row ${rowIndex}.`, 'The decision may be blocked; read `lever state` for the refusal reason.');
+  }
+  recordCoverage(runDir, 'verify-each-annotation', 'driven', verdict, [`verify-${verdict}`]);
   output({ ok: true, command: 'decide', verdict, states: annotations.map((annotation) => annotation.state), screenshot: shot.path });
 }
 
@@ -1229,10 +1296,14 @@ async function commandChoose(flags) {
   }
   const host = hostCall(secret);
   await host('/click', { target: { selector: `input[type="radio"][value="${node}"]` } });
-  await sleep(400);
+  await waitForAnnotations(
+    secret,
+    (annotation) => Object.values(annotation.chosenCandidates ?? {}).includes(node),
+    `the chosen candidate ${node}`
+  );
   const shot = await host('/screenshot', { name: `choose-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: 'choose', path: shot.path });
-  recordCoverage(runDir, 'resolution-and-honesty', 'driven', node);
+  recordCoverage(runDir, 'resolution-and-honesty', 'driven', node, ['resolution-choose']);
   output({ ok: true, command: 'choose', node, target, screenshot: shot.path });
 }
 
@@ -1277,7 +1348,6 @@ function safeAnnotation(annotation) {
     state: annotation.state,
     note: annotation.note,
     order: annotation.order,
-    reorderable: annotation.order,
     revisionRelation: annotation.revisionRelation,
     relationships: annotation.relationships,
     attachments: annotation.attachments,
@@ -1324,9 +1394,11 @@ async function commandRecord(flags) {
     ? readdirSync(join(runDir, 'evidence')).filter((entry) => /^recording.*\.webm$/.test(entry))
     : [];
   const recording = recordings.length > 0 ? join(runDir, 'evidence', recordings[recordings.length - 1]) : null;
-  recordEvidence(runDir, { kind: 'recording', name, path: recording ?? join(runDir, 'evidence', 'video') });
+  const recordingPending = recording === null;
+  const willFinalizeAt = join(runDir, 'evidence', 'recording.webm');
+  recordEvidence(runDir, { kind: 'recording', name, path: recording ?? willFinalizeAt });
   recordEvidence(runDir, { kind: 'screenshot', name: `record-${name}`, path: shot.path });
-  output({ ok: true, command: 'record', name, screenshot: shot.path, recording });
+  output({ ok: true, command: 'record', name, screenshot: shot.path, recording, recordingPending, willFinalizeAt });
 }
 
 async function commandTrace(flags) {

@@ -19,3 +19,5 @@
 ## Comments
 
 `select`, `annotate`, `queue`, `reorder` and `send --intent next-pass|steering|draft` are implemented and driven live; the contract test sends with every timing and reads the stored state back. `annotate-and-send.md` maps the feature.
+
+Code-review follow-up: `send` now sets the delivery-timing control before sending and asserts the stored batch intent, and a `send --dry-run` leaves stored state unchanged. The Text tool is now drivable (`select --tool text --target <css>`); `region` is drivable via `--from`/`--to`.

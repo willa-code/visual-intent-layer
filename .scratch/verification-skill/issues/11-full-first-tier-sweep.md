@@ -11,7 +11,7 @@
 - [x] It covers the difference between delivery timings for the same Annotation
 - [x] One Verification Run sweeps every first-tier behaviour in the map's stated sweep order
 - [x] The run record states its outcome, using the same vocabulary the periodic maintenance pass uses
-- [ ] The run record states its coverage: features and sub-features driven against those mapped (feature-level coverage recorded; sub-feature granularity outstanding)
+- [x] The run record states its coverage: features and sub-features driven against those mapped
 - [x] The run record states the environment it ran against and indexes its evidence
 - [x] Every unreachable path is recorded with the command attempted and the unmet precondition, and is not counted as covered through a different path
 - [x] Evidence survives cleanup, proven by re-reading it at its declared location after teardown
@@ -21,3 +21,5 @@
 ## Comments
 
 A Verification Run swept the six first-tier features in order: outcome `clean`, coverage driven `open-artifact, annotate-and-send, resolution-and-honesty, verify-each-annotation, relational-intent, never-discard-writing` against 15 mapped features, with the environment, launch record and evidence index. Evidence survived cleanup at its declared location and `.visual-intent-verify/latest` names the run. Coverage is feature-level; sub-feature granularity is recorded in each command detail. `journeys.md` maps the cross-surface behaviours.
+
+Code-review follow-up: coverage now records sub-feature ids per driven feature, and the sweep was re-run; the run record lists e.g. `verify-each-annotation [verify-enter, verify-before-after, verify-approve, verify-reject, verify-another-pass, verify-supersede, verify-obsolete]`.

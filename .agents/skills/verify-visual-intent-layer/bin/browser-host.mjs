@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createServer } from 'node:http';
-import { appendFileSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 
@@ -114,6 +114,22 @@ const handlers = {
   },
   'POST /fill': async (body) => {
     await pick(locatorFor(body.target, body.frame), body.target).fill(body.value);
+    return { ok: true };
+  },
+  'POST /select-option': async (body) => {
+    await pick(locatorFor(body.target, body.frame), body.target).selectOption(body.value);
+    return { ok: true };
+  },
+  'POST /select-text': async (body) => {
+    const box = await pick(locatorFor(body.target, body.frame), body.target).boundingBox();
+    if (!box) {
+      throw new Error('the text target has no measurable box');
+    }
+    const y = box.y + box.height / 2;
+    await page.mouse.move(box.x + 1, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width - 1, y, { steps: 12 });
+    await page.mouse.up();
     return { ok: true };
   },
   'POST /press': async (body) => {
@@ -274,4 +290,3 @@ log(`host ready on ${endpoint}`);
 process.on('SIGTERM', () => {
   void closeBrowser().finally(() => process.exit(0));
 });
-void existsSync;

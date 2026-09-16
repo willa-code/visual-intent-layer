@@ -1,11 +1,6 @@
 import type { OpenedArtifact } from '../mcp/service.js';
 
-export type LaunchArtifact = {
-  id: string;
-  kind: string;
-  revision: string;
-  displayName: string;
-};
+export type LaunchArtifact = OpenedArtifact['artifact'];
 
 export type LaunchRecord = {
   command: 'open' | 'serve';
@@ -36,12 +31,7 @@ export function openLaunchRecord(opened: OpenedArtifact, baseUrl: string, port: 
     port,
     reviewUrl: opened.reviewUrl,
     sessionId: opened.sessionId,
-    artifact: {
-      id: opened.artifact.id,
-      kind: opened.artifact.kind,
-      revision: opened.artifact.revision,
-      displayName: opened.artifact.displayName
-    },
+    artifact: opened.artifact,
     reused: opened.reused
   };
 }

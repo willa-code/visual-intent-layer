@@ -211,6 +211,30 @@ describe('Lever contract: a first-tier drive', () => {
     expect((verified.verification as Record<string, unknown>).verdict).toBe('approve');
   }, 120000);
 
+  it('selects an exact text range through the Text tool', () => {
+    expect(lever(['review', '--run', name]).status).toBe(0);
+    const selected = lever(['select', '--run', name, '--tool', 'text', '--target', '.gallery-note']);
+    expect(selected.status, selected.stderr).toBe(0);
+    const textTarget = annotations().some((annotation) =>
+      ((annotation.targets as Array<Record<string, unknown>>) ?? []).some((target) => target.kind === 'text-range')
+    );
+    expect(textTarget).toBe(true);
+    expect(lever(['press', '--run', name, '--key', 'Escape']).status).toBe(0);
+  }, 60000);
+
+  it('a send dry-run performs no delivery', () => {
+    expect(lever(['select', '--run', name, '--tool', 'element', '--target', '.shipping-note']).status).toBe(0);
+    expect(lever(['annotate', '--run', name, '--note', 'dry-run only']).status).toBe(0);
+    expect(lever(['queue', '--run', name]).status).toBe(0);
+    const before = annotations().map((annotation) => annotation.state);
+    const dry = lever(['send', '--run', name, '--dry-run']);
+    expect(dry.status).toBe(0);
+    expect(dry.json).toMatchObject({ dryRun: true });
+    const after = annotations();
+    expect(after.map((annotation) => annotation.state)).toEqual(before);
+    expect(after.every((annotation) => !['delivered', 'resolved'].includes(String(annotation.state)))).toBe(true);
+  }, 60000);
+
   it('sends with each supported delivery timing', () => {
     for (const intent of ['next-pass', 'steering', 'draft']) {
       expect(lever(['select', '--run', name, '--tool', 'element', '--target', '.shipping-note']).status).toBe(0);

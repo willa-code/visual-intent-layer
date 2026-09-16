@@ -32,6 +32,8 @@ Preconditions:
 - The Annotation Queue is empty unless the recipe says otherwise.
 
 - **Select an element.** Choose the Element tool and click the target. Run `… lever.mjs select --tool element --target ".checkout-submit"`. Exit `0`, a screenshot under `evidence/`, and `… lever.mjs state` showing one draft Annotation with one target labelled `Place order`.
+- **Select an exact text range.** Choose the Text tool and drag across the text. Run `… lever.mjs select --tool text --target ".gallery-note"`. Exit `0` and `state` showing a draft Annotation whose target `kind` is `text-range`.
+- **Select a region.** Choose the Region tool and draw an area. Run `… lever.mjs select --tool region --from ".gallery" --to ".checkout-submit"`. Exit `0` and `state` showing a draft Annotation whose target `kind` is `region`.
 - **Write the note.** Type into the anchored card. Run `… lever.mjs annotate --note "Make the Place order button impossible to miss."`. Exit `0`; after the debounce, `state` shows the same note on the draft.
 - **Queue the Annotation.** Choose `Queue`. Run `… lever.mjs queue`. Exit `0` and `state` showing state `queued`.
 - **Add a second Annotation.** Select another target and queue it. Run `… lever.mjs select --tool element --target ".gallery-note"`, `… lever.mjs annotate --note "…"`, `… lever.mjs queue`. `state` shows two Annotations in queue order.
