@@ -37,9 +37,38 @@ Dogfooding is what closes the `ready-for-human` verification tickets under `.scr
 
 Completion: the built binary runs, and the behaviour under test is exercised end to end.
 
+## Docs sync
+
+Docs are a cache of the environment, so a sync runs code → docs: read the shipped surface from its own sources, then correct every current doc that disagrees. Do this before a release, and whenever behaviour changed.
+
+Read the surface from its own sources, not from the docs:
+
+- `visual-intent --help` and `src/cli.ts` — commands, flags, environment variables
+- `createReviewService().listTools()` — the MCP tool names, descriptions and input schemas
+- the route patterns in `src/service/http.ts` — what a caller can actually reach
+- `harness-registry.ts` and `cli-setup.ts` — detected harnesses, scopes, transports, Skill install
+- `schema/`, `package.json` (`bin`, `files`, `scripts`) and `src/host/capabilities.ts`
+- `src/ui/` — the modes, keys and surfaces a Builder-Reviewer sees
+
+Then correct the current docs that claim otherwise: `README.md`, `CONTEXT.md`,
+`design.md`, `SECURITY.md`, `skills/visual-intent/`, `docs/pi-validation.md`, and
+the verification feature map under
+`.agents/skills/verify-visual-intent-layer/references/features/`.
+
+Rules:
+
+- Keep one source of truth: a doc states the behaviour, the environment holds the value. Delete a lookup the agent can re-read.
+- Keep ADRs, `docs/background/` research and `.scratch/` records as history. When one asserts behaviour that changed, mark it superseded or corrected; never rewrite the record.
+- Every feature file keeps its four sections and a truthful coverage marker (`Not yet driven.`, `Partly driven live`, or none), and no internal doc link breaks.
+
+Completion: every shipped behaviour named in a current doc matches its environment
+source, no current doc carries vocabulary the build removed, and every internal
+doc link resolves.
+
 ## Preflight
 
-Run the CI gate on the release commit. A red preflight stops the release.
+Run Docs sync first, then the CI gate on the release commit. A red preflight stops
+the release.
 
 ```sh
 npm run typecheck && npm test && npm run build && npm run benchmark
@@ -105,4 +134,4 @@ Wire a failing check into CI in preference to a recurring checklist. On a green 
 
 - ticket statuses under `.scratch/<feature>/issues/` — `done`, boxes ticked, evidence in Comments
 - `npm outdated`, and the major versions of GitHub Actions
-- README and docs claims still match `visual-intent --help` and the writers in `src/`
+- a Docs sync, so no current doc has drifted from the build
