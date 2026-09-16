@@ -1,3 +1,5 @@
+import { icon, type IconName } from './icons.js';
+
 export type Props = {
   class?: string;
   text?: string;
@@ -11,7 +13,7 @@ export type Props = {
   title?: string;
   dataset?: Record<string, string>;
   attrs?: Record<string, string | number | boolean | null | undefined>;
-  style?: Partial<CSSStyleDeclaration>;
+  style?: Partial<CSSStyleDeclaration> | string;
   on?: Partial<Record<keyof HTMLElementEventMap, EventListener>>;
 };
 
@@ -66,7 +68,11 @@ export function h<K extends keyof HTMLElementTagNameMap>(
     }
   }
   if (props.style) {
-    Object.assign(element.style, props.style);
+    if (typeof props.style === 'string') {
+      element.setAttribute('style', props.style);
+    } else {
+      Object.assign(element.style, props.style);
+    }
   }
   if (props.on) {
     for (const [name, listener] of Object.entries(props.on)) {
@@ -113,12 +119,16 @@ export function qs<T extends Element = HTMLElement>(root: ParentNode, selector: 
   return root.querySelector<T>(selector);
 }
 
-export function iconButton(label: string, glyph: string, onClick: () => void): HTMLButtonElement {
-  return h(
-    'button',
-    { class: 'icon-button', type: 'button', title: label, attrs: { 'aria-label': label }, on: { click: onClick } },
-    glyph
-  );
+export function iconButton(label: string, name: IconName, onClick: () => void): HTMLButtonElement {
+  const button = h('button', {
+    class: 'icon-button',
+    type: 'button',
+    title: label,
+    attrs: { 'aria-label': label },
+    on: { click: onClick }
+  });
+  button.appendChild(icon(name, { size: 16 }));
+  return button;
 }
 
 export function button(

@@ -62,10 +62,9 @@ afterAll(async () => {
 });
 
 describe('Visual Direction Loop (primary seam: a real browser engine)', () => {
-  it('loads its own scripts and the artifact, annotates, sends, re-resolves, verifies, and survives a restart', async () => {
+  it('loads its own scripts and the artifact, points, sends, re-resolves, amends, stops, verifies, and survives a restart', async () => {
     const opened = await service.openSession({ kind: 'saved-html', path: artifactPath });
-    const review = createReviewService({ dataDir });
-    void review;
+    const artifactRevisionV1 = opened.artifact.revision;
 
     page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     page.on('console', (message) => {
@@ -97,32 +96,31 @@ describe('Visual Direction Loop (primary seam: a real browser engine)', () => {
 
     const logoWidth = await frame.locator('img.logo').evaluate((element) => (element as HTMLImageElement).naturalWidth);
     expect(logoWidth).toBeGreaterThan(0);
-
-    // The served asset graph must be reachable, or nothing above could have happened.
     expect(problems, problems.join('\n')).toEqual([]);
 
-    // Select the element and compose an Annotation in the card next to it.
-    await page.getByRole('button', { name: /Element tool/ }).click();
+    expect(await page.locator('header.banner').count()).toBe(0);
+    expect(await page.locator('.topbar').count()).toBe(0);
+    expect(await page.locator('.panel').count()).toBe(0);
+
+    await page.getByRole('button', { name: /Point at things/ }).click();
+    expect(await page.getByRole('button', { name: /Point at things, armed/ }).count()).toBe(1);
     await frame.locator('button.checkout-submit').click();
     const card = page.locator('.anchored-card');
     await card.waitFor({ state: 'visible' });
     await card.locator('textarea').fill('Make the Place order button impossible to miss.');
     await card.locator('textarea').press('Enter');
 
-    const queue = page.locator('.queue-item');
-    await queue.first().waitFor({ state: 'visible' });
     await expectLater(
-      () => queue.first().innerText(),
-      (text) => text.includes('impossible to miss'),
-      'the queued Annotation shows its note'
+      () => page.locator('.annotation-row', { hasText: 'impossible to miss' }).count(),
+      (count) => count === 1,
+      'the queued Annotation shows its note in the one list'
     );
     await expectLater(
-      () => page.locator('.pill', { hasText: 'Queued' }).count(),
-      (count) => count >= 1,
-      'the Annotation is in the queue'
+      () => page.locator('.pill[data-state="queued"]').count(),
+      (count) => count === 1,
+      'the Annotation is queued'
     );
 
-    // Send the queue as one batch.
     await page.getByRole('button', { name: 'Send the queue' }).click();
     await expectLater(
       async () => (await (await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?cap=${opened.capability}`)).json()) as never,
@@ -132,15 +130,19 @@ describe('Visual Direction Loop (primary seam: a real browser engine)', () => {
       },
       'the server received one delivered Annotation'
     );
+    await expectLater(
+      () => page.locator('.annotation-row', { hasText: 'impossible to miss' }).count(),
+      (count) => count === 1,
+      'sending did not remove the row from the list'
+    );
 
-    // Change the artifact and reload it under review.
     writeFileSync(artifactPath, ARTIFACT_V1.replace('</main>', '<p class="added">Added later</p></main>'), 'utf8');
     await page.locator('.banner').waitFor({ state: 'visible' });
+    const bannerText = await page.locator('.banner').innerText();
+    expect(bannerText).not.toMatch(/blake3/);
     await page.getByRole('button', { name: 'Reload artifact' }).click();
     await expectLater(() => frame.locator('p.added').count(), (count) => count === 1, 'the reloaded revision is on screen');
 
-    // Verify: the target is re-resolved and the decision is per Annotation.
-    await page.getByRole('button', { name: 'Verify' }).click();
     await expectLater(
       async () => {
         const snapshot = (await (
@@ -148,7 +150,7 @@ describe('Visual Direction Loop (primary seam: a real browser engine)', () => {
         ).json()) as { annotations: Array<{ state: string; resolutions: unknown[] }> };
         return snapshot.annotations[0];
       },
-      (annotation) => !!annotation && (annotation.state === 'resolved' || annotation.state === 'verified'),
+      (annotation) => !!annotation && (annotation.state === 'resolved' || annotation.state === 'delivered'),
       'the server records a re-resolution for the Annotation'
     );
     const row = page.locator('.annotation-row').first();
@@ -164,14 +166,62 @@ describe('Visual Direction Loop (primary seam: a real browser engine)', () => {
       'the Annotation is labelled as written before the revision now on screen'
     );
 
-    await row.getByRole('button', { name: 'Approve' }).click();
+    await row.locator('.annotation-row__note').first().click();
+    await page.locator('.before-after').waitFor({ state: 'visible' });
+    await page.getByRole('button', { name: /^Before \(/ }).click();
+    await page.waitForTimeout(600);
     await expectLater(
-      async () => (await (await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?cap=${opened.capability}`)).json()) as never,
-      (snapshot) => (snapshot as { annotations: Array<{ state: string }> }).annotations[0]!.state === 'verified',
-      'the Builder-Reviewer approved the Annotation'
+      () => page.locator('.before-after').count(),
+      (count) => count === 1,
+      'the comparison survives switching to the written revision'
+    );
+    await page.getByRole('button', { name: /^After \(/ }).click();
+    await expectLater(
+      async () =>
+        (
+          (await (
+            await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?cap=${opened.capability}`)
+          ).json()) as { annotations: Array<{ resolvedRevision?: string }> }
+        ).annotations[0]?.resolvedRevision,
+      (revision) => typeof revision === 'string' && revision !== artifactRevisionV1,
+      'the result revision is still the changed revision after comparing'
     );
 
-    // Verification survives a restart.
+    await row.getByRole('button', { name: 'Amend' }).click();
+    await page.locator('.amend-editor textarea').fill('Make the Place order button impossible to miss, with a stronger label.');
+    await page.getByRole('button', { name: 'Deliver the amendment' }).click();
+    await expectLater(
+      async () => (await (await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?cap=${opened.capability}`)).json()) as never,
+      (snapshot) => {
+        const annotations = (snapshot as { annotations: Array<{ state: string; supersedes?: string; supersededBy?: string }> }).annotations;
+        return annotations.some((annotation) => annotation.state === 'superseded' && !!annotation.supersededBy)
+          && annotations.some((annotation) => !!annotation.supersedes);
+      },
+      'the original is superseded and the successor records what it replaced'
+    );
+    await expectLater(
+      async () => {
+        const batches = (await (
+          await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?cap=${opened.capability}`)
+        ).json()) as { batches: Array<{ envelopeId: string; status: string; annotationIds: string[] }> };
+        return batches.batches.length;
+      },
+      (count) => count >= 2,
+      'the amendment produced its own batch'
+    );
+
+    await expectLater(() => page.locator('.annotation-row button', { hasText: 'Approve' }).count(), (count) => count >= 1, 'verdict controls are on the row');
+    const verdictRow = page.locator('.annotation-row').filter({ hasText: 'stronger label' }).first();
+    await verdictRow.getByRole('button', { name: 'Approve' }).click();
+    await expectLater(
+      async () => (await (await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?cap=${opened.capability}`)).json()) as never,
+      (snapshot) =>
+        (snapshot as { annotations: Array<{ state: string }> }).annotations.some((annotation) => annotation.state === 'verified'),
+      'the Builder-Reviewer approved the successor in place'
+    );
+
+    expect(await page.getByRole('button', { name: 'Ask the agent to stop' }).count()).toBe(0);
+
     await page.close();
     await service.stop();
     const restartedService = await startLocalService({
@@ -181,17 +231,16 @@ describe('Visual Direction Loop (primary seam: a real browser engine)', () => {
     });
     service = restartedService;
     const reopened = createReviewService({ dataDir }).annotations.list();
-    expect(reopened).toHaveLength(1);
-    expect(reopened[0]!.state).toBe('verified');
-    expect(reopened[0]!.verification?.verdict).toBe('approve');
-  }, 120000);
+    expect(reopened.some((annotation) => annotation.state === 'verified')).toBe(true);
+    expect(reopened.some((annotation) => annotation.state === 'superseded')).toBe(true);
+  }, 150000);
 });
 
 async function expectLater<T>(
   read: () => T | Promise<T>,
   predicate: (value: T) => boolean,
   description: string,
-  timeoutMs = 15000
+  timeoutMs = 20000
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   let last: T | undefined;

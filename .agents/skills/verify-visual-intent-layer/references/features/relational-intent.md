@@ -1,5 +1,7 @@
 # Relational Intent by direct manipulation
 
+**Not yet driven.** Relational Intent is deferred out of this iteration: `design.md` §11 and issue 18 record why, the surface expresses no relation, and the `Arrange` tool no longer exists. The recipes below describe the deferred design and must not be run against this build.
+
 A Builder-Reviewer expresses a relationship among selected targets by manipulating them directly — dragging one target toward another — rather than picking a relation from a menu or describing it in prose. The surface reads the current relation set back as one plain sentence and stores it without pixel values.
 
 ## Sub-features

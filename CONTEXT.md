@@ -17,12 +17,12 @@ The independent browser surface in which a Builder-Reviewer inspects an Artifact
 _Avoid_: Review UI, viewer, inspector, design mode
 
 **Review**:
-The Review Surface state in which the artifact is exercised normally and Annotations are composed, queued, and sent.
+The Review Surface state in which Annotations are composed, queued, and sent. The artifact is operated normally or pointed at inside this state; those are modes within Review, not separate states.
 _Avoid_: Annotate mode, edit mode, direct mode, design mode
 
 **Verify**:
-The Review Surface state in which a resulting artifact revision is compared against the Annotations written for it and each Annotation is individually accepted, rejected, superseded, or marked obsolete.
-_Avoid_: Approval screen, review mode, diff view
+The act, on one Annotation, of comparing a resulting artifact revision against what that Annotation asked for and accepting it, rejecting it, requesting another pass, superseding it, or marking it obsolete. It is a state of an Annotation, not a place in the Review Surface: an Annotation is verified where it sits.
+_Avoid_: Approval screen, review mode, diff view, verify mode
 
 **Visual Intent Layer**:
 A product layer that converts what a Builder-Reviewer points to, selects, arranges, or demonstrates on a visible artifact into contextual instructions an agent can act on. It exists to preserve intent that would be lossy or slow to express using words alone.
@@ -37,8 +37,12 @@ A durable, individually verifiable unit of visually grounded direction: one or m
 _Avoid_: Comment, mark, note, task, visual edit, item
 
 **Annotation Queue**:
-The ordered set of Annotations a Builder-Reviewer has composed but not yet sent.
+The ordered set of Annotations a Builder-Reviewer has composed but not yet sent. Their order is the order the agent receives them in.
 _Avoid_: Cart, basket, backlog, inbox
+
+**Supersession**:
+The relationship in which a later Annotation replaces an earlier one that was already delivered. What the agent was told stays a record, and the replacement states what replaced it.
+_Avoid_: Edit, update, revision
 
 **Artifact**:
 Visible work that a Builder-Reviewer can direct and verify. Different artifact types may provide different levels of targeting fidelity while participating in the same Visual Direction Loop.
@@ -77,20 +81,28 @@ The product's server entry present in a Harness's own native configuration, at a
 _Avoid_: Install, integration, connection, already-present
 
 **Draft Intent**:
-A Visual Intent Envelope saved locally but not yet delivered to an agent.
+A Visual Intent Envelope saved locally but not yet delivered to an agent. It is the state of a stored Envelope rather than an act a Builder-Reviewer performs.
 _Avoid_: Unsent prompt, pending feedback
 
+**Check-In**:
+The point between an agent's own steps at which it reads new direction. Steering Intent and Review Interruption are seen at a Check-In and never mid-step, so both ask rather than take effect.
+_Avoid_: Poll, subscription, wake
+
 **Steering Intent**:
-A Visual Intent Envelope offered to amend or redirect an agent's active work at the next boundary supported by its host.
-_Avoid_: Instant interruption, live edit
+A Visual Intent Envelope that amends or redirects work an agent has already begun, seen at the agent's next Check-In rather than mid-step. It is produced by amending a delivered Annotation, which it supersedes; it is not a choice made when sending a queue.
+_Avoid_: Instant interruption, live edit, host capability
 
 **Next-Pass Intent**:
 A Visual Intent Envelope deliberately held for a new agent turn after active work finishes.
 _Avoid_: Steering, deferred annotation
 
 **Review Interruption**:
-A deliberate request to stop active work and return control to the Builder-Reviewer before beginning another direction cycle.
-_Avoid_: Cancel, pause
+A deliberate request to stop active work and return control to the Builder-Reviewer before beginning another direction cycle. Like Steering Intent it is seen at the agent's next Check-In, so it asks for a stop rather than performing one. It names no target and is therefore not an Annotation, and it is not carried by a Visual Intent Envelope.
+_Avoid_: Cancel, pause, kill
+
+**Area**:
+A visible target the Builder-Reviewer bounded themselves rather than one the artifact owns. An Area carries Rendered Grounding and can never carry Source Provenance; every other kind of target may.
+_Avoid_: Region, marquee, lasso, box, zone, drawn target
 
 **Source Provenance**:
 Evidence connecting a visible target to the editable source component or span that produced it.

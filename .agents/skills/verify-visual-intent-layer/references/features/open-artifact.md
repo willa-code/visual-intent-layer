@@ -33,7 +33,7 @@ Preconditions:
 - **Prove only one browser exists.** The launch suppresses the product's automatic browser; the only browser is the host's. `… lever.mjs health` reports the same product pid and the host endpoint while no extra browser window appears.
 - **Check the artifact is faithful, not just present.** Run `… lever.mjs state` for the artifact identity, then `wait --target ".gallery figure" --frame artifact` and `snapshot --frame artifact`. The wait resolves and the snapshot names the three figures and `Place order`.
 - **Clean up.** Run `… lever.mjs cleanup`. Exit code `0`, `evidenceIntact` true, the product and host pids gone, `dataDir` removed. The PNG and ARIA snapshot still exist under `evidence/`, and `run.json` reports `evidenceIntact: true`.
-- **Unreachable path example.** Run `… lever.mjs select --tool element --target ".not-there"` on a live run. Exit code `4`; `run.json` records the command and the unmet precondition. It is not counted as covered.
+- **Unreachable path example.** Run `… lever.mjs select --tool point --target ".not-there"` on a live run. Exit code `4`; `run.json` records the command and the unmet precondition. It is not counted as covered.
 
 ## Gotchas
 

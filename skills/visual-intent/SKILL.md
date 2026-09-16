@@ -1,6 +1,6 @@
 ---
 name: visual-intent
-description: Open a visual review loop when pointing at an agent-built interface beats prose. Teaches when to invoke the Visual Direction Loop, host-dependent waiting, and that acknowledgement is not completion.
+description: Open a visual review loop when pointing at an agent-built interface beats prose. Teaches when to invoke the Visual Direction Loop, the Check-In convention, and that acknowledgement is not completion.
 ---
 
 # Visual Intent Layer
@@ -30,22 +30,52 @@ will do with the loop first.
    composes Annotations and returns one batch when they send. Where the host cannot
    hold the call, the tool returns after its wait window with `status:
    "stepped-away"`, and the Annotations stay queued durably on the machine.
-3. If the call returned without a batch, read `get_intent_status` when the user says
-   they have sent. Nothing is lost by the agent stepping away.
+3. If the call returned without a batch, check in at your next step. Nothing is lost
+   by the agent stepping away.
+
+## Check-In is a convention, not a capability
+
+Steering and interruption are seen at a **Check-In**: the point between your own
+steps where you read new direction. There is no push channel and no wake mechanism.
+A server cannot put anything into your running turn, so the product publishes the
+convention instead of detecting a host capability it cannot rely on.
+
+Call `check_in` between your own steps — not mid-step, and not only while holding
+`open_visual_review`. It takes no `envelopeId`. It returns everything that arrived
+since your last check-in, and it records that you checked in, which is what lets the
+surface say when you last did:
+
+- newly delivered Annotations with their delivery intent,
+- **amendments** that superseded something you were already given,
+- a pending **stop request**, and
+- the current state of everything you were given before.
+
+Nothing is delivered mid-step. If the human amends or interrupts while you are busy,
+you will see it at the next call that returns, which hosts differ on: the next tool
+call, the end of your turn, or your next turn.
+
+### What to do when you find an amendment
+
+An amended Annotation supersedes one you were already given. Read the successor's
+note as the direction now in force, and treat what it replaced as the record of what
+you were told, not as a second instruction to also satisfy. If you had already
+implemented the superseded wording, say so plainly rather than silently reworking it;
+nothing detects that conflict for you.
+
+### What to do when you find a stop request
+
+It asks you to stop and return control to the Builder-Reviewer. It is a request, not
+a fact: nothing was stopped for them, and no Annotation changed state. Stop at a safe
+point, and say what you stopped rather than claiming you never started.
 
 ## Receiving a batch
 
-The Review Surface has exactly two states. **Review** is where the human
-exercises the artifact and composes Annotations. **Verify** is where the
-resulting revision is compared against the Annotations written for it and each
-one is decided. You receive work from Review; you are judged in Verify.
+One batch carries one or more **Annotations**. Each Annotation has its own identity,
+target evidence, note, and optional attachments. Treat them as independent units of
+work:
 
-One batch carries one or more **Annotations**. Each Annotation has its own
-identity, target evidence, note, optional attachments, and optional Relational
-Intent. Treat them as independent units of work:
-
-- Implement from each Annotation's relationship and constraints, not from raw
-  coordinates. Prefer the application's own layout system over pixel nudges.
+- Implement from each Annotation's note and constraints, not from raw coordinates.
+  Prefer the application's own layout system over pixel nudges.
 - The product never writes style values; do not expect a pixel displacement.
 - A target resolution reports **Matched**, **Recovered**, **Ambiguous** (with
   candidates, never auto-selected) or **Deleted**, and separately whether the
@@ -57,17 +87,28 @@ Intent. Treat them as independent units of work:
 
 `acknowledge_intent` confirms receipt. It is not implementation, and it is not
 verification. Only the Builder-Reviewer completes an Annotation, by approving,
-rejecting with another pass, superseding, or marking it obsolete. Never describe
+rejecting with another pass, amending it, or marking it obsolete. Never describe
 acknowledgement as a finished correction, and never claim you changed an artifact
 you have not changed.
 
 ## Delivery timing
 
-- `next-pass` Annotations wait for a clean turn. Do not treat them as interruptions.
-- `steering` applies at the next safe boundary the host supports, never instantly.
-  On hosts without steering, steering is held as next-pass and the human is told so.
-  Never claim you stopped work you did not stop.
+- Sending the queue delivers **Next-Pass Intent**: work for a clean turn, not an
+  interruption.
+- Amending something already sent delivers **Steering Intent**: direction that
+  applies at your next Check-In, never instantly.
+- Asking you to stop is **Review Interruption**: a session-scoped request, seen at
+  your next Check-In. Never claim you stopped work you did not stop.
 - The local browser is the complete review experience. If the host cannot embed the
   view, the review URL still carries the full loop; say so plainly.
-- Draft and queued intent survives restarts. After any crash, re-read status rather
+- Queued and delivered intent survives restarts. After any crash, `check_in` rather
   than asking the human to repeat themselves.
+
+## Rejected alternatives, recorded
+
+- The nearest canvas-agent prior art refuses check-in outright and schedules later
+  requests instead. That loses direction the human meant to steer mid-work, so this
+  product publishes a Check-In instead.
+- Polling through the MCP Tasks extension is the one push-free pattern the
+  specification sanctions. It is a form of Check-In, not a replacement for one; the
+  product does not require a host to implement it.

@@ -6,9 +6,10 @@ import { validateEnvelope, type Envelope } from '../envelope/validate.js';
 import { AnnotationStore, type DeliveryBatch } from '../annotation/store.js';
 import { AttachmentStore } from '../annotation/attachments.js';
 import { SnapshotStore } from '../artifact/snapshots.js';
-import { summarise, type Annotation, type AnnotationSummary } from '../annotation/model.js';
+import { isInQueue, summarise, type Annotation, type AnnotationSummary } from '../annotation/model.js';
 import { SessionRecords, type SessionRecord } from '../service/sessions.js';
-import { deliveryPlan, detectCapabilities, type DeliveryPlan } from '../host/capabilities.js';
+import { detectCapabilities, type DeliveryIntent, type HostCapabilities } from '../host/capabilities.js';
+import { CheckInStore, type InterruptionRecord } from '../service/check-in.js';
 import { openInDefaultBrowser } from '../service/browser.js';
 
 export type OpenArtifactInput =
@@ -18,6 +19,7 @@ export type OpenArtifactInput =
 export type OpenOptions = {
   baseUrl?: string;
   openBrowser?: boolean;
+  capabilities?: Partial<HostCapabilities>;
 };
 
 export type OpenedArtifact = {
@@ -36,17 +38,46 @@ export type ToolDescriptor = {
 
 export type AgentPosition = 'awaiting-you' | 'working' | 'acknowledged' | 'stepped-away';
 
+export type DeliveryChannel = 'held-call' | 'next-check-in';
+
 export type AgentPositionReport = {
   position: AgentPosition;
   sentence: string;
   hostCanHold: boolean;
   queuedDurably: number;
+  channel: DeliveryChannel;
+  lastCheckedInAt?: string;
+  pendingInterruption: boolean;
+  pendingInterruptionSince?: string;
+};
+
+export type DeliveryResult = {
+  batch: DeliveryBatch;
+  channel: DeliveryChannel;
+  holding: boolean;
+};
+
+export type DeliveryOutcome =
+  | { delivered: true; result: DeliveryResult }
+  | { delivered: false; intent: 'draft'; reason: string };
+
+export type DeliverySignal = { batch?: DeliveryBatch; interruption?: InterruptionRecord };
+
+export type CheckInResult = {
+  checkedInAt: string;
+  since: string | null;
+  cursor: string;
+  deliveries: Array<{ envelopeId: string; intent: DeliveryIntent; annotationIds: string[]; at: string }>;
+  amendments: Array<{ supersededId: string; successorId: string }>;
+  interruption: { interruptionId: string; requestedAt: string; sentence: string } | null;
+  annotations: AnnotationSummary[];
 };
 
 export type SendResult = {
   batch: DeliveryBatch;
   artifact: { id: string; kind: string; revision: string; displayName: string };
-  delivery: DeliveryPlan;
+  channel: DeliveryChannel;
+  holding: boolean;
 };
 
 export type BatchStatus = {
@@ -66,13 +97,28 @@ export type ReviewServiceOptions = {
 
 export type ReviewService = {
   listTools(): ToolDescriptor[];
+  capabilitiesFor(hostId: string, declared?: Partial<HostCapabilities>): HostCapabilities;
   openArtifact(input: OpenArtifactInput, options?: OpenOptions): Promise<OpenedArtifact>;
   submitEnvelope(envelopeJson: unknown, options?: { host?: string }): Promise<{ envelopeId: string; status: string; duplicate: boolean }>;
   acknowledge(envelopeId: string, agentId: string, annotationId?: string): Promise<{ envelopeId: string; annotationIds: string[] }>;
   getBatchStatus(envelopeId: string): BatchStatus;
   listBatches(): Array<{ envelopeId: string; status: string; annotationIds: string[] }>;
-  sendQueue(sessionId: string, options?: { host?: string; intent?: 'next-pass' | 'steering' | 'draft' | 'review-interruption' }): SendResult;
+  deliverAnnotations(
+    sessionId: string,
+    request: { annotationIds: string[]; intent: Exclude<DeliveryIntent, 'draft'>; host?: string }
+  ): DeliveryResult;
+  sendQueue(sessionId: string, options?: { host?: string; intent?: 'next-pass' | 'draft' }): DeliveryOutcome;
+  amendAnnotation(
+    sessionId: string,
+    annotationId: string,
+    input: { note?: string; host?: string }
+  ): { original: Annotation; successor: Annotation; delivery: DeliveryResult };
+  requestInterruption(sessionId: string, options?: { host?: string; requestedBy?: string }): InterruptionRecord;
+  pendingInterruption(sessionId: string): InterruptionRecord | undefined;
+  checkIn(sessionId: string, options?: { cursor?: string; agentId?: string }): CheckInResult;
+  mostRecentSessionId(): string | undefined;
   waitForSend(sessionId: string, timeoutMs: number): Promise<DeliveryBatch | null>;
+  waitForDelivery(sessionId: string, timeoutMs: number): Promise<DeliverySignal>;
   noteAgentContact(sessionId: string): void;
   agentPosition(sessionId: string): AgentPositionReport;
   readonly sessions: SessionRecords;
@@ -93,11 +139,21 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
   const attachments = new AttachmentStore(dataDir);
   const snapshots = new SnapshotStore(dataDir);
   const sessions = new SessionRecords(dataDir);
-  const waiters = new Map<string, Array<(batch: DeliveryBatch | null) => void>>();
-  const agentContact = new Map<string, number>();
+  const checkIns = new CheckInStore(dataDir);
+  const waiters = new Map<string, Array<(signal: DeliverySignal) => void>>();
+  let lastSessionId: string | undefined;
+
+  function mostRecentSessionId(): string | undefined {
+    return lastSessionId;
+  }
+
+  function capabilitiesFor(hostId: string, declared: Partial<HostCapabilities> = {}): HostCapabilities {
+    return detectCapabilities(hostId, declared);
+  }
 
   async function openArtifact(input: OpenArtifactInput, openOptions: OpenOptions = {}): Promise<OpenedArtifact> {
     const effectiveBase = (openOptions.baseUrl ?? baseUrl).replace(/\/+$/, '');
+    const capabilities = detectCapabilities('browser', openOptions.capabilities ?? {});
     if (input.kind === 'saved-html') {
       const absolute = resolve(process.cwd(), input.path);
       if (!existsSync(absolute)) {
@@ -109,6 +165,7 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
       const revision = computeRevision(bytes, []);
       const existing = sessions.findByArtifactRevision(artifactId, revision);
       if (existing) {
+        lastSessionId = existing.sessionId;
         const reviewUrl = `${effectiveBase}/review/${existing.sessionId}?cap=${existing.capability}`;
         if (openOptions.openBrowser) {
           openInDefaultBrowser(reviewUrl);
@@ -133,8 +190,10 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
         kind: 'saved-html',
         artifactId,
         revision,
-        displayName
+        displayName,
+        capabilities
       });
+      lastSessionId = record.sessionId;
       const reviewUrl = `${effectiveBase}/review/${record.sessionId}?cap=${record.capability}`;
       if (openOptions.openBrowser) {
         openInDefaultBrowser(reviewUrl);
@@ -154,6 +213,7 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     );
     const existing = sessions.findByArtifactRevision(artifactId, revision);
     if (existing) {
+      lastSessionId = existing.sessionId;
       const reviewUrl = `${effectiveBase}/review/${existing.sessionId}?cap=${existing.capability}`;
       if (openOptions.openBrowser) {
         openInDefaultBrowser(reviewUrl);
@@ -177,8 +237,10 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
       kind: 'react-vite-app',
       artifactId,
       revision,
-      displayName: input.url
+      displayName: input.url,
+      capabilities
     });
+    lastSessionId = record.sessionId;
     const reviewUrl = `${effectiveBase}/review/${record.sessionId}?cap=${record.capability}`;
     if (openOptions.openBrowser) {
       openInDefaultBrowser(reviewUrl);
@@ -221,6 +283,13 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     for (const id of targets) {
       annotations.acknowledge(id, agentId);
     }
+    const batch = annotations.getBatch(envelopeId);
+    const session = batch
+      ? sessions.findByArtifactRevision(batch.envelope.artifact.id, batch.envelope.artifact.revision)
+      : undefined;
+    if (session) {
+      checkIns.recordContact(session.sessionId);
+    }
     return { envelopeId, annotationIds: targets };
   }
 
@@ -231,6 +300,9 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     }
     const owned = annotations.annotationsOfBatch(envelopeId);
     const session = sessions.findByArtifactRevision(batch.envelope.artifact.id, batch.envelope.artifact.revision);
+    if (session) {
+      checkIns.recordContact(session.sessionId);
+    }
     return {
       envelopeId,
       status: statusOf(owned),
@@ -255,21 +327,18 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     }));
   }
 
-  function sendQueue(
+  function deliverAnnotations(
     sessionId: string,
-    sendOptions: { host?: string; intent?: SendResult['batch']['intent'] } = {}
-  ): SendResult {
+    request: { annotationIds: string[]; intent: Exclude<DeliveryIntent, 'draft'>; host?: string }
+  ): DeliveryResult {
     const session = requireSession(sessionId);
-    const queue = annotations.queueOf(session.artifactId);
-    if (queue.length === 0) {
-      throw new Error('The Annotation Queue is empty; there is nothing to send.');
+    if (request.annotationIds.length === 0) {
+      throw new Error('A delivery needs at least one Annotation; an empty set has nothing to deliver.');
     }
-    const intent = sendOptions.intent ?? 'next-pass';
-    const caps = detectCapabilities(sendOptions.host ?? 'browser');
-    const plan = deliveryPlan(caps, intent);
-    const batch = annotations.markDelivered(queue.map((annotation) => annotation.annotationId), {
-      host: sendOptions.host ?? 'browser',
-      intent,
+    const host = request.host ?? 'browser';
+    const batch = annotations.markDelivered(request.annotationIds, {
+      host,
+      intent: request.intent,
       artifact: {
         id: session.artifactId,
         kind: session.kind as 'saved-html' | 'react-vite-app',
@@ -277,28 +346,122 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
         displayName: session.displayName
       }
     });
-    resolveWaiters(sessionId, batch);
+    const signal: DeliverySignal = { batch };
+    const holding = (waiters.get(sessionId)?.length ?? 0) > 0;
+    resolveWaiters(sessionId, signal);
+    return { batch, channel: holding ? 'held-call' : 'next-check-in', holding };
+  }
+
+  function sendQueue(
+    sessionId: string,
+    sendOptions: { host?: string; intent?: 'next-pass' | 'draft' } = {}
+  ): DeliveryOutcome {
+    const intent = sendOptions.intent ?? 'next-pass';
+    if (intent === 'draft') {
+      return {
+        delivered: false,
+        intent: 'draft',
+        reason: 'Draft stays on this machine: it creates no batch and moves no Annotation out of draft or queued.'
+      };
+    }
+    const session = requireSession(sessionId);
+    const queue = annotations.queueOf(session.artifactId);
+    if (queue.length === 0) {
+      throw new Error('The Annotation Queue is empty; there is nothing to send.');
+    }
+    const result = deliverAnnotations(sessionId, {
+      annotationIds: queue.map((annotation) => annotation.annotationId),
+      intent,
+      ...(sendOptions.host ? { host: sendOptions.host } : {})
+    });
+    return { delivered: true, result };
+  }
+
+  function amendAnnotation(
+    sessionId: string,
+    annotationId: string,
+    input: { note?: string; host?: string }
+  ): { original: Annotation; successor: Annotation; delivery: DeliveryResult } {
+    requireSession(sessionId);
+    const successor = annotations.amend(annotationId, input.note !== undefined ? { note: input.note } : {});
+    const original = annotations.get(annotationId)!;
+    const delivery = deliverAnnotations(sessionId, {
+      annotationIds: [successor.annotationId],
+      intent: 'steering',
+      ...(input.host ? { host: input.host } : {})
+    });
+    return { original, successor: annotations.get(successor.annotationId)!, delivery };
+  }
+
+  function requestInterruption(
+    sessionId: string,
+    options: { host?: string; requestedBy?: string } = {}
+  ): InterruptionRecord {
+    requireSession(sessionId);
+    const record = checkIns.requestInterruption(sessionId, options.requestedBy ? { requestedBy: options.requestedBy } : {});
+    resolveWaiters(sessionId, { interruption: record });
+    return record;
+  }
+
+  function pendingInterruption(sessionId: string): InterruptionRecord | undefined {
+    return checkIns.pendingInterruption(sessionId);
+  }
+
+  function checkIn(sessionId: string, options: { cursor?: string; agentId?: string } = {}): CheckInResult {
+    const session = requireSession(sessionId);
+    const checkedInAt = new Date().toISOString();
+    const since = options.cursor ?? null;
+    const batches = annotations
+      .listBatches()
+      .filter((batch) => batch.envelope.artifact.id === session.artifactId)
+      .filter((batch) => since === null || batch.at > since);
+    const interruption = checkIns.pendingInterruption(sessionId);
+    if (interruption) {
+      checkIns.collectInterruption(sessionId, interruption.interruptionId);
+    }
+    checkIns.recordContact(sessionId, checkedInAt);
+    const owned = annotations
+      .listArtifact(session.artifactId)
+      .filter((annotation) => !isInQueue(annotation.state));
+    const amendments = annotations
+      .listArtifact(session.artifactId)
+      .filter((annotation) => annotation.supersedes !== undefined)
+      .filter(
+        (annotation) =>
+          since === null || annotation.history.some((event) => event.type === 'amended' && event.at > since)
+      )
+      .map((annotation) => ({ supersededId: annotation.supersedes!, successorId: annotation.annotationId }));
     return {
-      batch,
-      artifact: {
-        id: session.artifactId,
-        kind: session.kind,
-        revision: session.revision,
-        displayName: session.displayName
-      },
-      delivery: plan
+      checkedInAt,
+      since,
+      cursor: checkedInAt,
+      deliveries: batches.map((batch) => ({
+        envelopeId: batch.envelopeId,
+        intent: batch.intent,
+        annotationIds: batch.annotationIds,
+        at: batch.at
+      })),
+      amendments,
+      interruption: interruption
+        ? {
+            interruptionId: interruption.interruptionId,
+            requestedAt: interruption.requestedAt,
+            sentence: 'The Builder-Reviewer asked you to stop. This is a request, not a fact: no work was stopped for them.'
+          }
+        : null,
+      annotations: owned.map(summarise)
     };
   }
 
-  function waitForSend(sessionId: string, timeout: number): Promise<DeliveryBatch | null> {
+  function waitForDelivery(sessionId: string, timeout: number): Promise<DeliverySignal> {
     return new Promise((resolvePromise) => {
       const timer = setTimeout(() => {
         removeWaiter(sessionId, entry);
-        resolvePromise(null);
+        resolvePromise({});
       }, timeout);
-      const entry = (batch: DeliveryBatch | null): void => {
+      const entry = (signal: DeliverySignal): void => {
         clearTimeout(timer);
-        resolvePromise(batch);
+        resolvePromise(signal);
       };
       const list = waiters.get(sessionId) ?? [];
       list.push(entry);
@@ -306,15 +469,24 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     });
   }
 
-  function resolveWaiters(sessionId: string, batch: DeliveryBatch): void {
-    const list = waiters.get(sessionId) ?? [];
-    waiters.delete(sessionId);
-    for (const entry of list) {
-      entry(batch);
-    }
+  async function waitForSend(sessionId: string, timeout: number): Promise<DeliveryBatch | null> {
+    const signal = await waitForDelivery(sessionId, timeout);
+    return signal.batch ?? null;
   }
 
-  function removeWaiter(sessionId: string, entry: (batch: DeliveryBatch | null) => void): void {
+  function resolveWaiters(sessionId: string, signal: DeliverySignal): boolean {
+    const list = waiters.get(sessionId) ?? [];
+    if (list.length === 0) {
+      return false;
+    }
+    waiters.delete(sessionId);
+    for (const entry of list) {
+      entry(signal);
+    }
+    return true;
+  }
+
+  function removeWaiter(sessionId: string, entry: (signal: DeliverySignal) => void): void {
     const list = (waiters.get(sessionId) ?? []).filter((candidate) => candidate !== entry);
     if (list.length > 0) {
       waiters.set(sessionId, list);
@@ -325,7 +497,7 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
 
   function noteAgentContact(sessionId: string): void {
     if (sessionId) {
-      agentContact.set(sessionId, Date.now());
+      checkIns.recordContact(sessionId);
     }
   }
 
@@ -333,12 +505,22 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     const session = sessionId ? sessions.get(sessionId) : undefined;
     const queue = session ? annotations.queueOf(session.artifactId).length : 0;
     const waiting = sessionId ? (waiters.get(sessionId)?.length ?? 0) > 0 : false;
+    const channel: DeliveryChannel = waiting ? 'held-call' : 'next-check-in';
+    const lastCheckedInAt = sessionId ? checkIns.lastContact(sessionId) : undefined;
+    const interruption = sessionId ? checkIns.pendingInterruption(sessionId) : undefined;
+    const base = {
+      channel,
+      ...(lastCheckedInAt ? { lastCheckedInAt } : {}),
+      pendingInterruption: interruption !== undefined,
+      ...(interruption ? { pendingInterruptionSince: interruption.requestedAt } : {})
+    };
     if (waiting) {
       return {
         position: 'awaiting-you',
         sentence: 'Your agent is holding the call and waiting for you right now. Sending is urgent.',
         hostCanHold: true,
-        queuedDurably: queue
+        queuedDurably: queue,
+        ...base
       };
     }
     const owned = session ? annotations.listArtifact(session.artifactId) : [];
@@ -349,27 +531,30 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
         position: 'acknowledged',
         sentence: 'Your agent has acknowledged the direction. Acknowledgement is not implementation and not verification.',
         hostCanHold: false,
-        queuedDurably: queue
+        queuedDurably: queue,
+        ...base
       };
     }
-    const recentlyConnected = sessionId ? Date.now() - (agentContact.get(sessionId) ?? 0) < 60_000 : false;
+    const recentlyConnected = lastCheckedInAt ? Date.now() - Date.parse(lastCheckedInAt) < 60_000 : false;
     if (recentlyConnected && delivered.length > 0) {
       return {
         position: 'working',
-        sentence: 'Your agent is working. It is not waiting on this call.',
+        sentence: 'Your agent is working. It is not waiting on this call; it reads new direction at its next Check-In.',
         hostCanHold: false,
-        queuedDurably: queue
+        queuedDurably: queue,
+        ...base
       };
     }
     const queuedSentence =
       queue > 0
-        ? ` ${queue} Annotation${queue === 1 ? '' : 's'} are queued durably on this machine until your agent collects them.`
+        ? ` ${queue} Annotation${queue === 1 ? '' : 's'} are queued durably on this machine until your agent checks in.`
         : ' Nothing is waiting on your agent.';
     return {
       position: 'stepped-away',
       sentence: `Your agent has stepped away and is not holding this call.${queuedSentence}`,
       hostCanHold: false,
-      queuedDurably: queue
+      queuedDurably: queue,
+      ...base
     };
   }
 
@@ -386,7 +571,7 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
       {
         name: 'open_visual_review',
         description:
-          'Open the Visual Direction Loop for an agent-produced web interface and wait for the Builder-Reviewer. Use this when pointing beats prose: selecting elements, exact text, regions or several targets, expressing relationships by direct manipulation, and sending grounded Annotations. Works with a saved HTML artifact (kind "saved-html" with a filesystem path) or a running local React/Vite app (kind "react-vite-app" with a localhost URL). The default browser opens automatically on the machine running the service. When the human sends, this call returns one batch carrying each Annotation with its own identity, target evidence and note. If the host cannot hold the call, this returns after the wait window and the Annotations remain queued durably; read them with get_intent_status.',
+          'Open the Visual Direction Loop for an agent-produced web interface and wait for the Builder-Reviewer. Use this when pointing beats prose: pointing at elements, dragging across exact words, boxing an area, and sending grounded Annotations. Works with a saved HTML artifact (kind "saved-html" with a filesystem path) or a running local React/Vite app (kind "react-vite-app" with a localhost URL). The default browser opens automatically on the machine running the service. When the human sends, this call returns one batch carrying each Annotation with its own identity, target evidence and note. Steering and interruption are seen at a Check-In, not mid-step: call check_in between your own steps to read new direction, an amendment, or a stop request. If this call returns without a batch, the Annotations stay queued durably and check_in reads them.',
         inputSchema: {
           type: 'object',
           required: ['kind'],
@@ -397,7 +582,28 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
             waitMs: {
               type: 'number',
               description: 'How long to hold the call for the human, in milliseconds. Omit for the default window.'
+            },
+            capabilities: {
+              type: 'object',
+              description: 'What this host can do. Omit to be treated as a browsing host with polling updates.',
+              properties: {
+                embeddedUI: { type: 'boolean', description: 'The host renders the review surface itself.' },
+                subscriptions: { type: 'boolean', description: 'The host can subscribe to live updates.' }
+              }
             }
+          }
+        }
+      },
+      {
+        name: 'check_in',
+        description:
+          'Check in between your own steps to read new direction. Returns everything that arrived since your last check-in: newly delivered Annotations with their delivery intent, amendments that superseded something, a pending stop request, and the current state of everything you were given before. This is the Check-In convention: the Builder-Reviewer can amend or interrupt work while you are busy, and it is seen here rather than mid-step. Call it without an envelopeId; there is no push channel and no wake mechanism. It also records that you checked in, which is what lets the surface say when the agent last checked in.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sessionId: { type: 'string', description: 'The session to check in with. Omit to check the most recently opened session.' },
+            cursor: { type: 'string', description: 'The cursor returned by your previous check-in. Omit to read everything not yet collected.' },
+            agentId: { type: 'string', description: 'Identifies the implementing agent.' }
           }
         }
       },
@@ -430,13 +636,21 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
 
   return {
     listTools,
+    capabilitiesFor,
     openArtifact,
     submitEnvelope,
     acknowledge,
     getBatchStatus,
     listBatches,
+    deliverAnnotations,
     sendQueue,
+    amendAnnotation,
+    requestInterruption,
+    pendingInterruption,
+    checkIn,
+    mostRecentSessionId,
     waitForSend,
+    waitForDelivery,
     noteAgentContact,
     agentPosition,
     sessions,

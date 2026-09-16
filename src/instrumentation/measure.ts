@@ -115,6 +115,10 @@ export async function collectInstrumentation(options: { dataDir?: string } = {})
     });
     review.annotations.queue(resolvable.annotationId);
     const sent = review.sendQueue(session.sessionId, { host: 'instrumentation' });
+    if (!sent.delivered) {
+      throw new Error('the instrumentation queue send did not deliver');
+    }
+    const sentBatch = sent.result.batch;
     const candidates = [
       {
         nodeId: 'node-1',
@@ -152,7 +156,7 @@ export async function collectInstrumentation(options: { dataDir?: string } = {})
     });
 
     const benchmark = runBenchmark(buildMatrix());
-    const envelopeBytes = Buffer.byteLength(JSON.stringify(sent.batch.envelope), 'utf8');
+    const envelopeBytes = Buffer.byteLength(JSON.stringify(sentBatch.envelope), 'utf8');
 
     const manySession = await service.openSession({ kind: 'saved-html', path: 'fixtures/gallery.html' });
     const created = Array.from({ length: 50 }, (_, index) =>
@@ -175,12 +179,13 @@ export async function collectInstrumentation(options: { dataDir?: string } = {})
       })
     );
     const manyBatch = review.sendQueue(manySession.sessionId, { host: 'instrumentation' });
+    const manyBatchIds = manyBatch.delivered ? manyBatch.result.batch.annotationIds : [];
     const afterRapid = await (await fetch(`${service.baseUrl}/api/sessions/${watchSession.sessionId}?cap=${watchSession.capability}`)).json() as { changed: boolean };
     const annotationsIntact =
-      manyBatch.batch.annotationIds.length === 50 &&
-      new Set(manyBatch.batch.annotationIds).size === 50 &&
+      manyBatchIds.length === 50 &&
+      new Set(manyBatchIds).size === 50 &&
       created.length === 50 &&
-      sent.batch.annotationIds.length === 1;
+      sentBatch.annotationIds.length === 1;
 
     return {
       collectedAt: new Date().toISOString(),
@@ -204,7 +209,7 @@ export async function collectInstrumentation(options: { dataDir?: string } = {})
         baselineChatBytes: BASELINE_CHAT_BYTES,
         ratio: envelopeBytes / BASELINE_CHAT_BYTES
       },
-      stress: { manyAnnotationsAccepted: manyBatch.batch.annotationIds.length, rapidSavesTracked: afterRapid.changed, annotationsIntact }
+      stress: { manyAnnotationsAccepted: manyBatchIds.length, rapidSavesTracked: afterRapid.changed, annotationsIntact }
     };
   } finally {
     await service.stop();

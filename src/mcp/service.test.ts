@@ -41,6 +41,7 @@ describe('entry tool', () => {
   it('keeps the model-visible tool surface small', () => {
     expect(setup().listTools().map((tool) => tool.name)).toEqual([
       'open_visual_review',
+      'check_in',
       'get_intent_status',
       'acknowledge_intent'
     ]);
@@ -105,9 +106,15 @@ describe('browser send and agent position', () => {
     const waiting = service.waitForSend(opened.sessionId, 2000);
     expect(service.agentPosition(opened.sessionId).position).toBe('awaiting-you');
     const sent = service.sendQueue(opened.sessionId, { host: 'browser' });
-    expect(sent.batch.annotationIds).toEqual([annotation.annotationId]);
+    expect(sent.delivered).toBe(true);
+    if (!sent.delivered) {
+      return;
+    }
+    expect(sent.result.batch.annotationIds).toEqual([annotation.annotationId]);
+    expect(sent.result.batch.intent).toBe('next-pass');
+    expect(sent.result.channel).toBe('held-call');
     const woken = await waiting;
-    expect(woken?.envelopeId).toBe(sent.batch.envelopeId);
+    expect(woken?.envelopeId).toBe(sent.result.batch.envelopeId);
     expect(woken?.envelope.annotations[0]?.note).toBe('Fix the header.');
   });
 
@@ -170,5 +177,178 @@ describe('saved HTML fidelity', () => {
     const bytes = readFileSync('fixtures/gallery.html');
     expect(opened.artifact.revision).toBe(computeRevision(bytes, []));
     expect(service.snapshots.read(opened.artifact.id, opened.artifact.revision)).toBeUndefined();
+  });
+});
+function draftTarget(): Record<string, unknown> {
+  return {
+    targetId: 't-1',
+    kind: 'element',
+    renderedGrounding: { selectors: ['main'], boundingBox: { x: 0, y: 0, width: 10, height: 10 } },
+    provenanceConfidence: 'unavailable'
+  };
+}
+
+function seed(service: ReviewService, opened: { artifact: { id: string; revision: string } }, note: string) {
+  const annotation = service.annotations.createDraft({
+    artifactId: opened.artifact.id,
+    writtenRevision: opened.artifact.revision,
+    targets: [draftTarget() as never]
+  });
+  service.annotations.update(annotation.annotationId, { note });
+  return annotation;
+}
+
+describe('delivery by a named set', () => {
+  it('refuses an empty set with a stated reason', async () => {
+    const service = setup();
+    const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+    expect(() => service.deliverAnnotations(opened.sessionId, { annotationIds: [], intent: 'next-pass' })).toThrow(/empty set/);
+  });
+
+  it('sends the queue as one caller of the named path', async () => {
+    const service = setup();
+    const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+    const annotation = seed(service, opened, 'one');
+    const sent = service.sendQueue(opened.sessionId, { host: 'browser' });
+    expect(sent.delivered).toBe(true);
+    if (!sent.delivered) return;
+    expect(sent.result.batch.annotationIds).toEqual([annotation.annotationId]);
+  });
+
+  it('a draft intent creates no batch and moves nothing out of draft or queued', async () => {
+    const service = setup();
+    const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+    const annotation = seed(service, opened, 'stays local');
+    const outcome = service.sendQueue(opened.sessionId, { host: 'browser', intent: 'draft' });
+    expect(outcome.delivered).toBe(false);
+    expect(service.listBatches()).toHaveLength(0);
+    expect(service.annotations.get(annotation.annotationId)?.state).toBe('draft');
+  });
+
+  it('is idempotent: the same set and intent produce one batch', async () => {
+    const service = setup();
+    const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+    const annotation = seed(service, opened, 'once');
+    const first = service.deliverAnnotations(opened.sessionId, { annotationIds: [annotation.annotationId], intent: 'next-pass' });
+    const second = service.deliverAnnotations(opened.sessionId, { annotationIds: [annotation.annotationId], intent: 'next-pass' });
+    expect(second.batch.envelopeId).toBe(first.batch.envelopeId);
+    expect(service.listBatches()).toHaveLength(1);
+  });
+
+  it('resolves a held call for an amendment or an interruption', async () => {
+    const service = setup();
+    const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+    const annotation = seed(service, opened, 'amend me');
+    service.annotations.queue(annotation.annotationId);
+    service.deliverAnnotations(opened.sessionId, { annotationIds: [annotation.annotationId], intent: 'next-pass' });
+
+    const held = service.waitForSend(opened.sessionId, 2000);
+    service.requestInterruption(opened.sessionId);
+    expect(await held).toBeNull();
+  });
+});
+
+describe('amending something sent', () => {
+  it('supersedes the original, records the successor, and keeps the original intact', async () => {
+    const service = setup();
+    const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+    const original = seed(service, opened, 'first wording');
+    service.deliverAnnotations(opened.sessionId, { annotationIds: [original.annotationId], intent: 'next-pass' });
+
+    const amended = service.amendAnnotation(opened.sessionId, original.annotationId, { note: 'clearer wording' });
+    expect(amended.original.state).toBe('superseded');
+    expect(amended.original.supersededBy).toBe(amended.successor.annotationId);
+    expect(amended.original.note).toBe('first wording');
+    expect(amended.successor.supersedes).toBe(original.annotationId);
+    expect(amended.successor.note).toBe('clearer wording');
+    expect(amended.successor.state).toBe('delivered');
+    expect(amended.delivery.batch.intent).toBe('steering');
+    expect(amended.delivery.batch.annotationIds).toEqual([amended.successor.annotationId]);
+  });
+
+  it('refuses to edit a delivered Annotation in place', async () => {
+    const service = setup();
+    const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+    const annotation = seed(service, opened, 'delivered');
+    service.deliverAnnotations(opened.sessionId, { annotationIds: [annotation.annotationId], intent: 'next-pass' });
+    expect(() => service.annotations.update(annotation.annotationId, { note: 'rewritten' })).toThrow(/cannot be edited in place/);
+  });
+
+  it('offers amend only on a delivered Annotation that is not yet verified', async () => {
+    const service = setup();
+    const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+    const annotation = seed(service, opened, 'draft');
+    expect(() => service.amendAnnotation(opened.sessionId, annotation.annotationId, { note: 'too early' })).toThrow(/cannot be amended/);
+  });
+});
+
+describe('check-in and interruption', () => {
+  it('returns new direction since a cursor without an envelopeId and records contact', async () => {
+    const service = setup();
+    const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+    const annotation = seed(service, opened, 'read at check-in');
+    service.deliverAnnotations(opened.sessionId, { annotationIds: [annotation.annotationId], intent: 'next-pass' });
+
+    const first = service.checkIn(opened.sessionId);
+    expect(first.deliveries).toHaveLength(1);
+    expect(first.deliveries[0]!.intent).toBe('next-pass');
+    expect(first.annotations.map((entry) => entry.annotationId)).toContain(annotation.annotationId);
+    expect(service.agentPosition(opened.sessionId).lastCheckedInAt).toBe(first.checkedInAt);
+
+    const second = service.checkIn(opened.sessionId, { cursor: first.cursor });
+    expect(second.deliveries).toHaveLength(0);
+  });
+
+  it('returns an amendment as new direction', async () => {
+    const service = setup();
+    const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+    const original = seed(service, opened, 'before');
+    service.deliverAnnotations(opened.sessionId, { annotationIds: [original.annotationId], intent: 'next-pass' });
+    const cursor = service.checkIn(opened.sessionId).cursor;
+    const amended = service.amendAnnotation(opened.sessionId, original.annotationId, { note: 'after' });
+    const next = service.checkIn(opened.sessionId, { cursor });
+    expect(next.deliveries.map((entry) => entry.intent)).toContain('steering');
+    expect(next.amendments).toEqual(
+      expect.arrayContaining([{ supersededId: original.annotationId, successorId: amended.successor.annotationId }])
+    );
+  });
+
+  it('carries a stop request session-scoped, never in an envelope', async () => {
+    const service = setup();
+    const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+    service.requestInterruption(opened.sessionId, { requestedBy: 'builder-reviewer' });
+    expect(service.listBatches()).toHaveLength(0);
+    const result = service.checkIn(opened.sessionId);
+    expect(result.interruption?.interruptionId).toMatch(/^int-/);
+    expect(result.interruption?.sentence).toMatch(/request, not a fact/);
+    const again = service.checkIn(opened.sessionId);
+    expect(again.interruption).toBeNull();
+  });
+
+  it('keeps contact across a service restart', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'vil-mcp-checkin-'));
+    const service = createReviewService({ dataDir });
+    const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+    const checked = service.checkIn(opened.sessionId);
+    const restarted = createReviewService({ dataDir });
+    expect(restarted.agentPosition(opened.sessionId).lastCheckedInAt).toBe(checked.checkedInAt);
+  });
+});
+
+describe('an interruption is never carried in an envelope', () => {
+  it('has no envelope to build, and the envelope still refuses zero Annotations', async () => {
+    const { buildBatchEnvelope } = await import('../annotation/envelope.js');
+    expect(() =>
+      buildBatchEnvelope({
+        artifact: { id: 'artifact-1', kind: 'saved-html', revision: 'blake3:' + 'a'.repeat(64) },
+        annotations: [],
+        intent: 'review-interruption'
+      })
+    ).toThrow(/at least one Annotation/);
+
+    const service = setup();
+    const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+    service.requestInterruption(opened.sessionId);
+    expect(service.listBatches()).toHaveLength(0);
   });
 });

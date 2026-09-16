@@ -190,7 +190,6 @@ function normalizeVerdict(value: string): VerificationVerdict | undefined {
     case 'approve':
     case 'reject':
     case 'another-pass':
-    case 'supersede':
     case 'obsolete':
       return value;
     default:

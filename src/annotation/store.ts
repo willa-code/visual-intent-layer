@@ -13,6 +13,7 @@ import {
 import { buildBatchEnvelope, batchEnvelopeId, batchIdempotencyKey } from './envelope.js';
 import {
   isInQueue,
+  isVerification,
   verificationRefusedReason,
   type Annotation,
   type AnnotationAttachment,
@@ -113,9 +114,14 @@ export class AnnotationStore {
     patch: Partial<Pick<Annotation, 'note' | 'targets' | 'relationships' | 'revisionRelation'>>
   ): Annotation {
     return this.mutate(annotationId, (annotation) => {
+      if (!isInQueue(annotation.state)) {
+        throw new Error(
+          `${annotation.annotationId} is ${annotation.state}, so it cannot be edited in place. Amend it instead: what the agent was told stays a record.`
+        );
+      }
       if (patch.note !== undefined && patch.note !== annotation.note) {
         annotation.note = patch.note;
-        annotation.history.push({ type: 'drafted', at: now() });
+        annotation.history.push({ type: 'note-changed', at: now() });
       }
       if (patch.targets !== undefined) {
         annotation.targets = patch.targets;
@@ -128,6 +134,39 @@ export class AnnotationStore {
       }
       return annotation;
     });
+  }
+
+  amend(
+    annotationId: string,
+    input: { note?: string; targets?: AnnotationTarget[]; relationships?: AnnotationRelation[] }
+  ): Annotation {
+    const original = this.get(annotationId);
+    if (!original) {
+      throw new Error(`Unknown Annotation ${annotationId}`);
+    }
+    if (!isInQueue(original.state) && !isVerification(original.state)) {
+      const successor = this.createDraft({
+        artifactId: original.artifactId,
+        writtenRevision: original.writtenRevision,
+        targets: input.targets ?? original.targets,
+        ...(input.note !== undefined ? { note: input.note } : { note: original.note }),
+        relationships: input.relationships ?? original.relationships
+      });
+      this.mutate(annotationId, (annotation) => {
+        annotation.state = 'superseded';
+        annotation.supersededBy = successor.annotationId;
+        annotation.history.push({ type: 'superseded', at: now(), detail: successor.annotationId });
+        return annotation;
+      });
+      return this.mutate(successor.annotationId, (annotation) => {
+        annotation.supersedes = annotationId;
+        annotation.history.push({ type: 'amended', at: now(), detail: annotationId });
+        return annotation;
+      });
+    }
+    throw new Error(
+      `${annotationId} is ${original.state}, so it cannot be amended. Amend is offered only on a delivered Annotation that is not yet verified.`
+    );
   }
 
   addRelation(annotationId: string, relation: AnnotationRelation): Annotation {
@@ -216,6 +255,9 @@ export class AnnotationStore {
     annotationIds: string[],
     input: { host: string; intent: DeliveryBatch['intent']; artifact: DeliveryBatch['envelope']['artifact'] }
   ): DeliveryBatch {
+    if (input.intent === 'draft') {
+      throw new Error('A draft intent stays on this machine: it creates no batch and moves no Annotation out of draft or queued.');
+    }
     const annotations = annotationIds.map((id) => {
       const annotation = this.state.annotations[id];
       if (!annotation) {
@@ -257,9 +299,12 @@ export class AnnotationStore {
     return batch;
   }
 
-  recordResolutions(annotationId: string, resolutions: TargetResolutionRecord[]): Annotation {
+  recordResolutions(annotationId: string, resolutions: TargetResolutionRecord[], revision?: string): Annotation {
     return this.mutate(annotationId, (annotation) => {
       annotation.resolutions = resolutions;
+      if (revision) {
+        annotation.resolvedRevision = revision;
+      }
       if (annotation.state === 'delivered' || annotation.state === 'acknowledged') {
         annotation.state = 'resolved';
       }
@@ -470,8 +515,6 @@ export function verdictState(verdict: VerificationVerdict): AnnotationState {
       return 'rejected';
     case 'another-pass':
       return 'another-pass';
-    case 'supersede':
-      return 'superseded';
     case 'obsolete':
       return 'obsolete';
   }

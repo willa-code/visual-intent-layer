@@ -29,12 +29,24 @@ export function prefersReducedMotion(): boolean {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 }
 
-export function debounce<A extends unknown[]>(fn: (...args: A) => void, ms: number): (...args: A) => void {
+export type Debounced<A extends unknown[]> = ((...args: A) => void) & { cancel: () => void };
+
+export function debounce<A extends unknown[]>(fn: (...args: A) => void, ms: number): Debounced<A> {
   let timer: number | undefined;
-  return (...args: A) => {
+  const wrapped = (...args: A): void => {
     if (timer !== undefined) {
       window.clearTimeout(timer);
     }
-    timer = window.setTimeout(() => fn(...args), ms);
+    timer = window.setTimeout(() => {
+      timer = undefined;
+      fn(...args);
+    }, ms);
   };
+  wrapped.cancel = (): void => {
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      timer = undefined;
+    }
+  };
+  return wrapped;
 }

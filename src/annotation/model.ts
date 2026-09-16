@@ -19,12 +19,12 @@ export type AnnotationState =
   | 'superseded'
   | 'obsolete';
 
-export type VerificationVerdict = 'approve' | 'reject' | 'another-pass' | 'supersede' | 'obsolete';
+export type VerificationVerdict = 'approve' | 'reject' | 'another-pass' | 'obsolete';
 
 export type AnnotationEvent = {
   type:
     | 'created'
-    | 'drafted'
+    | 'note-changed'
     | 'queued'
     | 'dequeued'
     | 'attachment-added'
@@ -35,7 +35,9 @@ export type AnnotationEvent = {
     | 'resolved'
     | 'candidate-chosen'
     | 'acknowledged'
-    | 'verified';
+    | 'verified'
+    | 'amended'
+    | 'superseded';
   at: string;
   detail?: string;
 };
@@ -53,8 +55,11 @@ export type Annotation = {
   references: AnnotationReference[];
   attachments: AnnotationAttachment[];
   resolutions: TargetResolutionRecord[];
+  resolvedRevision?: string;
   chosenCandidates: Record<string, string>;
   verification?: { verdict: VerificationVerdict; at: string; successorId?: string };
+  supersedes?: string;
+  supersededBy?: string;
   history: AnnotationEvent[];
   createdAt: string;
   updatedAt: string;
@@ -72,6 +77,10 @@ export type AnnotationSummary = {
   revisionRelation: 'current' | 'advanced';
   resolutions: Array<{ targetId: string; match: TargetMatch; label: ReturnType<typeof deriveResolutionLabel>; candidates: number; chosenNodeId?: string }>;
   blockers: string[];
+  supersedes?: string;
+  supersededBy?: string;
+  resolutionsRunAt?: string;
+  resolvedRevision?: string;
 };
 
 const STATE_LABELS: Record<AnnotationState, string> = {
@@ -158,7 +167,11 @@ export function summarise(annotation: Annotation): AnnotationSummary {
         ? { chosenNodeId: annotation.chosenCandidates[resolution.targetId] }
         : {})
     })),
-    blockers: approvalBlockers(annotation)
+    blockers: approvalBlockers(annotation),
+    ...(annotation.supersedes ? { supersedes: annotation.supersedes } : {}),
+    ...(annotation.supersededBy ? { supersededBy: annotation.supersededBy } : {}),
+    ...(annotation.resolutions[0]?.resolvedAt ? { resolutionsRunAt: annotation.resolutions[0].resolvedAt } : {}),
+    ...(annotation.resolvedRevision ? { resolvedRevision: annotation.resolvedRevision } : {})
   };
 }
 

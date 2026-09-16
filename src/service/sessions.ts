@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { join } from 'node:path';
+import type { HostCapabilities } from '../host/capabilities.js';
 import { readJsonFile, writeJsonAtomic } from './json-file.js';
 
 export type SessionRecord = {
@@ -10,7 +11,9 @@ export type SessionRecord = {
   kind: string;
   artifactId: string;
   revision: string;
+  adoptedRevision?: string;
   displayName: string;
+  capabilities?: HostCapabilities;
 };
 
 export class SessionRecords {

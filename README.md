@@ -89,22 +89,27 @@ URL to copy. Automatic opening is suppressed with `--no-open` or
 still printed. Reopening the same artifact revision reuses the open session and
 its URL, so a review does not accumulate tabs.
 
-### The two states
+### One rail, two tiles
 
-The Review Surface has exactly two states.
+The Review Surface has one chrome region and one state. The **rail** on the
+right holds the artifact's identity, its revision, the agent's position and
+every Annotation — unsent and sent alike, in one list with the state pill
+carrying the difference, so nothing leaves the view when it is sent. An
+Annotation that needs a decision comes first; closed ones stay behind one
+toggle. Verdicts are decided where the Annotation sits: approve, reject with
+another pass, or mark obsolete. Amending one that was already sent supersedes
+it and delivers the amendment; it is never rewritten in place.
 
-**Review** is where the artifact is exercised normally and Annotations are
-composed. The tool row is Pointer, Element, Text, Region, Arrange. Selecting a
-target opens an Annotation card next to it; typing and pressing Enter queues the
-Annotation; `Cmd/Ctrl+Enter` queues and sends the whole queue.
+A small **island** over the artifact holds two icon-only tiles: point at things,
+and box an area. Operating the artifact is the unarmed resting state rather than
+a third tile. Pointing is a gesture: clicking targets a thing the artifact owns,
+and dragging across words targets exactly those words. `P`, `B` and `V` arm and
+disarm them.
 
-**Verify** is where a resulting revision is compared against the Annotations
-written for it. The pre-change and post-change revisions are toggleable in place,
-each Annotation's target is marked in both, and each Annotation is decided
-separately: approve, reject with another pass, supersede, or mark obsolete.
-
-Escape unwinds exactly one level — close the card, then clear the selection,
-then leave Verify — and never discards unsent writing.
+Type and press Enter in the Annotation card to queue it; `Cmd/Ctrl+Enter` sends
+the whole queue. Escape unwinds exactly one level — close the card, then clear
+the selection, then return to operating the artifact — and never discards unsent
+writing.
 
 ### The Annotation model
 
@@ -112,16 +117,15 @@ then leave Verify — and never discards unsent writing.
   references, optional Relational Intent, delivery state and resolution.
 - Unsent text survives a surface reload, a service restart and a browser
   restart. Nothing discards a note silently.
-- Several targets can be gathered into one Annotation; a region records the
-  revision and scroll position it was drawn at.
+- Several targets can be gathered into one Annotation; a drawn Area records the
+  revision and scroll position it was drawn at and reports the elements it
+  encloses.
 - Reference images are added by picker, paste or drop, are content-addressed by
   their own bytes, and are refused visibly (and unread) when disallowed or
   oversized.
-- Relational Intent is expressed by manipulating the selected targets —
-  ordering, alignment, equal spacing, containment, shared property and
-  comparative size — shown back as one plain sentence and stored
-  implementation-neutral, with no pixel fields. The relation type and operator
-  pickers no longer exist.
+- Relational Intent stays in the domain model and the envelope keeps its support
+  for relationships, but this iteration's surface expresses no relation. The
+  capability is deferred deliberately, not removed.
 - The product never writes style values into the artifact or its source.
 
 ### Resolution, honesty and the agent
@@ -133,11 +137,35 @@ revision now on screen is a separate, Annotation-level fact shown as such.
 Provenance Confidence — exact source span, inferred, or unavailable — is a
 separate axis and never shares the word "exact" with target resolution.
 
-The surface states the agent's position in a sentence. Where the host can hold
-the call the agent is **awaiting you** and sending is urgent; where it cannot,
-the surface says the agent has **stepped away** and the Annotations are queued
-durably. Agent acknowledgement is never presented as implementation or as
-verification, and the workflow never requires the agent to be waiting.
+The surface states the agent's position in a sentence, whether a tool call is
+currently held or direction will be read at the agent's next Check-In, and when
+the agent last checked in. Where the host can hold the call the agent is
+**awaiting you** and sending is urgent; where it cannot, the surface says the
+agent has **stepped away** and the Annotations are queued durably. Agent
+acknowledgement is never presented as implementation or as verification, and the
+workflow never requires the agent to be waiting.
+
+### Check-In is a convention, not a capability
+
+Steering and interruption are seen at a **Check-In**: the point between an
+agent's own steps where it reads new direction. There is no push channel and no
+wake mechanism, because a server cannot put anything into an agent's running
+turn. The product publishes the convention instead of detecting a host
+capability it cannot rely on, and records every MCP call for a session so "last
+checked in" is a fact the surface states rather than an assumption.
+
+An agent that was not holding a call can retrieve what arrived with the
+`check_in` tool: newly delivered Annotations with their intent, amendments that
+superseded something, a pending stop request, and the current state of what it
+was given before. Sending the queue is **Next-Pass Intent**, amending something
+already sent is **Steering Intent**, and asking an agent to stop is **Review
+Interruption** — a request, never a claim that work stopped. The envelope's
+`review-interruption` value is reserved and never emitted: an interruption names
+no target, so it cannot be one.
+
+The nearest canvas-agent prior art refuses check-in outright and schedules later
+requests instead; polling through the MCP Tasks extension is the one push-free
+pattern the specification sanctions. Both are recorded in the shipped skill.
 
 A single drawer, hidden while it has nothing to report and badge-counted when it
 does, carries what needs a decision: everything that will leave the machine, any
@@ -201,7 +229,7 @@ undocumented new state fails loudly.
 - `src/service/` — loopback HTTP service, sessions, security boundary, browser opening
 - `src/ui/` — product-owned shell, artifact interaction layer, design gallery
 - `src/adapters/` — React/Vite Source Provenance adapter
-- `src/host/` — capability negotiation and honest degradation
+- `src/host/` — the surviving host-capability declaration (embedded UI, subscriptions)
 - `src/benchmark/` — mutation benchmark matrix
 - `src/instrumentation/` — product-boundary measurements
 - `skills/` — thin optional Skill for agents

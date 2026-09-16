@@ -29,7 +29,7 @@ Preconditions:
 - A small PNG exists at a known path, and a non-image file and a file over 5MB exist for the refusal recipes.
 
 - **Attach by picker.** Choose the attach control and pick the image. Run `… lever.mjs attach --file /tmp/reference.png`. Exit `0`; `state` shows one attachment with `mediaType` `image/png` and its `byteLength`.
-- **Remove it.** Remove the attachment chip. Run `… lever.mjs select --tool element --target ".gallery-note"` to reopen the card, then remove via the surface; `state` shows no attachments.
+- **Remove it.** Remove the attachment chip. Run `… lever.mjs select --tool point --target ".gallery-note"` to reopen the card, then remove via the surface; `state` shows no attachments.
 - **Refuse a non-image.** Pick a text file. Run `… lever.mjs attach --file /tmp/notes.txt` then `… lever.mjs state`. `state` shows no new attachment and `… lever.mjs screenshot --name attach-refused` shows the refusal message.
 - **Refuse an oversized file.** Pick a file over 5MB. Run `… lever.mjs attach --file /tmp/huge.png` then `… lever.mjs state`. No attachment is stored and the surface states the size limit was not read.
 - **Proof.** Run `… lever.mjs state` and `… lever.mjs screenshot --name attach`. The state names the stored attachment; the screenshot shows its chip.

@@ -18,6 +18,7 @@ export type SessionStatus = {
   sessionId: string;
   artifactId: string;
   openedRevision: string;
+  adoptedRevision: string;
   currentRevision: string;
   changed: boolean;
   unreadable?: boolean;
@@ -29,7 +30,16 @@ export type Policy = {
   contactsRemote: boolean;
 };
 
-export type SendResponse = { envelopeId: string; annotationIds: string[]; delivery: string; idempotencyKey: string };
+export type SendResponse = {
+  envelopeId?: string;
+  annotationIds?: string[];
+  intent?: string;
+  channel?: 'held-call' | 'next-check-in';
+  holding?: boolean;
+  idempotencyKey?: string;
+  delivered?: boolean;
+  reason?: string;
+};
 
 export class Api {
   constructor(
@@ -95,11 +105,29 @@ export class Api {
     });
   }
 
-  async send(intent: 'next-pass' | 'steering' | 'draft' | 'review-interruption'): Promise<SendResponse> {
+  async send(): Promise<SendResponse> {
     return this.json<SendResponse>(this.url(`/api/sessions/${this.sessionId}/send`), {
       method: 'POST',
-      body: JSON.stringify({ intent })
+      body: JSON.stringify({ intent: 'next-pass' })
     });
+  }
+
+  async amend(
+    annotationId: string,
+    note: string
+  ): Promise<{ original: Annotation; successor: Annotation; envelopeId: string; channel: 'held-call' | 'next-check-in'; holding: boolean }> {
+    return this.json(this.url(`/api/sessions/${this.sessionId}/amend`), {
+      method: 'POST',
+      body: JSON.stringify({ annotationId, note })
+    });
+  }
+
+  async interrupt(): Promise<{ interruptionId: string; requestedAt: string; message: string }> {
+    return this.json(this.url(`/api/sessions/${this.sessionId}/interruptions`), { method: 'POST' });
+  }
+
+  async reload(): Promise<SessionStatus> {
+    return this.json<SessionStatus>(this.url(`/api/sessions/${this.sessionId}/reload`), { method: 'POST' });
   }
 
   async resolve(annotationId: string, revision: string, candidates: ResolutionCandidate[]): Promise<TargetResolutionRecord[]> {

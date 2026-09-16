@@ -63,43 +63,47 @@ $LEVER record --name drag            # the run recording plus a screenshot of th
 $LEVER trace                         # a Playwright trace
 $LEVER console                       # console entries and page errors
 $LEVER network                       # failed and 4xx/5xx requests
-$LEVER wait --target ".queue-item" --frame artifact
+$LEVER wait --target ".annotation-row" --frame artifact
 ```
 
-Review state:
+One rail, two tiles:
 
 ```sh
-$LEVER select --tool element --target ".checkout-submit"
-$LEVER select --tool text --target ".gallery-note"                    # an exact text range
-$LEVER select --tool element --target ".gallery-note" --add        # a second target
-$LEVER select --tool region --from ".gallery" --to ".checkout-submit"
+$LEVER select --tool point --target ".checkout-submit"
+$LEVER select --tool point --text ".gallery-note"                     # drag across exact words
+$LEVER select --tool point --target ".gallery-note" --add              # a second target
+$LEVER select --tool box --from ".gallery" --to ".checkout-submit"    # a drawn Area
+$LEVER select --tool operate                                          # return to operating the artifact
+$LEVER mode --to point|box|operate
 $LEVER annotate --note "Make the Place order button impossible to miss."
 $LEVER queue
-$LEVER send --intent next-pass                                     # or steering, or draft
-$LEVER relate --operator after --from ".checkout-submit" --to ".gallery-note"
+$LEVER send --intent next-pass                                        # the one send action: Next-Pass Intent
+$LEVER amend --note "Clearer wording." --match "Make the Place order"  # supersedes, Steering Intent
+$LEVER stop                                                           # asks the agent to stop; Review Interruption
 $LEVER attach --file /tmp/reference.png
-$LEVER reload                                                       # reload the Artifact under review
-$LEVER review                                                       # return to Review
+$LEVER reload                                                         # adopt the changed Artifact revision
+$LEVER review                                                         # return to operating the artifact
 ```
 
-Verify state:
+Judging a result where it sits:
 
 ```sh
 $LEVER verify
-$LEVER compare --mode before
+$LEVER compare --mode before --row 0
 $LEVER choose --node <nodeId> --target <targetId>
-$LEVER decide --verdict approve --row 0                             # reject, another-pass, supersede, obsolete
+$LEVER decide --verdict approve --row 0                               # reject, another-pass, obsolete
+$LEVER closed-rows                                                     # one toggle for verified, superseded and obsolete rows
 ```
 
 Keyboard and surface navigation:
 
 ```sh
-$LEVER press --key e                      # tool keys and Escape unwinding
+$LEVER press --key p                      # p, b and v arm and disarm the two tiles
 $LEVER attention                          # open the "Needs you" drawer
 $LEVER overflow --item "Copy artifact path"
 ```
 
-`mcp --run <name>` shares the run's lifecycle data directory, so a batch the browser drive delivered is visible to the MCP loop. Acknowledgement is not implementation and not verification.
+`mcp --run <name>` shares the run's lifecycle data directory, so a batch the browser drive delivered is visible to the MCP loop. `amend` and `stop` deliver **Steering Intent** and **Review Interruption** through the same named delivery path; `check_in` is how an agent reads them without holding a call. Acknowledgement is not implementation and not verification.
 
 Restart without losing the run:
 

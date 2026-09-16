@@ -11,12 +11,22 @@ import {
 import type { ScoredCandidate, TargetResolutionRecord } from '../resolution/resolve.js';
 import { apiBaseUrl } from './runtime.js';
 import { button, h, iconButton } from './dom.js';
+import { icon, type IconName } from './icons.js';
 import type { LayerTool } from './protocol.js';
 
 type Tone = 'default' | 'progress' | 'success' | 'attention' | 'closed' | 'destructive';
 
-export function pill(text: string, tone: Tone = 'default', cue?: string): HTMLElement {
-  return h('span', { class: 'pill', dataset: { tone }, attrs: { 'data-tone': tone } }, cue ? `${cue} ` : '', text);
+export function pill(text: string, tone: Tone = 'default', cue?: IconName | string): HTMLElement {
+  const element = h('span', { class: 'pill', dataset: { tone }, attrs: { 'data-tone': tone } });
+  if (cue) {
+    if (typeof cue === 'string' && cue.length <= 1) {
+      element.append(cue, ' ');
+    } else {
+      element.appendChild(icon(cue as IconName, { size: 12 }));
+    }
+  }
+  element.append(text);
+  return element;
 }
 
 export function stateTone(state: AnnotationState): Tone {
@@ -25,7 +35,6 @@ export function stateTone(state: AnnotationState): Tone {
     case 'queued':
     case 'delivered':
     case 'resolved':
-      return 'progress';
     case 'acknowledged':
       return 'progress';
     case 'verified':
@@ -38,8 +47,32 @@ export function stateTone(state: AnnotationState): Tone {
   }
 }
 
+const STATE_CUES: Record<AnnotationState, IconName> = {
+  draft: 'amend',
+  queued: 'move-up',
+  delivered: 'send',
+  resolved: 'recovered',
+  acknowledged: 'check',
+  verified: 'check',
+  rejected: 'reject',
+  'another-pass': 'another-pass',
+  superseded: 'another-pass',
+  obsolete: 'obsolete'
+};
+
+export function annotationStateCue(state: AnnotationState): IconName {
+  return STATE_CUES[state];
+}
+
 export function statePill(state: AnnotationState): HTMLElement {
-  return pill(stateLabel(state), stateTone(state));
+  const element = h('span', {
+    class: 'pill',
+    dataset: { tone: stateTone(state) },
+    attrs: { 'data-tone': stateTone(state), 'data-state': state }
+  });
+  element.appendChild(icon(annotationStateCue(state), { size: 12 }));
+  element.append(stateLabel(state));
+  return element;
 }
 
 export function resolutionTone(label: ResolutionLabel): Tone {
@@ -57,29 +90,71 @@ export function resolutionTone(label: ResolutionLabel): Tone {
 
 export function resolutionItem(record: TargetResolutionRecord, label: string): HTMLElement {
   const derived = deriveResolutionLabel(record);
-  return h(
-    'li',
-    { class: 'resolution', dataset: { label: derived }, attrs: { 'data-label': derived } },
-    h('span', { class: 'resolution__cue', text: resolutionLabelCue(derived), attrs: { 'aria-hidden': 'true' } }),
-    h('span', { text: `${label}: ${resolutionLabelText(derived)}` }),
-    record.match === 'unresolved' && record.candidates.length > 0
-      ? h('span', { class: 'pill', dataset: { tone: 'attention' }, text: `${record.candidates.length} candidate${record.candidates.length === 1 ? '' : 's'}` })
-      : null
-  );
+  const cueName: IconName = derived === 'matched' ? 'check' : derived === 'recovered' ? 'recovered' : derived === 'ambiguous' ? 'ambiguous' : 'deleted';
+  const item = h('li', { class: 'resolution', dataset: { label: derived }, attrs: { 'data-label': derived } });
+  const cue = h('span', { class: 'resolution__cue', attrs: { 'aria-hidden': 'true' } });
+  if (typeof resolutionLabelCue(derived) === 'string' && resolutionLabelCue(derived).length <= 2) {
+    cue.textContent = resolutionLabelCue(derived);
+  } else {
+    cue.appendChild(icon(cueName, { size: 14 }));
+  }
+  item.append(cue, h('span', { text: `${label}: ${resolutionLabelText(derived)}` }));
+  if (record.match === 'unresolved' && record.candidates.length > 0) {
+    item.appendChild(pill(`${record.candidates.length} candidate${record.candidates.length === 1 ? '' : 's'}`, 'attention'));
+  }
+  return item;
 }
 
 export function agentPositionEl(report: AgentPositionReport): HTMLElement {
-  const cue = report.position === 'awaiting-you' ? '◐' : report.position === 'working' ? '◆' : report.position === 'acknowledged' ? '✓' : '—';
-  return h(
-    'span',
-    {
-      class: 'agent-position',
-      dataset: { position: report.position },
-      attrs: { 'data-position': report.position, role: 'status', 'aria-label': `Agent position: ${report.position}` }
-    },
-    h('span', { class: 'agent-position__cue', text: cue, attrs: { 'aria-hidden': 'true' } }),
-    h('span', { text: report.sentence })
+  const cue: IconName =
+    report.position === 'awaiting-you'
+      ? 'attention'
+      : report.position === 'working'
+        ? 'send'
+        : report.position === 'acknowledged'
+          ? 'check'
+          : 'obsolete';
+  const element = h('span', {
+    class: 'agent-position',
+    dataset: { position: report.position },
+    attrs: { 'data-position': report.position, role: 'status', 'aria-label': `Agent position: ${report.position}` }
+  });
+  const cueEl = h('span', { class: 'agent-position__cue', attrs: { 'aria-hidden': 'true' } });
+  cueEl.appendChild(icon(cue, { size: 14 }));
+  element.append(
+    cueEl,
+    h('span', { class: 'agent-position__sentence', text: report.sentence }),
+    h('span', { class: 'agent-position__checked', text: checkedSentence(report) })
   );
+  return element;
+}
+
+export function checkedSentence(report: AgentPositionReport): string {
+  const channel = report.channel === 'held-call' ? 'A call is being held right now.' : 'Direction is read at the agent\u2019s next Check-In.';
+  if (!report.lastCheckedInAt) {
+    return `${channel} The agent has never checked in, so a request will wait until it does.`;
+  }
+  return `${channel} Last checked in ${relativeTime(report.lastCheckedInAt)}.`;
+}
+
+function relativeTime(iso: string): string {
+  const delta = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(delta)) {
+    return `at ${iso}`;
+  }
+  const seconds = Math.max(0, Math.round(delta / 1000));
+  if (seconds < 60) {
+    return `${seconds}s ago`;
+  }
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+  return `${Math.round(hours / 24)}d ago`;
 }
 
 export function revisionChip(revision: string, advanced: boolean, title: string): HTMLElement {
@@ -90,7 +165,6 @@ export function revisionChip(revision: string, advanced: boolean, title: string)
       dataset: { state: advanced ? 'advanced' : 'current' },
       attrs: { 'data-state': advanced ? 'advanced' : 'current', title }
     },
-    h('span', { text: advanced ? 'Written before this revision · ' : '', attrs: { 'aria-hidden': 'true' } }),
     h('code', { text: shortRevision(revision) })
   );
 }
@@ -99,55 +173,92 @@ export function shortRevision(revision: string): string {
   return revision.replace(/^blake3:/, '').slice(0, 12);
 }
 
-export function stateSwitch(
-  current: 'review' | 'verify',
-  options: { verifyDisabled?: boolean; onSelect: (state: 'review' | 'verify') => void }
-): HTMLElement {
-  const make = (name: 'review' | 'verify', label: string): HTMLButtonElement =>
-    h('button', {
-      type: 'button',
-      text: label,
-      attrs: {
-        'aria-selected': current === name,
-        ...(name === 'verify' && options.verifyDisabled ? { disabled: true } : {})
-      },
-      on: { click: () => options.onSelect(name) }
-    });
-  return h(
-    'div',
-    { class: 'state-switch', attrs: { role: 'tablist', 'aria-label': 'Review or Verify' } },
-    make('review', 'Review'),
-    make('verify', 'Verify')
-  );
-}
-
-export const TOOLS: Array<{ tool: LayerTool; label: string; key: string; hint: string }> = [
-  { tool: 'pointer', label: 'Pointer', key: 'V', hint: 'Operate the artifact normally' },
-  { tool: 'element', label: 'Element', key: 'E', hint: 'Select one or more visible elements' },
-  { tool: 'text', label: 'Text', key: 'T', hint: 'Select an exact text range' },
-  { tool: 'region', label: 'Region', key: 'G', hint: 'Draw an area' },
-  { tool: 'arrange', label: 'Arrange', key: 'A', hint: 'Express a relationship by manipulating targets' }
+export const MODE_TILES: Array<{ mode: Exclude<LayerTool, 'operate'>; icon: IconName; label: string; key: string; hint: string }> = [
+  { mode: 'point', icon: 'point', label: 'Point at things', key: 'P', hint: 'Click a thing to point at it, or drag across words to take exactly those words. (P)' },
+  { mode: 'box', icon: 'box', label: 'Box an area', key: 'B', hint: 'Drag to bound an area that is not one thing. (B)' }
 ];
 
-export function toolRow(active: LayerTool, onSelect: (tool: LayerTool) => void): HTMLElement {
-  return h(
-    'div',
-    { class: 'tool-row', attrs: { role: 'toolbar', 'aria-label': 'Selection tools' } },
-    TOOLS.map((entry) =>
-      h('button', {
-        class: 'tool-row__tool',
-        type: 'button',
-        text: entry.label,
-        title: `${entry.hint} (${entry.key})`,
-        dataset: { tool: entry.tool },
-        attrs: {
-          'aria-pressed': active === entry.tool,
-          'aria-label': `${entry.label} tool — ${entry.hint}`
-        },
-        on: { click: () => onSelect(entry.tool) }
-      })
-    )
+export function modeIsland(active: LayerTool, onSelect: (mode: LayerTool) => void): HTMLElement {
+  const island = h('div', {
+    class: 'mode-island',
+    dataset: { state: active },
+    attrs: { 'data-state': active, role: 'toolbar', 'aria-label': 'Pointing mode' }
+  });
+  for (const entry of MODE_TILES) {
+    const armed = active === entry.mode;
+    const tile = h('button', {
+      class: 'mode-tile',
+      type: 'button',
+      title: entry.hint,
+      dataset: { mode: entry.mode },
+      attrs: {
+        'data-mode': entry.mode,
+        'aria-pressed': armed,
+        'aria-label': `${entry.label}${armed ? ', armed' : ''}`
+      },
+      on: { click: () => onSelect(armed ? 'operate' : entry.mode) }
+    });
+    tile.appendChild(icon(entry.icon, { size: 20 }));
+    island.appendChild(tile);
+  }
+  return island;
+}
+
+export function stopAction(options: { offered: boolean; report: AgentPositionReport; onStop: () => void }): HTMLElement | null {
+  if (!options.offered) {
+    return null;
+  }
+  const wrapper = h('div', { class: 'stop-action' });
+  const stop = h('button', {
+    class: 'button',
+    type: 'button',
+    dataset: { variant: 'destructive' },
+    on: { click: options.onStop }
+  });
+  stop.appendChild(icon('stop', { size: 14 }));
+  stop.append('Ask the agent to stop');
+  wrapper.append(
+    stop,
+    h('p', {
+      class: 'hint',
+      text: `This asks the agent to stop; it does not stop anything itself. ${checkedSentence(options.report)}`
+    }),
+    ...(options.report.pendingInterruption
+      ? [
+          h('p', {
+            class: 'hint',
+            text: options.report.pendingInterruptionSince
+              ? `A stop was requested ${relativeTime(options.report.pendingInterruptionSince)} and the agent has not collected it yet.`
+              : 'A stop has been requested and the agent has not collected it yet.'
+          })
+        ]
+      : [])
   );
+  return wrapper;
+}
+
+export type ThemeChoice = 'auto' | 'light' | 'dark';
+
+export function themeControl(current: ThemeChoice, onSelect: (choice: ThemeChoice) => void): HTMLElement {
+  const group = h('div', { class: 'theme-control', attrs: { role: 'radiogroup', 'aria-label': 'Theme' } });
+  const entries: Array<{ choice: ThemeChoice; icon: IconName; label: string }> = [
+    { choice: 'auto', icon: 'theme-auto', label: 'Match the platform' },
+    { choice: 'light', icon: 'theme-light', label: 'Light' },
+    { choice: 'dark', icon: 'theme-dark', label: 'Dark' }
+  ];
+  for (const entry of entries) {
+    const selected = current === entry.choice;
+    const control = h('button', {
+      class: 'theme-control__choice',
+      type: 'button',
+      title: entry.label,
+      attrs: { role: 'radio', 'aria-checked': selected, 'aria-label': entry.label },
+      on: { click: () => onSelect(entry.choice) }
+    });
+    control.appendChild(icon(entry.icon, { size: 16 }));
+    group.appendChild(control);
+  }
+  return group;
 }
 
 export function relationSentenceEl(annotation: Pick<Annotation, 'relationships' | 'targets'>): HTMLElement | null {
@@ -195,27 +306,27 @@ export function verdictControls(
 ): HTMLElement {
   const approveBlocked = options.blocked.length > 0;
   const group = h('div', { class: 'chips', attrs: { role: 'group', 'aria-label': 'Decision' } });
-  const entries: Array<[string, string, 'primary' | 'secondary' | 'destructive' | 'ghost']> = [
-    ['approve', 'Approve', 'primary'],
-    ['reject', 'Reject', 'secondary'],
-    ['another-pass', 'Request another pass', 'secondary'],
-    ['supersede', 'Supersede', 'ghost'],
-    ['obsolete', 'Mark obsolete', 'ghost']
+  const entries: Array<[string, string, IconName, 'primary' | 'secondary' | 'ghost']> = [
+    ['approve', 'Approve', 'check', 'primary'],
+    ['reject', 'Reject', 'reject', 'secondary'],
+    ['another-pass', 'Request another pass', 'another-pass', 'secondary'],
+    ['obsolete', 'Mark obsolete', 'obsolete', 'ghost']
   ];
-  for (const [verdict, label, variant] of entries) {
+  for (const [verdict, label, iconName, variant] of entries) {
     const disabled = verdict === 'approve' && approveBlocked;
-    group.appendChild(
-      button(label, {
-        variant,
-        disabled,
-        ...(disabled ? { title: options.blocked.join(' ') } : {}),
-        onClick: () => options.onVerdict(verdict)
-      })
-    );
+    const control = button(label, {
+      variant,
+      disabled,
+      ...(disabled ? { title: options.blocked.join(' ') } : {}),
+      onClick: () => options.onVerdict(verdict)
+    });
+    control.dataset['verdict'] = verdict;
+    control.prepend(icon(iconName, { size: 14 }));
+    group.appendChild(control);
   }
   const wrapper = h('div', { class: 'section' }, group);
   if (approveBlocked) {
-    wrapper.appendChild(h('p', { class: 'hint', text: `Approval blocked: ${options.blocked.join(' ')}` }));
+    wrapper.appendChild(h('p', { class: 'hint', text: `Approval is refused: ${options.blocked.join(' ')}` }));
   }
   if (options.recorded) {
     wrapper.appendChild(h('p', { class: 'hint', text: options.recorded }));
@@ -243,7 +354,7 @@ export function attachmentChips(
           attrs: { loading: 'lazy' }
         }),
         h('span', { text: attachment.name ?? `${Math.round(attachment.byteLength / 1024)}KB` }),
-        iconButton(`Remove ${attachment.name ?? 'reference image'}`, '×', () => options.onRemove(attachment.attachmentId))
+        iconButton(`Remove ${attachment.name ?? 'reference image'}`, 'close', () => options.onRemove(attachment.attachmentId))
       )
     )
   );
@@ -263,22 +374,28 @@ export function drawer(
     h(
       'div',
       { class: 'drawer__header' },
-      h('h2', { class: 'panel__title', text: options.title }),
-      iconButton('Close', '×', options.onClose)
+      h('h2', { class: 'rail__title', text: options.title }),
+      iconButton('Close', 'close', options.onClose)
     ),
     h('div', { class: 'drawer__body' }, body)
   );
 }
 
 export function overflowMenu(
-  options: { open: boolean; items: Array<{ label: string; onSelect: () => void }> }
+  options: { open: boolean; items: Array<{ label: string; icon?: IconName; onSelect: () => void }>; extra?: HTMLElement }
 ): HTMLElement {
   return h(
     'div',
     { class: 'overflow-menu', hidden: !options.open, attrs: { role: 'menu', 'aria-label': 'More actions' } },
     options.items.map((item) =>
-      h('button', { type: 'button', text: item.label, attrs: { role: 'menuitem' }, on: { click: () => item.onSelect() } })
-    )
+      h(
+        'button',
+        { type: 'button', attrs: { role: 'menuitem' }, on: { click: () => item.onSelect() } },
+        item.icon ? icon(item.icon, { size: 16 }) : '',
+        item.label
+      )
+    ),
+    ...(options.extra ? [options.extra] : [])
   );
 }
 

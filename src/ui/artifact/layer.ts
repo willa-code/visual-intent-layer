@@ -1,54 +1,41 @@
 import { provenanceForElement } from '../../adapters/react-provenance.js';
-import type {
-  Grounding,
-  LayerMessage,
-  LayerRelation,
-  LayerTarget,
-  LayerTool,
-  ShellMessage
-} from '../protocol.js';
+import type { Grounding, LayerMessage, LayerTarget, LayerTool, ShellMessage } from '../protocol.js';
 import {
   LAYER_ATTRIBUTE,
   describeElement,
   describeRegion,
   describeTextRange,
   elementByNodeId,
-  extractCandidates
+  extractCandidates,
+  isLayerNode
 } from './grounding.js';
 
 const SELECTION_INK = '#2b5fd7';
 const SELECTION_HOVER_FILL = 'rgba(43, 95, 215, 0.08)';
-const SELECTION_MARK_FILL = 'rgba(43, 95, 215, 0.14)';
-const SELECTION_SHADOW = 'rgba(43, 95, 215, 0.35)';
 const ATTENTION_INK = '#6b4a00';
 const ATTENTION_FILL = 'rgba(107, 74, 0, 0.12)';
+const MIN_BOX = 12;
+const DRAG_THRESHOLD = 5;
+const MAX_AREA_TARGETS = 5;
 
 const script = document.currentScript as HTMLScriptElement | null;
 const sessionId = script?.dataset['session'] ?? '';
 const revision = script?.dataset['revision'] ?? '';
 const parentWindow = window.parent !== window ? window.parent : undefined;
 
-let tool: LayerTool = 'pointer';
+let tool: LayerTool = 'operate';
 let targets: SelectedTarget[] = [];
 let hovered: HTMLElement | null = null;
 let marks: Mark[] = [];
 let regionMarks: HTMLElement[] = [];
-let marquee: { startX: number; startY: number; active: boolean } | null = null;
-let dragging: DragState | null = null;
+let boxDrag: { startX: number; startY: number } | null = null;
+let pointDrag: { startX: number; startY: number; startedOnSelected: boolean; moved: boolean } | null = null;
+let hoverBox: HTMLElement | null = null;
 let targetCounter = 0;
-let relationCounter = 0;
 let overlay: HTMLElement;
 
 type SelectedTarget = LayerTarget & { element?: HTMLElement };
 type Mark = { element: HTMLElement; box: HTMLElement };
-type DragState = {
-  element: HTMLElement;
-  targetId: string;
-  startX: number;
-  startY: number;
-  ghost: HTMLElement;
-  relation?: LayerRelation;
-};
 
 function post(message: LayerMessage): void {
   parentWindow?.postMessage(message, '*');
@@ -68,17 +55,19 @@ function ensureOverlay(): HTMLElement {
   return element;
 }
 
-function boxFor(element: Element, kind: 'selected' | 'candidate', label: string): HTMLElement {
+function boxFor(element: Element | null, kind: 'owned' | 'drawn' | 'candidate', label: string): HTMLElement {
   const box = document.createElement('div');
   box.setAttribute(LAYER_ATTRIBUTE, 'mark');
   box.setAttribute('data-vil-mark', kind);
   box.setAttribute('role', 'presentation');
   box.title = label;
-  box.style.cssText = `position:fixed;pointer-events:none;border-radius:4px;box-sizing:border-box;${
-    kind === 'selected'
-      ? `border:1px solid ${SELECTION_INK};box-shadow:0 0 0 1px ${SELECTION_SHADOW};`
-      : `border:2px dashed ${ATTENTION_INK};`
-  }`;
+  const border =
+    kind === 'drawn'
+      ? `border:2px dashed ${ATTENTION_INK};background:${ATTENTION_FILL};`
+      : kind === 'candidate'
+        ? `border:2px dashed ${ATTENTION_INK};`
+        : `border:1px solid ${SELECTION_INK};`;
+  box.style.cssText = `position:fixed;pointer-events:none;border-radius:4px;box-sizing:border-box;${border}`;
   overlay.appendChild(box);
   return box;
 }
@@ -102,8 +91,6 @@ function redraw(): void {
     positionBox(hoverBox, hovered);
   }
 }
-
-let hoverBox: HTMLElement | null = null;
 
 function labelOf(element: HTMLElement): string {
   const grounding = describeElement(element);
@@ -145,16 +132,16 @@ function renderTargets(): void {
   const next: Mark[] = [];
   for (const target of targets) {
     if (target.element && target.element.isConnected) {
-      next.push({ element: target.element, box: boxFor(target.element, 'selected', target.label ?? '') });
-    } else if (!target.element) {
-      const bounds = target.grounding.boundingBox;
-      const box = document.createElement('div');
-      box.setAttribute(LAYER_ATTRIBUTE, 'mark');
-      box.setAttribute('data-vil-mark', 'selected');
-      box.style.cssText = `position:fixed;pointer-events:none;border-radius:4px;box-sizing:border-box;border:1px solid ${SELECTION_INK};left:${bounds.x}px;top:${bounds.y}px;width:${bounds.width}px;height:${bounds.height}px;`;
-      overlay.appendChild(box);
-      regionMarks.push(box);
+      next.push({ element: target.element, box: boxFor(target.element, 'owned', target.label ?? '') });
+      continue;
     }
+    const bounds = target.grounding.boundingBox;
+    const box = boxFor(null, 'drawn', target.label ?? 'A drawn area');
+    box.style.left = `${bounds.x}px`;
+    box.style.top = `${bounds.y}px`;
+    box.style.width = `${bounds.width}px`;
+    box.style.height = `${bounds.height}px`;
+    regionMarks.push(box);
   }
   marks = next;
   for (const mark of marks) {
@@ -195,9 +182,8 @@ function makeTarget(kind: LayerTarget['kind'], grounding: Grounding, element?: H
   return target;
 }
 
-export function selectElement(element: HTMLElement, additive: boolean): void {
-  const target = makeTarget('element', describeElement(element), element);
-  targets = additive ? [...targets.filter((entry) => entry.element !== element), target] : [target];
+function selectElement(element: HTMLElement): void {
+  targets = [makeTarget('element', describeElement(element), element)];
   renderTargets();
 }
 
@@ -206,135 +192,152 @@ function clearSelection(): void {
   renderTargets();
 }
 
-function removeLast(): void {
-  targets = targets.slice(0, -1);
+function selectEnclosed(rect: { x: number; y: number; width: number; height: number }): void {
+  const view = { width: window.innerWidth, height: window.innerHeight, scrollX: window.scrollX, scrollY: window.scrollY };
+  const grounding = describeRegion(rect, view);
+  const enclosed = enclosedElements(rect);
+  const labels: string[] = [];
+  for (const element of enclosed) {
+    const label = labelOf(element);
+    if (!labels.includes(label)) {
+      labels.push(label);
+    }
+  }
+  grounding.selectors = enclosed.flatMap((element) => describeElement(element).selectors ?? []).slice(0, MAX_AREA_TARGETS);
+  const summary = labels.slice(0, MAX_AREA_TARGETS);
+  if (summary.length > 0) {
+    grounding.accessibleName = summary.join(', ');
+  }
+  const target = makeTarget('region', grounding);
+  target.label =
+    summary.length > 0
+      ? `Area enclosing ${summary.join(', ')}${enclosed.length > summary.length ? ` and ${enclosed.length - summary.length} more` : ''}`
+      : 'A drawn area enclosing nothing the artifact owns';
+  targets = [target];
   renderTargets();
 }
 
-function onPointerOver(event: Event): void {
-  if (tool !== 'element') {
-    return;
-  }
-  const element = event.target as HTMLElement | null;
-  setHover(element);
-}
-
-function onClick(event: MouseEvent): void {
-  if (tool !== 'element') {
-    return;
-  }
-  const element = event.target as HTMLElement | null;
-  if (!element || isLayerNode(element)) {
-    return;
-  }
-  event.preventDefault();
-  event.stopPropagation();
-  selectElement(element, event.shiftKey);
-}
-
-function onSelectionChange(): void {
-  if (tool !== 'text') {
-    return;
-  }
-  const selection = document.getSelection();
-  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-    return;
-  }
-  const range = selection.getRangeAt(0);
-  if (range.toString().trim().length === 0) {
-    return;
-  }
-  targets = [makeTarget('text-range', describeTextRange(range))];
-  renderTargets();
+function enclosedElements(rect: { x: number; y: number; width: number; height: number }): HTMLElement[] {
+  const all = Array.from(document.querySelectorAll<HTMLElement>('body *')).filter((element) => !isLayerNode(element));
+  const inside = all.filter((element) => {
+    const box = element.getBoundingClientRect();
+    if (box.width === 0 || box.height === 0) {
+      return false;
+    }
+    return (
+      box.left >= rect.x - 1 &&
+      box.top >= rect.y - 1 &&
+      box.right <= rect.x + rect.width + 1 &&
+      box.bottom <= rect.y + rect.height + 1
+    );
+  });
+  const recognizable = inside.filter((element) => {
+    const grounding = describeElement(element);
+    return Boolean(grounding.accessibleName ?? grounding.semanticRole);
+  });
+  const leaves = recognizable.filter(
+    (element) => !recognizable.some((other) => other !== element && element.contains(other))
+  );
+  return (leaves.length > 0 ? leaves : recognizable).slice(0, MAX_AREA_TARGETS);
 }
 
 function onPointerDown(event: PointerEvent): void {
+  if (tool === 'operate' || event.button !== 0) {
+    return;
+  }
   const element = event.target as HTMLElement | null;
   if (!element || isLayerNode(element)) {
     return;
   }
-  if (tool === 'region') {
-    event.preventDefault();
-    marquee = { startX: event.clientX, startY: event.clientY, active: true };
+  if (tool === 'box') {
+    boxDrag = { startX: event.clientX, startY: event.clientY };
     return;
   }
-  if (tool === 'arrange') {
-    const selected = targets.find((target) => target.element === element || target.element?.contains(element));
-    if (!selected?.element) {
-      return;
-    }
-    event.preventDefault();
-    startDrag(selected.element, selected.targetId, event);
-  }
+  const startedOnSelected = targets.some(
+    (target) => target.element === element || target.element?.contains(element)
+  );
+  pointDrag = { startX: event.clientX, startY: event.clientY, startedOnSelected, moved: false };
 }
 
 function onPointerMove(event: PointerEvent): void {
-  if (marquee?.active) {
-    drawMarquee(marquee.startX, marquee.startY, event.clientX, event.clientY);
+  if (boxDrag) {
+    drawMarquee(boxDrag.startX, boxDrag.startY, event.clientX, event.clientY);
     return;
   }
-  if (dragging) {
-    updateDrag(event);
+  if (pointDrag) {
+    const distance = Math.hypot(event.clientX - pointDrag.startX, event.clientY - pointDrag.startY);
+    if (distance > DRAG_THRESHOLD) {
+      pointDrag.moved = true;
+    }
   }
-  if (tool === 'element') {
+  if (tool === 'point') {
     const element = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
     if (element && !isLayerNode(element)) {
       setHover(element);
+    } else {
+      clearHover();
     }
   }
 }
 
 function onPointerUp(event: PointerEvent): void {
-  if (marquee?.active) {
-    marquee.active = false;
+  if (boxDrag) {
+    const start = boxDrag;
+    boxDrag = null;
     removeMarquee();
-    const width = Math.abs(event.clientX - marquee.startX);
-    const height = Math.abs(event.clientY - marquee.startY);
-    if (width < 12 || height < 12) {
-      post({ source: 'vil-layer', type: 'notice', message: 'That region is below the minimum size, so no Annotation was made.' });
-      marquee = null;
+    const width = Math.abs(event.clientX - start.startX);
+    const height = Math.abs(event.clientY - start.startY);
+    if (width < MIN_BOX || height < MIN_BOX) {
+      post({
+        source: 'vil-layer',
+        type: 'notice',
+        message: `That area is below the ${MIN_BOX}\u00d7${MIN_BOX} minimum, so no Annotation was made.`
+      });
       return;
     }
-    const view = { width: window.innerWidth, height: window.innerHeight, scrollX: window.scrollX, scrollY: window.scrollY };
-    const grounding = describeRegion(
-      {
-        x: Math.min(marquee.startX, event.clientX),
-        y: Math.min(marquee.startY, event.clientY),
-        width,
-        height
-      },
-      view
-    );
-    targets = [makeTarget('region', grounding)];
-    marquee = null;
-    renderTargets();
+    selectEnclosed({
+      x: Math.min(start.startX, event.clientX),
+      y: Math.min(start.startY, event.clientY),
+      width,
+      height
+    });
     return;
   }
-  if (dragging) {
-    finishDrag();
+  if (!pointDrag) {
+    return;
   }
-}
-
-function onKeyDown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') {
-    if (targets.length > 0) {
-      clearSelection();
+  const drag = pointDrag;
+  pointDrag = null;
+  if (drag.moved) {
+    if (drag.startedOnSelected) {
+      const selection = document.getSelection();
+      selection?.removeAllRanges();
+      return;
     }
+    const selection = document.getSelection();
+    if (selection && selection.rangeCount > 0 && !selection.isCollapsed && selection.toString().trim().length > 0) {
+      targets = [makeTarget('text-range', describeTextRange(selection.getRangeAt(0)))];
+      renderTargets();
+    }
+    return;
   }
+  const element = event.target as HTMLElement | null;
+  if (!element || isLayerNode(element)) {
+    return;
+  }
+  selectElement(element);
 }
 
-document.addEventListener('pointerover', onPointerOver, true);
-document.addEventListener('click', onClick, true);
-document.addEventListener('selectionchange', onSelectionChange);
-document.addEventListener('pointerdown', onPointerDown, true);
-document.addEventListener('pointermove', onPointerMove, true);
-document.addEventListener('pointerup', onPointerUp, true);
-document.addEventListener('keydown', onKeyDown, true);
-window.addEventListener('scroll', redraw, true);
-window.addEventListener('resize', redraw);
-
-function isLayerNode(element: Element): boolean {
-  return !!element.closest(`[${LAYER_ATTRIBUTE}]`);
+function onClick(event: MouseEvent): void {
+  if (tool === 'operate') {
+    return;
+  }
+  const element = event.target as HTMLElement | null;
+  if (element && isLayerNode(element)) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
 }
 
 function drawMarquee(x1: number, y1: number, x2: number, y2: number): void {
@@ -343,8 +346,7 @@ function drawMarquee(x1: number, y1: number, x2: number, y2: number): void {
     box = document.createElement('div');
     box.setAttribute(LAYER_ATTRIBUTE, 'marquee');
     box.setAttribute('data-vil-marquee', '');
-    box.style.cssText =
-      `position:fixed;pointer-events:none;border:2px dashed ${ATTENTION_INK};background:${ATTENTION_FILL};border-radius:4px;z-index:2147483001;`;
+    box.style.cssText = `position:fixed;pointer-events:none;border:2px dashed ${ATTENTION_INK};background:${ATTENTION_FILL};border-radius:4px;z-index:2147483001;`;
     overlay.appendChild(box);
   }
   box.style.left = `${Math.min(x1, x2)}px`;
@@ -357,165 +359,6 @@ function removeMarquee(): void {
   document.querySelector(`[${LAYER_ATTRIBUTE}][data-vil-marquee]`)?.remove();
 }
 
-function startDrag(element: HTMLElement, targetId: string, event: PointerEvent): void {
-  const ghost = boxFor(element, 'selected', '');
-  ghost.style.border = `2px solid ${SELECTION_INK}`;
-  ghost.style.background = SELECTION_MARK_FILL;
-  dragging = { element, targetId, startX: event.clientX, startY: event.clientY, ghost };
-}
-
-function updateDrag(event: PointerEvent): void {
-  if (!dragging) {
-    return;
-  }
-  const dx = event.clientX - dragging.startX;
-  const dy = event.clientY - dragging.startY;
-  const rect = dragging.element.getBoundingClientRect();
-  dragging.ghost.style.left = `${rect.left + dx}px`;
-  dragging.ghost.style.top = `${rect.top + dy}px`;
-  dragging.ghost.style.width = `${rect.width}px`;
-  dragging.ghost.style.height = `${rect.height}px`;
-  const relation = computeRelation(dragging.element, rect, dx, dy, event);
-  dragging.relation = relation;
-  post({ source: 'vil-layer', type: 'relation-preview', sentence: relation ? relationSentence(relation, dragging.element) : null });
-}
-
-function finishDrag(): void {
-  if (!dragging) {
-    return;
-  }
-  const relation = dragging.relation;
-  const element = dragging.element;
-  dragging.ghost.remove();
-  dragging = null;
-  if (relation) {
-    relation.relationshipId = `rel-${++relationCounter}`;
-    post({ source: 'vil-layer', type: 'relation', relation, sentence: relationSentence(relation, element) });
-  } else {
-    post({ source: 'vil-layer', type: 'relation-preview', sentence: null });
-  }
-}
-
-function computeRelation(
-  dragged: HTMLElement,
-  rect: DOMRect,
-  dx: number,
-  dy: number,
-  event: PointerEvent
-): LayerRelation | undefined {
-  const others = targets.filter((target) => target.element && target.element !== dragged);
-  if (others.length === 0) {
-    return undefined;
-  }
-  const draggedCenterX = rect.x + dx + rect.width / 2;
-  const draggedCenterY = rect.y + dy + rect.height / 2;
-  const container = others.find((target) => {
-    const other = target.element!.getBoundingClientRect();
-    return draggedCenterX > other.left && draggedCenterX < other.right && draggedCenterY > other.top && draggedCenterY < other.bottom;
-  });
-  if (container) {
-    return { relationshipId: '', type: 'containment', operator: 'member-of', targetIds: [dragging!.targetId, container.targetId] };
-  }
-  const nearest = others
-    .map((target) => {
-      const other = target.element!.getBoundingClientRect();
-      const distance = Math.hypot(other.x + other.width / 2 - draggedCenterX, other.y + other.height / 2 - draggedCenterY);
-      return { target, other, distance };
-    })
-    .sort((a, b) => a.distance - b.distance)[0]!;
-  if (event.shiftKey) {
-    const operator = Math.abs(dx) >= Math.abs(dy) ? 'same-width' : 'same-height';
-    return { relationshipId: '', type: 'comparative-size', operator, targetIds: [dragging!.targetId, nearest.target.targetId] };
-  }
-  if (event.altKey) {
-    return {
-      relationshipId: '',
-      type: 'spacing',
-      operator: 'equal-gap',
-      targetIds: targets.map((target) => target.targetId)
-    };
-  }
-  if (event.metaKey || event.ctrlKey) {
-    return {
-      relationshipId: '',
-      type: 'equivalence',
-      operator: 'shared-property',
-      targetIds: [dragging!.targetId, nearest.target.targetId]
-    };
-  }
-  const verticalOverlap =
-    Math.min(rect.bottom + dy, nearest.other.bottom) - Math.max(rect.top + dy, nearest.other.top);
-  const horizontalGap = Math.abs(draggedCenterX - (nearest.other.x + nearest.other.width / 2));
-  if (verticalOverlap > rect.height * 0.5 && horizontalGap > nearest.other.width * 0.6 && Math.abs(dx) > Math.abs(dy)) {
-    return {
-      relationshipId: '',
-      type: 'ordering',
-      operator: dx > 0 ? 'after' : 'before',
-      targetIds: [dragging!.targetId, nearest.target.targetId]
-    };
-  }
-  return alignmentFor(rect, dx, dy, nearest.other, nearest.target.targetId);
-}
-
-function alignmentFor(
-  rect: DOMRect,
-  dx: number,
-  dy: number,
-  other: DOMRect,
-  otherId: string
-): LayerRelation | undefined {
-  const candidates: Array<{ operator: string; delta: number }> = [
-    { operator: 'align-left', delta: Math.abs(rect.left + dx - other.left) },
-    { operator: 'align-right', delta: Math.abs(rect.right + dx - other.right) },
-    { operator: 'align-center', delta: Math.abs(rect.left + dx + rect.width / 2 - (other.left + other.width / 2)) },
-    { operator: 'align-top', delta: Math.abs(rect.top + dy - other.top) },
-    { operator: 'align-middle', delta: Math.abs(rect.top + dy + rect.height / 2 - (other.top + other.height / 2)) }
-  ];
-  candidates.sort((a, b) => a.delta - b.delta);
-  const best = candidates[0];
-  if (!best) {
-    return undefined;
-  }
-  return { relationshipId: '', type: 'alignment', operator: best.operator, targetIds: [dragging!.targetId, otherId] };
-}
-
-function relationSentence(relation: LayerRelation, dragged: HTMLElement): string {
-  const names = relation.targetIds.map((targetId) => {
-    const target = targets.find((entry) => entry.targetId === targetId);
-    return target?.label ?? (target?.element ? labelOf(target.element) : targetId);
-  });
-  const name = names[0] ?? labelOf(dragged);
-  const other = names[1] ?? 'the other target';
-  switch (relation.operator) {
-    case 'align-left':
-      return `${name} and ${other} should align on the left.`;
-    case 'align-right':
-      return `${name} and ${other} should align on the right.`;
-    case 'align-center':
-      return `${name} and ${other} should align on the centre line.`;
-    case 'align-top':
-      return `${name} and ${other} should align along the top.`;
-    case 'align-middle':
-      return `${name} and ${other} should align along the middle.`;
-    case 'before':
-      return `${name} should come before ${other}.`;
-    case 'after':
-      return `${name} should come after ${other}.`;
-    case 'equal-gap':
-      return `${names.join(' and ') || 'The selected targets'} should be equally spaced.`;
-    case 'member-of':
-      return `${name} should be contained inside ${other}.`;
-    case 'shared-property':
-      return `${name} and ${other} should share the same visible property.`;
-    case 'same-width':
-      return `${name} should be the same width as ${other}.`;
-    case 'same-height':
-      return `${name} should be the same height as ${other}.`;
-    default:
-      return `${name} and ${other} should ${relation.operator}.`;
-  }
-}
-
 function markBySelectors(selectors: string[], nodeIds: string[], chosenNodeId?: string): void {
   for (const mark of marks) {
     mark.box.remove();
@@ -524,14 +367,14 @@ function markBySelectors(selectors: string[], nodeIds: string[], chosenNodeId?: 
   for (const id of nodeIds) {
     const element = elementByNodeId(document, id);
     if (element) {
-      marks.push({ element, box: boxFor(element, chosenNodeId === id ? 'selected' : 'candidate', id) });
+      marks.push({ element, box: boxFor(element, chosenNodeId === id ? 'owned' : 'candidate', id) });
     }
   }
   for (const selector of selectors) {
     try {
       const element = document.querySelector(selector) as HTMLElement | null;
       if (element) {
-        marks.push({ element, box: boxFor(element, 'selected', selector) });
+        marks.push({ element, box: boxFor(element, 'owned', selector) });
       }
     } catch {
       continue;
@@ -542,8 +385,11 @@ function markBySelectors(selectors: string[], nodeIds: string[], chosenNodeId?: 
 
 function configure(nextTool: LayerTool): void {
   tool = nextTool;
-  document.body.style.cursor = nextTool === 'pointer' ? '' : 'crosshair';
-  if (nextTool !== 'element') {
+  pointDrag = null;
+  boxDrag = null;
+  removeMarquee();
+  document.body.style.cursor = nextTool === 'operate' ? '' : 'crosshair';
+  if (nextTool !== 'point') {
     clearHover();
   }
 }
@@ -560,9 +406,6 @@ function onMessage(event: MessageEvent<ShellMessage>): void {
     case 'clear-selection':
       clearSelection();
       break;
-    case 'remove-last':
-      removeLast();
-      break;
     case 'mark-targets':
       markBySelectors(message.selectors ?? [], message.nodeIds, message.chosenNodeId);
       break;
@@ -575,7 +418,14 @@ function onMessage(event: MessageEvent<ShellMessage>): void {
   }
 }
 
+document.addEventListener('pointerdown', onPointerDown, true);
+document.addEventListener('pointermove', onPointerMove, true);
+document.addEventListener('pointerup', onPointerUp, true);
+document.addEventListener('click', onClick, true);
+window.addEventListener('scroll', redraw, true);
+window.addEventListener('resize', redraw);
 window.addEventListener('message', onMessage as EventListener);
 
 overlay = ensureOverlay();
 post({ source: 'vil-layer', type: 'ready' });
+void sessionId;

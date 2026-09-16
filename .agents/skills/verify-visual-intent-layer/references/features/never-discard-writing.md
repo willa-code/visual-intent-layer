@@ -24,7 +24,7 @@ Preconditions:
 - A run is healthy and the Artifact is on screen in Review.
 - The Annotation Queue contains no unsent draft before the recipe starts.
 
-- **Create an unsent draft.** Run `… lever.mjs select --tool element --target ".gallery-note"` then `… lever.mjs annotate --note "Draft that must survive"`. Do not queue or send. `state` shows a `draft` with the note.
+- **Create an unsent draft.** Run `… lever.mjs select --tool point --target ".gallery-note"` then `… lever.mjs annotate --note "Draft that must survive"`. Do not queue or send. `state` shows a `draft` with the note.
 - **Surface reload.** Reload the page and read back. Run `… lever.mjs reload-surface` then `… lever.mjs state`. The draft is still present with the same note.
 - **Service restart.** Restart the product and read back. Run `… lever.mjs restart-service` then `… lever.mjs state`. The same draft and note are present; the run keeps its isolation and its data directory.
 - **Browser restart.** Restart the browser and read back. Run `… lever.mjs restart-browser` then `… lever.mjs state`. The same draft and note are present; the run's evidence is preserved.

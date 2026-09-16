@@ -116,6 +116,49 @@ const handlers = {
     await pick(locatorFor(body.target, body.frame), body.target).fill(body.value);
     return { ok: true };
   },
+  'POST /count': async (body) => {
+    const count = await locatorFor(body.target, body.frame).count();
+    return { ok: true, count };
+  },
+  'POST /measure': async () => {
+    return page.evaluate(() => {
+      const rail = document.querySelector('.rail');
+      const head = document.querySelector('.rail__head');
+      const scroll = document.querySelector('.rail__scroll');
+      const tiles = Array.from(document.querySelectorAll('.mode-tile'));
+      const island = document.querySelector('.island-host');
+      const stage = document.querySelector('.stage');
+      const rect = (element) => {
+        const box = element?.getBoundingClientRect();
+        return box
+          ? { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) }
+          : null;
+      };
+      const islandBox = island?.getBoundingClientRect();
+      const islandPoint = islandBox
+        ? document.elementFromPoint(islandBox.x + islandBox.width / 2, islandBox.y + islandBox.height / 2)
+        : null;
+      const stageBox = stage?.getBoundingClientRect();
+      const stagePoint = stageBox
+        ? document.elementFromPoint(stageBox.x + stageBox.width / 2, stageBox.y + stageBox.height / 2)
+        : null;
+      return {
+        rail: rect(rail),
+        railHead: rect(head),
+        railHeadOverflow: head ? head.scrollHeight > head.clientHeight + 1 : null,
+        railHorizontalOverflow: scroll ? scroll.scrollWidth > scroll.clientWidth + 1 : null,
+        tiles: tiles.map((tile) => ({
+          ...rect(tile),
+          armed: tile.getAttribute('aria-pressed') === 'true',
+          name: tile.getAttribute('aria-label')
+        })),
+        smallestTile: tiles.reduce((min, tile) => Math.min(min, tile.getBoundingClientRect().width, tile.getBoundingClientRect().height), Infinity),
+        islandReceivesPointerEvents: islandPoint ? islandPoint.closest('.mode-island') !== null : false,
+        artifactsUnderPointer: stagePoint ? stagePoint.tagName.toLowerCase() : null,
+        artifactIsIframe: stagePoint ? stagePoint.closest('iframe.artifact-frame') !== null : false
+      };
+    });
+  },
   'POST /select-option': async (body) => {
     await pick(locatorFor(body.target, body.frame), body.target).selectOption(body.value);
     return { ok: true };
@@ -169,6 +212,25 @@ const handlers = {
     for (const key of modifiers.slice().reverse()) {
       await page.keyboard.up(key);
     }
+    return { ok: true };
+  },
+  'POST /drag-box': async (body) => {
+    const from = pick(locatorFor(body.from, body.frame), body.from);
+    const to = pick(locatorFor(body.to, body.frame), body.to);
+    const fromBox = await from.boundingBox();
+    const toBox = await to.boundingBox();
+    if (!fromBox || !toBox) {
+      throw new Error('a box drag needs measurable from and to boxes');
+    }
+    const startX = fromBox.x + 1;
+    const startY = fromBox.y + 1;
+    const endX = toBox.x + toBox.width - 1;
+    const endY = toBox.y + toBox.height - 1;
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(endX, endY, { steps: 12 });
+    await page.mouse.move(endX, endY);
+    await page.mouse.up();
     return { ok: true };
   },
   'POST /wait': async (body) => {

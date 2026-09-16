@@ -30,6 +30,8 @@ export function createMcpServer(service: ReviewService): Server {
       switch (request.params.name) {
         case 'open_visual_review':
           return ok(await openVisualReview(service, args));
+        case 'check_in':
+          return ok(checkIn(service, args));
         case 'get_intent_status':
           return ok(service.getBatchStatus(stringArg(args, 'envelopeId')));
         case 'acknowledge_intent':
@@ -55,7 +57,8 @@ export function createMcpServer(service: ReviewService): Server {
 }
 
 async function openVisualReview(service: ReviewService, args: Record<string, unknown>): Promise<unknown> {
-  const opened = await service.openArtifact(openArgs(args), { openBrowser: !autoOpenSuppressed() });
+  const capabilities = service.capabilitiesFor(optionalString(args, 'hostId') ?? 'mcp', capabilitiesArg(args));
+  const opened = await service.openArtifact(openArgs(args), { openBrowser: !autoOpenSuppressed(), capabilities });
   service.noteAgentContact(opened.sessionId);
   const noWait = envTruthy(process.env['VISUAL_INTENT_NO_WAIT']) || args['waitMs'] === 0;
   const waitMs = numberArg(args, 'waitMs') ?? service.waitMs;
@@ -77,6 +80,31 @@ async function openVisualReview(service: ReviewService, args: Record<string, unk
 
 function ok(value: unknown): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] };
+}
+
+function checkIn(service: ReviewService, args: Record<string, unknown>): unknown {
+  const sessionId = optionalString(args, 'sessionId') ?? service.mostRecentSessionId();
+  if (!sessionId) {
+    throw new Error('check_in needs a session: open a review first, or pass the sessionId the review URL carries.');
+  }
+  const cursor = optionalString(args, 'cursor');
+  const agentId = optionalString(args, 'agentId');
+  return service.checkIn(sessionId, {
+    ...(cursor ? { cursor } : {}),
+    ...(agentId ? { agentId } : {})
+  });
+}
+
+function capabilitiesArg(args: Record<string, unknown>): { embeddedUI?: boolean; subscriptions?: boolean } {
+  const value = args['capabilities'];
+  if (typeof value !== 'object' || value === null) {
+    return {};
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    ...(typeof record['embeddedUI'] === 'boolean' ? { embeddedUI: record['embeddedUI'] } : {}),
+    ...(typeof record['subscriptions'] === 'boolean' ? { subscriptions: record['subscriptions'] } : {})
+  };
 }
 
 function openArgs(args: Record<string, unknown>):

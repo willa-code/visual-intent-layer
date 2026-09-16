@@ -56,14 +56,71 @@ describe('design gallery scripted pass', () => {
         dark: dark ? read(dark) : {}
       };
     });
-    if (!existsSync(TOKEN_BASELINE) || process.env['UPDATE_GALLERY'] === '1') {
+    if (process.env['UPDATE_GALLERY'] === '1') {
       mkdirSync(baselineDir, { recursive: true });
       writeFileSync(TOKEN_BASELINE, JSON.stringify(tokens, null, 2), 'utf8');
       console.log(`wrote token baseline ${TOKEN_BASELINE}`);
       return;
     }
+    if (!existsSync(TOKEN_BASELINE)) {
+      throw new Error(
+        `No token baseline at ${TOKEN_BASELINE}. A missing baseline is not the same as an unchanged one; run with UPDATE_GALLERY=1 once the design is intended.`
+      );
+    }
     const expected = JSON.parse(readFileSync(TOKEN_BASELINE, 'utf8')) as typeof tokens;
     expect(tokens).toEqual(expected);
+  });
+
+  it('passes the documented contrast floor for every semantic pair in both themes', async () => {
+    const failures = await page.evaluate(() => {
+      const pairs = [
+        ['attention', '--attention-surface', '--attention-ink'],
+        ['progress', '--progress-surface', '--progress-ink'],
+        ['success', '--success-surface', '--success-ink'],
+        ['closed', '--closed-surface', '--closed-ink'],
+        ['destructive', '--destructive-surface', '--destructive-ink']
+      ] as const;
+      const parse = (value: string): [number, number, number] => {
+        const hex = value.trim().replace('#', '');
+        return [
+          parseInt(hex.slice(0, 2), 16) / 255,
+          parseInt(hex.slice(2, 4), 16) / 255,
+          parseInt(hex.slice(4, 6), 16) / 255
+        ];
+      };
+      const luminance = (rgb: [number, number, number]): number => {
+        const [r, g, b] = rgb.map((channel) =>
+          channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4)
+        ) as [number, number, number];
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const ratio = (a: string, b: string): number => {
+        const [high, low] = [luminance(parse(a)), luminance(parse(b))].sort((x, y) => y - x) as [number, number];
+        return (high + 0.05) / (low + 0.05);
+      };
+      const problems: string[] = [];
+      const read = (theme: 'light' | 'dark'): Record<string, string> => {
+        const root = theme === 'dark' ? document.querySelector('.gallery[data-theme="dark"]') : document.documentElement;
+        const computed = getComputedStyle(root as Element);
+        const out: Record<string, string> = {};
+        for (const [, surface, ink] of pairs) {
+          out[surface] = computed.getPropertyValue(surface).trim();
+          out[ink] = computed.getPropertyValue(ink).trim();
+        }
+        return out;
+      };
+      for (const theme of ['light', 'dark'] as const) {
+        const values = read(theme);
+        for (const [name, surface, ink] of pairs) {
+          const value = ratio(values[surface]!, values[ink]!);
+          if (value < 4.5) {
+            problems.push(`${theme} ${name} is ${value.toFixed(2)}:1 (floor 4.5:1)`);
+          }
+        }
+      }
+      return problems;
+    });
+    expect(failures, failures.join('; ')).toEqual([]);
   });
 
   for (const theme of ['light', 'dark'] as const) {
@@ -71,11 +128,16 @@ describe('design gallery scripted pass', () => {
       const section = page.locator(`.gallery[data-theme="${theme}"]`);
       const buffer = await section.screenshot();
       const baselinePath = join(baselineDir, `gallery-${theme}.png`);
-      if (!existsSync(baselinePath) || process.env['UPDATE_GALLERY'] === '1') {
+      if (process.env['UPDATE_GALLERY'] === '1') {
         mkdirSync(baselineDir, { recursive: true });
         writeFileSync(baselinePath, buffer);
         console.log(`wrote gallery baseline ${baselinePath}`);
         return;
+      }
+      if (!existsSync(baselinePath)) {
+        throw new Error(
+          `No ${theme} gallery baseline at ${baselinePath}. A missing baseline is not the same as an unchanged one; run with UPDATE_GALLERY=1 once the design is intended.`
+        );
       }
       const difference = pixelDifference(readFileSync(baselinePath), buffer);
       if (difference > TOLERANCE) {

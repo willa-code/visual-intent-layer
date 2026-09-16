@@ -2,6 +2,12 @@
 
 _Decision brief completed 15 September 2026. Revised September 2026: TypeScript-only V0, Personal Proof validated on pi; the spec is authoritative for V0 scope._
 
+> **Corrected on steering.** ADR-0018 supersedes the assumption that an agent
+> reads new direction at a host-negotiated safe boundary. Steering and
+> interruption are seen at the agent's Check-In: a convention this product
+> publishes, not a capability it detects. Every mention of "live-steering" or
+> "steering support" below should be read as Check-In.
+
 ## Executive verdict
 
 Build it—but build a deliberately narrow Proof Product, not a general visual agent platform.

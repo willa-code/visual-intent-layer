@@ -1,6 +1,6 @@
 import type { ResolutionCandidate } from '../resolution/resolve.js';
 
-export type LayerTool = 'pointer' | 'element' | 'text' | 'region' | 'arrange';
+export type LayerTool = 'operate' | 'point' | 'box';
 
 export type Box = { x: number; y: number; width: number; height: number };
 
@@ -24,7 +24,7 @@ export type Grounding = {
 export type SourceProvenance = {
   file: string;
   line: number;
-  column: number;
+  column?: number;
   component?: string;
   adapter: string;
   sourceSpan?: string;
@@ -40,30 +40,13 @@ export type LayerTarget = {
   regionEvidence?: { revision: string; scrollX: number; scrollY: number };
 };
 
-export type LayerRelation = {
-  relationshipId: string;
-  type: 'ordering' | 'alignment' | 'spacing' | 'containment' | 'equivalence' | 'comparative-size';
-  operator: string;
-  targetIds: string[];
-  property?: string;
-};
-
 export type LayerReady = { source: 'vil-layer'; type: 'ready' };
 export type LayerHover = { source: 'vil-layer'; type: 'hover'; label: string | null };
 export type LayerSelection = { source: 'vil-layer'; type: 'selection'; targets: LayerTarget[] };
-export type LayerRelationPreview = { source: 'vil-layer'; type: 'relation-preview'; sentence: string | null };
-export type LayerRelationCommit = { source: 'vil-layer'; type: 'relation'; relation: LayerRelation; sentence: string };
 export type LayerCandidates = { source: 'vil-layer'; type: 'candidates'; candidates: ResolutionCandidate[]; revision: string };
 export type LayerNotice = { source: 'vil-layer'; type: 'notice'; message: string };
 
-export type LayerMessage =
-  | LayerReady
-  | LayerHover
-  | LayerSelection
-  | LayerRelationPreview
-  | LayerRelationCommit
-  | LayerCandidates
-  | LayerNotice;
+export type LayerMessage = LayerReady | LayerHover | LayerSelection | LayerCandidates | LayerNotice;
 
 export type ShellConfigure = {
   source: 'vil-shell';
@@ -74,7 +57,6 @@ export type ShellConfigure = {
 };
 
 export type ShellClearSelection = { source: 'vil-shell'; type: 'clear-selection' };
-export type ShellRemoveLast = { source: 'vil-shell'; type: 'remove-last' };
 export type ShellMarkTargets = {
   source: 'vil-shell';
   type: 'mark-targets';
@@ -88,7 +70,6 @@ export type ShellBeforeAfter = { source: 'vil-shell'; type: 'before-after'; mode
 export type ShellMessage =
   | ShellConfigure
   | ShellClearSelection
-  | ShellRemoveLast
   | ShellMarkTargets
   | ShellRequestCandidates
   | ShellBeforeAfter;

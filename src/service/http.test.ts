@@ -462,3 +462,142 @@ describe('oversized artifacts', () => {
     void readFileSync;
   });
 });
+describe('reload adopts the revision without moving the session revision', () => {
+  it('keeps annotation-route authorisation after a reload, and before/after never resolve to one revision', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vil-adopt-'));
+    const file = join(dir, 'page.html');
+    writeFileSync(file, '<!doctype html><html><body><button class="cta">Before</button></body></html>', 'utf8');
+    const { service, baseUrl } = await setup();
+    const opened = await service.openSession({ kind: 'saved-html', path: file });
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+
+    await fetch(`${baseUrl}/artifact/${opened.sessionId}`, { headers: { 'x-session-cap': opened.capability } });
+
+    const created = (await (
+      await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          targets: [
+            {
+              targetId: 't-1',
+              kind: 'element',
+              renderedGrounding: { selectors: ['button.cta'], boundingBox: { x: 0, y: 0, width: 10, height: 10 } },
+              provenanceConfidence: 'unavailable'
+            }
+          ]
+        })
+      })
+    ).json()) as { annotation: { annotationId: string; writtenRevision: string } };
+    await fetch(`${baseUrl}/api/annotations/${created.annotation.annotationId}/queue?${auth}`, { method: 'POST' });
+    await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/send?${auth}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ intent: 'next-pass' })
+    });
+
+    writeFileSync(file, '<!doctype html><html><body><button class="cta">After a real change</button></body></html>', 'utf8');
+    const before = (await (await fetch(`${baseUrl}/api/sessions/${opened.sessionId}?cap=${opened.capability}`)).json()) as {
+      openedRevision: string;
+      adoptedRevision: string;
+      currentRevision: string;
+      changed: boolean;
+    };
+    expect(before.changed).toBe(true);
+    expect(before.openedRevision).toBe(opened.artifact.revision);
+    expect(before.adoptedRevision).toBe(opened.artifact.revision);
+
+    const reloaded = (await (
+      await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/reload?${auth}`, { method: 'POST' })
+    ).json()) as { adoptedRevision: string; currentRevision: string; openedRevision: string; changed: boolean };
+    expect(reloaded.changed).toBe(false);
+    expect(reloaded.openedRevision).toBe(opened.artifact.revision);
+    expect(reloaded.adoptedRevision).toBe(reloaded.currentRevision);
+    expect(reloaded.adoptedRevision).not.toBe(opened.artifact.revision);
+
+    const stillAuthorised = await fetch(`${baseUrl}/api/annotations/${created.annotation.annotationId}?${auth}`);
+    expect(stillAuthorised.status).toBe(200);
+
+    const after = await (
+      await fetch(`${baseUrl}/artifact/${opened.sessionId}`, { headers: { 'x-session-cap': opened.capability } })
+    ).text();
+    const beforeDoc = await (
+      await fetch(`${baseUrl}/artifact/${opened.sessionId}/before`, { headers: { 'x-session-cap': opened.capability } })
+    ).text();
+    expect(after).toContain('After a real change');
+    expect(beforeDoc).toContain('Before');
+    expect(after).not.toBe(beforeDoc);
+  });
+});
+
+describe('delivery intent the surface cannot produce', () => {
+  it('a draft intent creates no batch and moves no Annotation, and a delivered Annotation cannot be edited in place', async () => {
+    const { service, baseUrl } = await setup();
+    const opened = await openGallery(service);
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const created = (await (
+      await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          targets: [
+            {
+              targetId: 't-1',
+              kind: 'element',
+              renderedGrounding: { selectors: ['main'], boundingBox: { x: 0, y: 0, width: 1, height: 1 } },
+              provenanceConfidence: 'unavailable'
+            }
+          ]
+        })
+      })
+    ).json()) as { annotation: { annotationId: string } };
+
+    const draft = await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/send?${auth}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ intent: 'draft' })
+    });
+    expect(draft.status).toBe(400);
+    expect(await draft.text()).toMatch(/Next-Pass Intent/);
+    const afterDraft = (await (await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`)).json()) as {
+      annotations: Array<{ state: string }>;
+      batches: unknown[];
+    };
+    expect(afterDraft.annotations[0]?.state).toBe('draft');
+    expect(afterDraft.batches).toHaveLength(0);
+
+    await fetch(`${baseUrl}/api/annotations/${created.annotation.annotationId}/queue?${auth}`, { method: 'POST' });
+    await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/send?${auth}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ intent: 'next-pass' })
+    });
+
+    const patch = await fetch(`${baseUrl}/api/annotations/${created.annotation.annotationId}?${auth}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ note: 'rewritten in place' })
+    });
+    expect(patch.status).toBe(400);
+    expect(await patch.text()).toMatch(/cannot be edited in place/);
+
+    const amended = await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/amend?${auth}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ annotationId: created.annotation.annotationId, note: 'amended instead' })
+    });
+    expect(amended.status).toBe(200);
+    expect((await amended.json()) as Record<string, unknown>).toMatchObject({ intent: 'steering' });
+
+    const interrupted = await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/interruptions?${auth}`, { method: 'POST' });
+    expect(interrupted.status).toBe(200);
+    expect((await interrupted.json()) as Record<string, unknown>).toMatchObject({ interruptionId: expect.stringMatching(/^int-/) });
+
+    const agent = (await (await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/agent?cap=${opened.capability}`)).json()) as {
+      pendingInterruption: boolean;
+      channel: string;
+    };
+    expect(agent.pendingInterruption).toBe(true);
+    expect(['held-call', 'next-check-in']).toContain(agent.channel);
+  });
+});

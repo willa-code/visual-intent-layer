@@ -1,6 +1,6 @@
 # The decision drawer
 
-When something needs a decision, the topbar shows an attention count and the drawer explains what would leave the machine, which items need a decision, and how the revision has moved. A remote-origin artifact is disclosed before it loads.
+When something needs a decision, the rail head shows an attention count and the drawer explains what would leave the machine, which items need a decision, and how the revision has moved. A remote-origin artifact is disclosed before it loads.
 
 _Not yet driven. Recipes are mapped; no live drive has confirmed them._
 
@@ -40,3 +40,6 @@ Preconditions:
 - The remote-origin gate appears before the Artifact loads. Once loaded, the disclosure no longer blocks.
 - The drawer and the More actions menu are different surfaces; `attention` opens the drawer, `overflow` opens the menu.
 - Escape closes the drawer first when both the drawer and menu are open.
+## Driving the closed-rows toggle
+
+- **Hide and reveal closed rows.** Run `… lever.mjs closed-rows`. Exit `0`; the visible `.annotation-row` count changes and the one toggle states how many are hidden. There is one control, not a filter affordance.

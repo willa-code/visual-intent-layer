@@ -27,7 +27,7 @@ Preconditions:
 - A run is healthy with a delivered Annotation against the current revision.
 - The Artifact file can be changed on disk and changed back.
 
-- **Send against revision one.** Run `… lever.mjs select --tool element --target ".checkout-submit"`, `… lever.mjs annotate --note "Move this."`, `… lever.mjs queue`, `… lever.mjs send`. `state` shows a delivered Annotation.
+- **Send against revision one.** Run `… lever.mjs select --tool point --target ".checkout-submit"`, `… lever.mjs annotate --note "Move this."`, `… lever.mjs queue`, `… lever.mjs send`. `state` shows a delivered Annotation.
 - **Move the Artifact on.** Change the file (for example append a paragraph), then run `… lever.mjs reload`. Exit `0`; the change banner is dismissed and the new revision is on screen.
 - **Read the honest outcome.** Run `… lever.mjs verify` then `… lever.mjs state`. Each `resolutions[].match` is one of `exact`, `recovered` or `unresolved`; `revisionRelation` is `advanced` when the Annotation predates the revision on screen.
 - **Ambiguity is never auto-chosen.** An `unresolved` target with candidates is reported as ambiguous and blocks approval. Run `… lever.mjs decide --verdict approve` in that state; the surface refuses and states the reason.
@@ -44,3 +44,4 @@ Preconditions:
 - Approval is refused, not silently ignored, while any target is ambiguous or deleted; the refusal states which target and why.
 - Restore the Artifact file after the drive. A leftover appended paragraph changes the revision for the next run.
 - A `recovered` match is weaker evidence, not a failure. Assert the reported outcome, not a preference for `exact`.
+- **Compare one row's revisions.** Select the row and run `… lever.mjs compare --mode before --row 0` then `--mode after --row 0`. Each exits `0` while the row has a result from a different revision; the comparison is per row, not one session-wide pair, and switching to Before does not overwrite the revision the result came from.

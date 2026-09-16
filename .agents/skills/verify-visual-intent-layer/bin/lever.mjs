@@ -34,6 +34,7 @@ const MAPPED_FEATURES = [
   'accessibility-and-keyboard',
   'setup-and-detection',
   'mcp-agent-loop',
+  'check-in',
   'journeys'
 ];
 
@@ -52,23 +53,29 @@ Usage:
   lever cleanup [--run <name>]
   lever open --html <path> [--name <label>]        (alias of launch)
 
-  lever select --tool element|text|region|arrange --target <css> [--add] [--nth <n>]
-  lever select --tool region --from <css> --to <css>
+  lever select --tool point --target <css> [--text <css>] [--add]
+  lever select --tool box --from <css> --to <css>
+  lever select --tool operate
+  lever mode --to point|box|operate
   lever annotate --note <text>
-  lever relate --operator <operator> --from <css> --to <css>
   lever attach --file <path>
   lever queue
   lever reorder --from <index> --direction up|down
-  lever send [--intent next-pass|steering|draft]
+  lever send [--intent next-pass]
+  lever amend --note <text> [--row <n>|--match <text>]
+  lever stop
   lever reload
   lever reload-surface
   lever restart-service
   lever restart-browser
   lever review
   lever verify
-  lever decide --verdict approve|reject|another-pass|supersede|obsolete [--row <n>]
+  lever decide --verdict approve|reject|another-pass|obsolete [--row <n>|--match <text>]
   lever choose --row <n> --target <targetId> --node <nodeId>
-  lever compare --mode before|after
+  lever compare --mode before|after [--row <n>]
+  lever closed-rows
+  lever measure
+  lever unreachable --command <text> --precondition <text>
 
   lever state [--run <name>]
   lever screenshot --name <state>
@@ -481,6 +488,24 @@ async function productGet(secret, path) {
   return { status: response.status, json };
 }
 
+async function productPost(secret, path, body) {
+  const url = new URL(path, secret.baseUrl);
+  url.searchParams.set('cap', secret.capability);
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'x-session-cap': secret.capability, 'content-type': 'application/json' },
+    body: JSON.stringify(body ?? {})
+  });
+  const text = await response.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { body: text };
+  }
+  return { status: response.status, json };
+}
+
 async function waitForAnnotations(secret, predicate, description, timeoutMs = 10000) {
   const deadline = Date.now() + timeoutMs;
   let last = [];
@@ -837,46 +862,80 @@ function selector(value) {
   return { selector: value };
 }
 
+const MODES = ['point', 'box', 'operate'];
+
+async function armTile(host, mode) {
+  const tileName = mode === 'point' ? 'Point at things' : 'Box an area';
+  const armedName = `${tileName}, armed`;
+  const alreadyArmed = (await host('/count', { target: { role: 'button', name: armedName } })).count > 0;
+  if (!alreadyArmed) {
+    await host('/click', { target: { role: 'button', name: tileName, exact: false } });
+  }
+}
+
 async function commandSelect(flags) {
   const runDir = resolveRun(flags.run);
   const secret = await assertHealthy(runDir);
-  const tool = typeof flags.tool === 'string' ? flags.tool : 'element';
-  if (!['element', 'text', 'region', 'arrange'].includes(tool)) {
-    fail(EXIT.usage, `Unsupported selection tool ${tool}.`, 'Use element, text, region or arrange.');
+  const tool = typeof flags.tool === 'string' ? flags.tool : 'point';
+  if (!MODES.includes(tool)) {
+    fail(EXIT.usage, `Unsupported mode ${tool}.`, 'Use point, box or operate.');
   }
   const host = hostCall(secret);
   if (flags['dry-run']) {
-    output({ dryRun: true, would: { tool, target: targetFromFlags(flags), click: tool === 'element' } });
+    output({ dryRun: true, would: { tool, target: targetFromFlags(flags), click: tool === 'point' } });
     return;
   }
-  await host('/click', { target: { role: 'button', name: 'Review', exact: true } });
-  await host('/click', { target: { role: 'button', name: `${capitalize(tool)} tool`, exact: false } });
-  if (tool === 'element' || tool === 'arrange') {
-    await host('/click', {
-      target: targetFromFlags(flags),
-      frame: 'artifact',
-      ...(flags.add ? { modifiers: ['Shift'] } : {})
-    });
-  } else if (tool === 'text') {
-    await host('/select-text', { target: targetFromFlags(flags), frame: 'artifact' });
-  } else if (tool === 'region') {
-    if (typeof flags.from !== 'string' || typeof flags.to !== 'string') {
-      fail(EXIT.usage, 'region selection needs --from <css> and --to <css>.', 'Run `lever help` for the surface.');
+  if (tool === 'operate') {
+    await host('/press', { key: 'v' });
+    await sleep(200);
+    output({ ok: true, command: 'select', tool, operating: true });
+    return;
+  }
+  await armTile(host, tool);
+  if (tool === 'point') {
+    if (typeof flags.text === 'string') {
+      await host('/select-text', { target: selector(flags.text), frame: 'artifact' });
+    } else {
+      await host('/click', {
+        target: targetFromFlags(flags),
+        frame: 'artifact',
+        ...(flags.add ? { modifiers: ['Shift'] } : {})
+      });
     }
-    await host('/drag', { from: selector(flags.from), to: selector(flags.to), frame: 'artifact' });
+  } else {
+    if (typeof flags.from !== 'string' || typeof flags.to !== 'string') {
+      fail(EXIT.usage, 'box selection needs --from <css> and --to <css>.', 'Run `lever help` for the surface.');
+    }
+    await host('/drag-box', { from: selector(flags.from), to: selector(flags.to), frame: 'artifact' });
   }
   await host('/wait', { target: { selector: '.anchored-card' }, state: 'visible' });
   const shot = await host('/screenshot', { name: `select-${tool}-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: `select-${tool}`, path: shot.path });
   await host('/snapshot', { name: `select-${tool}-${Date.now()}` });
-  if (['element', 'text', 'region'].includes(tool)) {
-    recordCoverage(runDir, 'annotate-and-send', 'driven', `selected with the ${tool} tool`, [flags.add ? 'select-multiple' : `select-${tool}`]);
-  }
+  recordCoverage(runDir, 'annotate-and-send', 'driven', `selected with the ${tool} mode`, [flags.add ? 'select-multiple' : `select-${tool}`]);
   output({ ok: true, command: 'select', tool, screenshot: shot.path });
 }
 
-function capitalize(value) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
+async function commandMode(flags) {
+  const runDir = resolveRun(flags.run);
+  const secret = await assertHealthy(runDir);
+  const to = typeof flags.to === 'string' ? flags.to : 'operate';
+  if (!MODES.includes(to)) {
+    fail(EXIT.usage, `Unsupported mode ${to}.`, 'Use point, box or operate.');
+  }
+  if (flags['dry-run']) {
+    output({ dryRun: true, would: { mode: to } });
+    return;
+  }
+  const host = hostCall(secret);
+  if (to === 'operate') {
+    await host('/press', { key: 'v' });
+  } else {
+    await armTile(host, to);
+  }
+  await sleep(200);
+  recordCoverage(runDir, 'accessibility-and-keyboard', 'driven', `armed ${to}`, [`mode-${to}`]);
+  output({ ok: true, command: 'mode', mode: to });
 }
 
 async function commandAnnotate(flags) {
@@ -908,7 +967,7 @@ async function commandQueue(flags) {
   }
   const host = hostCall(secret);
   await host('/click', { target: { role: 'button', name: 'Queue', exact: true } });
-  await host('/wait', { target: { selector: '.queue-item' }, state: 'visible' });
+  await host('/wait', { target: { selector: '.annotation-row' }, state: 'visible' });
   const shot = await host('/screenshot', { name: `queue-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: 'queue', path: shot.path });
   recordCoverage(runDir, 'annotate-and-send', 'driven', 'queued an Annotation', ['queue-add']);
@@ -919,8 +978,12 @@ async function commandSend(flags) {
   const runDir = resolveRun(flags.run);
   const secret = await assertHealthy(runDir);
   const intent = typeof flags.intent === 'string' ? flags.intent : 'next-pass';
-  if (!['next-pass', 'steering', 'draft'].includes(intent)) {
-    fail(EXIT.usage, `Unsupported delivery timing ${intent}.`, 'Use next-pass, steering or draft.');
+  if (intent !== 'next-pass') {
+    fail(
+      EXIT.usage,
+      `The one send action always delivers Next-Pass Intent; ${intent} is a different act.`,
+      'Use `lever amend` for Steering Intent or `lever stop` for Review Interruption.'
+    );
   }
   if (flags['dry-run']) {
     const before = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
@@ -928,7 +991,6 @@ async function commandSend(flags) {
     return;
   }
   const host = hostCall(secret);
-  await host('/select-option', { target: { selector: 'select[aria-label="Delivery timing"]' }, value: intent });
   await host('/click', { target: { role: 'button', name: 'Send the queue' } });
   let delivered = false;
   let deliveredIntent;
@@ -949,74 +1011,99 @@ async function commandSend(flags) {
     fail(EXIT.unreachable, 'The Annotation Queue did not reach a delivered state.', 'Read `lever state` and retry after a `lever health` check.');
   }
   if (deliveredIntent !== intent) {
-    fail(EXIT.unreachable, `The queue was delivered as ${deliveredIntent} rather than ${intent}.`, 'Re-select the delivery timing and send again.');
+    fail(EXIT.unreachable, `The queue was delivered as ${deliveredIntent} rather than ${intent}.`, 'Read `lever state` and retry the send.');
   }
   recordCoverage(runDir, 'annotate-and-send', 'driven', `sent with ${intent}`, [`send-${intent}`]);
   output({ ok: true, command: 'send', intent, delivered: true, screenshot: shot.path });
 }
 
-async function commandRelate(flags) {
+async function commandAmend(flags) {
   const runDir = resolveRun(flags.run);
   const secret = await assertHealthy(runDir);
-  const operator = typeof flags.operator === 'string' ? flags.operator : undefined;
-  if (!operator) {
-    fail(EXIT.usage, 'relate needs --operator <operator>.', 'Run `lever help` for the surface.');
+  if (typeof flags.note !== 'string') {
+    fail(EXIT.usage, 'amend needs --note <text>.', 'Run `lever help` for the surface.');
   }
   if (flags['dry-run']) {
-    output({ dryRun: true, would: { operator, manipulate: true } });
+    output({ dryRun: true, would: { amend: flags.note } });
     return;
   }
-  if (typeof flags.from !== 'string' || typeof flags.to !== 'string') {
-    fail(EXIT.usage, 'relate needs --from <css> and --to <css>.', 'Run `lever help` for the surface.');
-  }
   const host = hostCall(secret);
-  const from = selector(flags.from);
-  const to = selector(flags.to);
-  await host('/click', { target: { role: 'button', name: 'Review', exact: true } });
-  await host('/click', { target: { role: 'button', name: 'Element tool', exact: false } });
-  await host('/click', { target: from, frame: 'artifact' });
-  await host('/click', { target: to, frame: 'artifact', modifiers: ['Shift'] });
-  await host('/click', { target: { role: 'button', name: 'Arrange tool', exact: false } });
-  const drag = dragFor(operator);
-  await host('/drag', { from, to, frame: 'artifact', ...drag });
-  let match;
-  const deadline = Date.now() + 10000;
-  while (Date.now() < deadline && !match) {
+  const rowIndex = typeof flags.row === 'string' ? Number(flags.row) : 0;
+  const match = typeof flags.match === 'string' ? flags.match : undefined;
+  if (match) {
+    await host('/click', {
+      target: { selector: `.annotation-row:has-text(${JSON.stringify(match)}) [data-action="amend"]` }
+    });
+  } else {
+    await host('/click', { target: { role: 'button', name: 'Amend', exact: true, nth: rowIndex } });
+  }
+  await host('/wait', { target: { selector: '.amend-editor textarea' }, state: 'visible' });
+  await host('/fill', { target: { selector: '.amend-editor textarea' }, value: flags.note });
+  await host('/click', { target: { role: 'button', name: 'Deliver the amendment', exact: true } });
+  let superseded = false;
+  let steering = false;
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
     const snapshot = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
-    const relations = (snapshot.json.annotations ?? []).flatMap((annotation) => annotation.relationships ?? []);
-    match = relations.find((relation) => relation.operator === operator) ?? relations[0];
-    if (!match) {
-      await sleep(150);
+    const annotations = snapshot.json.annotations ?? [];
+    superseded = annotations.some((annotation) => annotation.state === 'superseded' && annotation.supersededBy);
+    steering = (snapshot.json.batches ?? []).some((batch) => batch.intent === 'steering');
+    if (superseded && steering) {
+      break;
     }
+    await sleep(200);
   }
-  const shot = await host('/screenshot', { name: `relate-${Date.now()}` });
-  recordEvidence(runDir, { kind: 'screenshot', name: `relate-${operator}`, path: shot.path });
-  recordCoverage(runDir, 'relational-intent', 'driven', operator, ['relation-sentence', 'relation-stored']);
-  if (!match) {
-    fail(EXIT.unreachable, `The surface did not record a relation from that manipulation.`, 'Read `lever state` and repeat the manipulation.');
+  const shot = await host('/screenshot', { name: `amend-${Date.now()}` });
+  recordEvidence(runDir, { kind: 'screenshot', name: 'amend', path: shot.path });
+  if (!superseded || !steering) {
+    fail(EXIT.unreachable, 'Amending did not supersede the original with a Steering Intent delivery.', 'Read `lever state` to see what the amendment did.');
   }
-  output({ ok: true, command: 'relate', operator, relation: match, screenshot: shot.path });
+  recordCoverage(runDir, 'annotate-and-send', 'driven', 'amended a sent Annotation', ['amend-supersede', 'amend-steering']);
+  output({ ok: true, command: 'amend', note: flags.note, superseded, steering, screenshot: shot.path });
 }
 
-function dragFor(operator) {
-  switch (operator) {
-    case 'before':
-      return { type: 'ordering', nudgeX: -160, nudgeY: 0, modifiers: [] };
-    case 'after':
-      return { type: 'ordering', nudgeX: 160, nudgeY: 0, modifiers: [] };
-    case 'member-of':
-      return { type: 'containment', nudgeX: 0, nudgeY: 0, modifiers: [] };
-    case 'equal-gap':
-      return { type: 'spacing', nudgeX: 0, nudgeY: 0, modifiers: ['Alt'] };
-    case 'shared-property':
-      return { type: 'equivalence', nudgeX: 0, nudgeY: 0, modifiers: ['Meta'] };
-    case 'same-width':
-      return { type: 'comparative-size', nudgeX: 40, nudgeY: 0, modifiers: ['Shift'] };
-    case 'same-height':
-      return { type: 'comparative-size', nudgeX: 0, nudgeY: 40, modifiers: ['Shift'] };
-    default:
-      return { type: 'alignment', nudgeX: 2, nudgeY: 2, modifiers: [] };
+async function commandStop(flags) {
+  const runDir = resolveRun(flags.run);
+  const secret = await assertHealthy(runDir);
+  if (flags['dry-run']) {
+    output({ dryRun: true, would: { requestInterruption: true } });
+    return;
   }
+  const host = hostCall(secret);
+  let offered = (await host('/count', { target: { role: 'button', name: 'Ask the agent to stop' } })).count > 0;
+  if (!offered) {
+    const snapshot = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
+    const lastBatch = (snapshot.json.batches ?? []).at(-1);
+    if (lastBatch) {
+      await productPost(secret, `/api/intents/${encodeURIComponent(lastBatch.envelopeId)}/acknowledge`, { agentId: 'lever' });
+    }
+    const deadline = Date.now() + 6000;
+    while (Date.now() < deadline && !offered) {
+      await sleep(300);
+      offered = (await host('/count', { target: { role: 'button', name: 'Ask the agent to stop' } })).count > 0;
+    }
+  }
+  if (!offered) {
+    fail(EXIT.unreachable, 'The stop action is not offered.', 'It is offered only while the agent is working or has acknowledged an Annotation.');
+  }
+  await host('/click', { target: { role: 'button', name: 'Ask the agent to stop' } });
+  let requested = false;
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    const agent = await productGet(secret, `/api/sessions/${secret.sessionId}/agent`);
+    if (agent.json.pendingInterruption) {
+      requested = true;
+      break;
+    }
+    await sleep(200);
+  }
+  const shot = await host('/screenshot', { name: `stop-${Date.now()}` });
+  recordEvidence(runDir, { kind: 'screenshot', name: 'stop', path: shot.path });
+  if (!requested) {
+    fail(EXIT.unreachable, 'The stop request was not recorded.', 'The action is offered only while the agent is working or has acknowledged an Annotation.');
+  }
+  recordCoverage(runDir, 'agent-position', 'driven', 'asked the agent to stop', ['stop-request']);
+  output({ ok: true, command: 'stop', requested: true, screenshot: shot.path });
 }
 
 async function commandAttach(flags) {
@@ -1102,7 +1189,7 @@ async function commandReloadSurface(flags) {
   }
   const host = hostCall(secret);
   await host('/reload', {});
-  await host('/wait', { target: { selector: '.topbar' }, state: 'visible' });
+  await host('/wait', { target: { selector: '.rail' }, state: 'visible' });
   await sleep(600);
   const shot = await host('/screenshot', { name: `reload-surface-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: 'reload-surface', path: shot.path });
@@ -1185,6 +1272,18 @@ async function commandReorder(flags) {
   output({ ok: true, command: 'reorder', moved: direction, order });
 }
 
+async function commandUnreachable(flags) {
+  const runDir = resolveRun(flags.run);
+  const command = typeof flags.command === 'string' ? flags.command : undefined;
+  const precondition = typeof flags.precondition === 'string' ? flags.precondition : undefined;
+  if (!command || !precondition) {
+    fail(EXIT.usage, 'unreachable needs --command <text> and --precondition <text>.', 'Run `lever help` for the surface.');
+  }
+  recordUnreachableQuiet(runDir, command, precondition);
+  output({ ok: false, command: 'unreachable', unreachable: { command, precondition } });
+  process.exit(EXIT.unreachable);
+}
+
 async function commandCoverage(flags) {
   const runDir = resolveRun(flags.run);
   const id = typeof flags.driven === 'string' ? flags.driven : undefined;
@@ -1222,25 +1321,25 @@ async function commandReview(flags) {
     return;
   }
   const host = hostCall(secret);
-  await host('/click', { target: { role: 'button', name: 'Review', exact: true } });
+  await host('/press', { key: 'v' });
+  await host('/wait', { target: { selector: '.rail' }, state: 'visible' });
   await sleep(300);
-  output({ ok: true, command: 'review' });
+  output({ ok: true, command: 'review', operating: true });
 }
 
 async function commandVerify(flags) {
   const runDir = resolveRun(flags.run);
   const secret = await assertHealthy(runDir);
   if (flags['dry-run']) {
-    output({ dryRun: true, would: { enterVerify: true } });
+    output({ dryRun: true, would: { waitForRows: true } });
     return;
   }
   const host = hostCall(secret);
-  await host('/click', { target: { role: 'button', name: 'Verify', exact: true } });
   await host('/wait', { target: { selector: '.annotation-row' }, state: 'visible' });
   await sleep(500);
   const shot = await host('/screenshot', { name: `verify-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: 'verify', path: shot.path });
-  recordCoverage(runDir, 'verify-each-annotation', 'driven', 'entered Verify', ['verify-enter', 'verify-before-after']);
+  recordCoverage(runDir, 'verify-each-annotation', 'driven', 'judged a result where it sits', ['verify-in-place']);
   output({ ok: true, command: 'verify', screenshot: shot.path });
 }
 
@@ -1248,25 +1347,35 @@ async function commandDecide(flags) {
   const runDir = resolveRun(flags.run);
   const secret = await assertHealthy(runDir);
   const verdict = typeof flags.verdict === 'string' ? flags.verdict : undefined;
-  const label = { approve: 'Approve', reject: 'Reject', 'another-pass': 'Request another pass', supersede: 'Supersede', obsolete: 'Mark obsolete' }[verdict];
+  const label = { approve: 'Approve', reject: 'Reject', 'another-pass': 'Request another pass', obsolete: 'Mark obsolete' }[verdict];
   if (!label) {
-    fail(EXIT.usage, 'decide needs --verdict approve|reject|another-pass|supersede|obsolete.', 'Run `lever help` for the surface.');
+    fail(EXIT.usage, 'decide needs --verdict approve|reject|another-pass|obsolete.', 'Supersede is reached through `lever amend`, not as a row verdict.');
   }
   const rowIndex = typeof flags.row === 'string' ? Number(flags.row) : 0;
+  const match = typeof flags.match === 'string' ? flags.match : undefined;
   if (flags['dry-run']) {
-    output({ dryRun: true, would: { verdict, rowIndex } });
+    output({ dryRun: true, would: { verdict, rowIndex, match } });
     return;
   }
   const host = hostCall(secret);
-  await host('/click', { target: { role: 'button', name: label, exact: true, nth: rowIndex } });
-  const expected = { approve: 'verified', reject: 'rejected', 'another-pass': 'another-pass', supersede: 'superseded', obsolete: 'obsolete' }[verdict];
+  if (match) {
+    await host('/click', {
+      target: { selector: `.annotation-row:has-text(${JSON.stringify(match)}) [data-verdict="${verdict}"]` }
+    });
+  } else {
+    await host('/click', { target: { role: 'button', name: label, exact: true, nth: rowIndex } });
+  }
+  const expected = { approve: 'verified', reject: 'rejected', 'another-pass': 'another-pass', obsolete: 'obsolete' }[verdict];
   const deadline = Date.now() + 10000;
   let annotations = [];
   let landed = false;
   while (Date.now() < deadline) {
     const snapshot = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
     annotations = snapshot.json.annotations ?? [];
-    if (annotations[rowIndex]?.state === expected) {
+    const target = match
+      ? annotations.find((annotation) => String(annotation.note ?? '').includes(match))
+      : annotations[rowIndex];
+    if (target?.state === expected) {
       landed = true;
       break;
     }
@@ -1307,21 +1416,75 @@ async function commandChoose(flags) {
   output({ ok: true, command: 'choose', node, target, screenshot: shot.path });
 }
 
+async function commandMeasure(flags) {
+  const runDir = resolveRun(flags.run);
+  const secret = await assertHealthy(runDir);
+  if (flags['dry-run']) {
+    output({ dryRun: true, would: { measure: ['rail', 'island', 'pointer-events'] } });
+    return;
+  }
+  const host = hostCall(secret);
+  const measured = await host('/measure');
+  const path = join(runDir, 'evidence', `measure-${Date.now()}.json`);
+  writeJson(path, measured);
+  recordEvidence(runDir, { kind: 'measurement', name: 'rail-and-island', path });
+  recordCoverage(runDir, 'accessibility-and-keyboard', 'driven', `measured rail ${measured.rail?.width}px and tiles`, [
+    'rail-legibility',
+    'island-pointer-events',
+    'tile-minimum-size'
+  ]);
+  const problems = [];
+  if (measured.railHeadOverflow) problems.push('the rail head overflows its fixed width');
+  if (measured.railHorizontalOverflow) problems.push('the rail list scrolls horizontally');
+  if (measured.smallestTile < 24) problems.push(`a mode tile is ${measured.smallestTile}px, below the 24px floor`);
+  if (!measured.islandReceivesPointerEvents) problems.push('the island did not receive the pointer over the live iframe');
+  output({ ok: problems.length === 0, command: 'measure', measured, problems, path });
+}
+
 async function commandCompare(flags) {
   const runDir = resolveRun(flags.run);
   const secret = await assertHealthy(runDir);
   const mode = flags.mode === 'before' ? 'before' : 'after';
+  const rowIndex = typeof flags.row === 'string' ? Number(flags.row) : 0;
   if (flags['dry-run']) {
-    output({ dryRun: true, would: { compare: mode } });
+    output({ dryRun: true, would: { compare: mode, row: rowIndex } });
     return;
   }
   const host = hostCall(secret);
-  const label = mode === 'before' ? 'Before the change' : 'After the change';
-  await host('/click', { target: { role: 'button', name: label, exact: true } });
+  await host('/click', { target: { selector: '.annotation-row__note', nth: rowIndex } });
+  const comparison = await host('/count', { target: { selector: '.before-after' } });
+  if (comparison.count === 0) {
+    fail(
+      EXIT.unreachable,
+      'The selected row has nothing to compare: it has no result, or its result came from the revision it was written against.',
+      'Change the artifact under review, reload it, and select a row whose target re-resolved against the new revision.'
+    );
+  }
+  const label = mode === 'before' ? 'Before (' : 'After (';
+  await host('/click', { target: { role: 'button', name: label, exact: false, nth: 0 } });
   await sleep(500);
   const shot = await host('/screenshot', { name: `compare-${mode}-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: `compare-${mode}`, path: shot.path });
-  output({ ok: true, command: 'compare', mode, screenshot: shot.path });
+  recordCoverage(runDir, 'resolution-and-honesty', 'driven', `compared row ${rowIndex} ${mode}`, [`compare-${mode}-row`]);
+  output({ ok: true, command: 'compare', mode, row: rowIndex, screenshot: shot.path });
+}
+
+async function commandClosedRows(flags) {
+  const runDir = resolveRun(flags.run);
+  const secret = await assertHealthy(runDir);
+  if (flags['dry-run']) {
+    output({ dryRun: true, would: { toggleClosed: true } });
+    return;
+  }
+  const host = hostCall(secret);
+  const hidden = await host('/count', { target: { selector: '.annotation-list .annotation-row' } });
+  await host('/click', { target: { selector: 'button[data-toggle="closed"]' } });
+  await sleep(300);
+  const shown = await host('/count', { target: { selector: '.annotation-list .annotation-row' } });
+  const shot = await host('/screenshot', { name: `closed-rows-${Date.now()}` });
+  recordEvidence(runDir, { kind: 'screenshot', name: 'closed-rows', path: shot.path });
+  recordCoverage(runDir, 'decision-drawer', 'driven', 'toggled closed rows', ['closed-toggle']);
+  output({ ok: true, command: 'closed-rows', before: hidden.count, after: shown.count, screenshot: shot.path });
 }
 
 async function commandState(flags) {
@@ -1354,6 +1517,9 @@ function safeAnnotation(annotation) {
     resolutions: annotation.resolutions,
     chosenCandidates: annotation.chosenCandidates,
     verification: annotation.verification ?? null,
+    supersedes: annotation.supersedes ?? null,
+    supersededBy: annotation.supersededBy ?? null,
+    resolvedRevision: annotation.resolvedRevision ?? null,
     targets: (annotation.targets ?? []).map((target) => ({
       targetId: target.targetId,
       kind: target.kind,
@@ -1541,11 +1707,13 @@ async function main() {
     session: commandSession,
     cleanup: commandCleanup,
     select: commandSelect,
+    mode: commandMode,
     annotate: commandAnnotate,
     queue: commandQueue,
     reorder: commandReorder,
     send: commandSend,
-    relate: commandRelate,
+    amend: commandAmend,
+    stop: commandStop,
     attach: commandAttach,
     reload: commandReload,
     'reload-surface': commandReloadSurface,
@@ -1559,6 +1727,9 @@ async function main() {
     decide: commandDecide,
     choose: commandChoose,
     compare: commandCompare,
+    'closed-rows': commandClosedRows,
+    measure: commandMeasure,
+    unreachable: commandUnreachable,
     state: commandState,
     screenshot: commandScreenshot,
     snapshot: commandSnapshot,

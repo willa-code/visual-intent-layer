@@ -1,56 +1,59 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { deliveryPlan, describeCapabilities, detectCapabilities } from './capabilities.js';
+import * as capabilities from './capabilities.js';
+import { describeCapabilities, detectCapabilities } from './capabilities.js';
+import { createReviewService } from '../mcp/service.js';
 
 describe('host capability negotiation', () => {
-  it('treats pi as browser-fallback first with no steering or subscriptions', () => {
+  it('treats pi as browser-fallback first with no embedded UI or subscriptions', () => {
     const caps = detectCapabilities('pi');
-    expect(caps).toEqual({ embeddedUI: false, steering: false, subscriptions: false });
+    expect(caps).toEqual({ embeddedUI: false, subscriptions: false });
   });
 
   it('defaults unknown hosts to baseline with explicit labels', () => {
     const caps = detectCapabilities('some-future-host');
-    expect(caps).toEqual({ embeddedUI: false, steering: false, subscriptions: false });
+    expect(caps).toEqual({ embeddedUI: false, subscriptions: false });
     expect(describeCapabilities(caps)).toContain('Browser review');
   });
 
-  it('honors declared capabilities only for known keys', () => {
-    const caps = detectCapabilities('pi', { steering: true, embeddedUI: true });
-    expect(caps).toEqual({ embeddedUI: true, steering: true, subscriptions: false });
+  it('honors declared capabilities for the keys the product can honour', () => {
+    const caps = detectCapabilities('pi', { embeddedUI: true, subscriptions: true });
+    expect(caps).toEqual({ embeddedUI: true, subscriptions: true });
   });
 
   it('uses the embedded view only where the host implements it', () => {
     expect(detectCapabilities('pi').embeddedUI).toBe(false);
     expect(detectCapabilities('mcp-app-host', { embeddedUI: true }).embeddedUI).toBe(true);
   });
+
+  it('no longer exposes a capability flag nothing branches on', () => {
+    expect('steering' in detectCapabilities('pi')).toBe(false);
+    expect('deliveryPlan' in capabilities).toBe(false);
+    expect('DeliveryPlan' in capabilities).toBe(false);
+  });
 });
 
-describe('delivery policy', () => {
-  it('delivers next-pass and draft locally without host promises', () => {
-    const caps = detectCapabilities('pi');
-    expect(deliveryPlan(caps, 'next-pass').strategy).toBe('queue-local');
-    expect(deliveryPlan(caps, 'draft').strategy).toBe('draft-only');
+describe('the surviving declaration path', () => {
+  it('lets a host declare embeddedUI and subscriptions through the MCP tool schema', () => {
+    const service = createReviewService({ dataDir: mkdtempSync(join(tmpdir(), 'vil-caps-')) });
+    const entry = service.listTools().find((tool) => tool.name === 'open_visual_review');
+    const schema = entry!.inputSchema as {
+      properties?: Record<string, { properties?: Record<string, unknown> }>;
+    };
+    expect(schema.properties?.['capabilities']?.properties).toMatchObject({
+      embeddedUI: { type: 'boolean' },
+      subscriptions: { type: 'boolean' }
+    });
   });
 
-  it('never masquerades unsupported steering as active-turn steering', () => {
-    const caps = detectCapabilities('pi');
-    const plan = deliveryPlan(caps, 'steering');
-    expect(plan.strategy).toBe('queue-local');
-    expect(plan.label).toMatch(/not.*interrupt|unsupported|next.*turn/i);
-  });
-
-  it('offers steering at the next safe boundary where the host exposes it', () => {
-    const caps = detectCapabilities('mcp-app-host', { steering: true });
-    const plan = deliveryPlan(caps, 'steering');
-    expect(plan.strategy).toBe('deliver-now');
-    expect(plan.label).toMatch(/next safe boundary/);
-    expect(plan.label).toMatch(/never cancels work instantly/);
-  });
-
-  it('keeps review interruption explicit and only where representable', () => {
-    const unsupported = deliveryPlan(detectCapabilities('pi'), 'review-interruption');
-    expect(unsupported.strategy).toBe('draft-only');
-    expect(unsupported.label).toMatch(/explicit|not.*available/i);
-    const supported = deliveryPlan(detectCapabilities('h', { steering: true }), 'review-interruption');
-    expect(supported.strategy).toBe('deliver-now');
+  it('stores what a host declared on the session rather than discarding it', async () => {
+    const service = createReviewService({ dataDir: mkdtempSync(join(tmpdir(), 'vil-caps-')) });
+    const opened = await service.openArtifact(
+      { kind: 'saved-html', path: 'fixtures/gallery.html' },
+      { capabilities: { embeddedUI: true, subscriptions: true } }
+    );
+    expect(service.sessions.get(opened.sessionId)?.capabilities).toEqual({ embeddedUI: true, subscriptions: true });
   });
 });

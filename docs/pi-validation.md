@@ -1,5 +1,11 @@
 # Validate the core loop on pi (ticket 16)
 
+> **Corrected.** This note described steering as a negotiated host capability.
+> ADR-0018 establishes that steering and interruption are seen at the agent's
+> Check-In, a published convention, and that every MCP call for a session records
+> contact. The `steering` capability flag no longer exists; read steering as a
+> Check-In everywhere below.
+
 Status: awaiting-human — the automated contract suite passes; this checklist
 needs a live pi session via pi-mcp-adapter.
 

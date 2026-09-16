@@ -35,6 +35,11 @@ describe('Lever contract: usage and preconditions at the process boundary', () =
     expect(result.stdout).toContain('Usage:');
     expect(result.stdout).toContain('health');
     expect(result.stdout).toContain('--dry-run');
+    expect(result.stdout).toContain('amend');
+    expect(result.stdout).toContain('stop');
+    expect(result.stdout).toContain('--tool point');
+    expect(result.stdout).not.toContain('--tool element');
+    expect(result.stdout).not.toContain('Arrange');
   });
 
   it('classifies a usage error with exit code 2', () => {
@@ -130,7 +135,7 @@ describe('Lever contract: launch, health, evidence and cleanup', () => {
   });
 
   it('classifies an unreachable path with exit code 4 and records it', () => {
-    const result = lever(['select', '--run', name, '--tool', 'element', '--target', '.not-in-the-artifact']);
+    const result = lever(['select', '--run', name, '--tool', 'point', '--target', '.not-in-the-artifact']);
     expect(result.status).toBe(4);
     const record = JSON.parse(readFileSync(join(runDir, 'run.json'), 'utf8')) as {
       unreachable: Array<{ command: string; precondition: string }>;
@@ -164,6 +169,7 @@ describe('Lever contract: launch, health, evidence and cleanup', () => {
     expect(record.status).toBe('stopped');
   });
 });
+
 describe('Lever contract: a first-tier drive', () => {
   const name = `drive-${process.pid}-${Date.now()}`;
   let runDir: string;
@@ -192,8 +198,8 @@ describe('Lever contract: a first-tier drive', () => {
     return readFileSync(String(result.json?.path), 'utf8').includes(text);
   }
 
-  it('drives selection, annotation, queueing, sending, re-resolution and a verdict', () => {
-    expect(lever(['select', '--run', name, '--tool', 'element', '--target', '.checkout-submit']).status).toBe(0);
+  it('drives pointing, annotation, queueing, sending, re-resolution and a verdict in place', () => {
+    expect(lever(['select', '--run', name, '--tool', 'point', '--target', '.checkout-submit']).status).toBe(0);
     expect(lever(['annotate', '--run', name, '--note', 'Make it impossible to miss.']).status).toBe(0);
     expect(lever(['queue', '--run', name]).status).toBe(0);
     expect(lever(['send', '--run', name, '--intent', 'next-pass']).status).toBe(0);
@@ -209,21 +215,33 @@ describe('Lever contract: a first-tier drive', () => {
     const verified = annotations()[0]!;
     expect(verified.state).toBe('verified');
     expect((verified.verification as Record<string, unknown>).verdict).toBe('approve');
-  }, 120000);
+  }, 180000);
 
-  it('selects an exact text range through the Text tool', () => {
-    expect(lever(['review', '--run', name]).status).toBe(0);
-    const selected = lever(['select', '--run', name, '--tool', 'text', '--target', '.gallery-note']);
+  it('drives pointing at an exact text range, and returning to operating', () => {
+    expect(lever(['mode', '--run', name, '--to', 'operate']).status).toBe(0);
+    const selected = lever(['select', '--run', name, '--tool', 'point', '--text', '.gallery-note']);
     expect(selected.status, selected.stderr).toBe(0);
     const textTarget = annotations().some((annotation) =>
       ((annotation.targets as Array<Record<string, unknown>>) ?? []).some((target) => target.kind === 'text-range')
     );
     expect(textTarget).toBe(true);
     expect(lever(['press', '--run', name, '--key', 'Escape']).status).toBe(0);
-  }, 60000);
+  }, 90000);
+
+  it('boxes an area and records what it encloses', () => {
+    const selected = lever(['select', '--run', name, '--tool', 'box', '--from', 'h1', '--to', '.shipping-note']);
+    expect(selected.status, selected.stderr).toBe(0);
+    const area = annotations().find((annotation) =>
+      ((annotation.targets as Array<Record<string, unknown>>) ?? []).some((target) => target.kind === 'region')
+    );
+    expect(area).toBeTruthy();
+    const region = ((area!.targets as Array<Record<string, unknown>>) ?? []).find((target) => target.kind === 'region')!;
+    expect(String(region.label)).toMatch(/Area enclosing/);
+    expect(lever(['press', '--run', name, '--key', 'Escape']).status).toBe(0);
+  }, 90000);
 
   it('a send dry-run performs no delivery', () => {
-    expect(lever(['select', '--run', name, '--tool', 'element', '--target', '.shipping-note']).status).toBe(0);
+    expect(lever(['select', '--run', name, '--tool', 'point', '--target', '.shipping-note']).status).toBe(0);
     expect(lever(['annotate', '--run', name, '--note', 'dry-run only']).status).toBe(0);
     expect(lever(['queue', '--run', name]).status).toBe(0);
     const before = annotations().map((annotation) => annotation.state);
@@ -233,35 +251,60 @@ describe('Lever contract: a first-tier drive', () => {
     const after = annotations();
     expect(after.map((annotation) => annotation.state)).toEqual(before);
     expect(after.every((annotation) => !['delivered', 'resolved'].includes(String(annotation.state)))).toBe(true);
-  }, 60000);
-
-  it('sends with each supported delivery timing', () => {
-    for (const intent of ['next-pass', 'steering', 'draft']) {
-      expect(lever(['select', '--run', name, '--tool', 'element', '--target', '.shipping-note']).status).toBe(0);
-      expect(lever(['annotate', '--run', name, '--note', `delivery ${intent}`]).status).toBe(0);
-      expect(lever(['queue', '--run', name]).status).toBe(0);
-      const sent = lever(['send', '--run', name, '--intent', intent]);
-      expect(sent.status, sent.stderr).toBe(0);
-      expect(sent.json?.intent).toBe(intent);
-      expect(
-        annotations().some(
-          (annotation) => annotation.note === `delivery ${intent}` && ['delivered', 'resolved'].includes(String(annotation.state))
-        )
-      ).toBe(true);
-    }
   }, 90000);
 
-  it('expresses a relation by direct manipulation and reads it back from stored state', () => {
-    const result = lever(['relate', '--run', name, '--operator', 'after', '--from', '.checkout-submit', '--to', '.gallery-note']);
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.json?.relation).toBeTruthy();
-    const withRelation = annotations().find((annotation) => ((annotation.relationships as unknown[]) ?? []).length > 0);
-    expect(withRelation).toBeTruthy();
+  it('rejects a draft intent and any intent the product cannot deliver', () => {
+    const draft = lever(['send', '--run', name, '--intent', 'draft']);
+    expect(draft.status).toBe(2);
+    const steering = lever(['send', '--run', name, '--intent', 'steering']);
+    expect(steering.status).toBe(2);
+    expect(String(steering.json?.error && (steering.json.error as Record<string, unknown>).message)).toMatch(/different act/);
+    expect(String(steering.json?.error && (steering.json.error as Record<string, unknown>).next)).toMatch(/amend/);
+  }, 60000);
+
+  it('amends a sent Annotation by supersession with Steering Intent', () => {
+    expect(lever(['select', '--run', name, '--tool', 'point', '--target', '.shipping-note']).status).toBe(0);
+    expect(lever(['annotate', '--run', name, '--note', 'first wording']).status).toBe(0);
+    expect(lever(['queue', '--run', name]).status).toBe(0);
+    expect(lever(['send', '--run', name, '--intent', 'next-pass']).status).toBe(0);
+
+    const amended = lever(['amend', '--run', name, '--note', 'clearer wording', '--match', 'first wording']);
+    expect(amended.status, amended.stderr).toBe(0);
+    expect(amended.json).toMatchObject({ superseded: true, steering: true });
+
+    const original = annotations().find((annotation) => annotation.note === 'first wording');
+    const successor = annotations().find((annotation) => annotation.note === 'clearer wording');
+    expect(original?.state).toBe('superseded');
+    expect(original?.supersededBy).toBe(successor?.annotationId);
+    expect(successor?.supersedes).toBe(original?.annotationId);
+  }, 150000);
+
+  it('asks an agent to stop, and the request is recorded session-scoped', () => {
+    const stopped = lever(['stop', '--run', name]);
+    expect(stopped.status, stopped.stderr).toBe(0);
+    expect(stopped.json).toMatchObject({ requested: true });
+    const agent = lever(['state', '--run', name]).json?.agent as Record<string, unknown>;
+    expect(agent.pendingInterruption).toBe(true);
+    expect(agent.sentence).toMatch(/not waiting|acknowledged|working/);
+  }, 90000);
+
+  it('toggles closed rows behind one control', () => {
+    const toggled = lever(['closed-rows', '--run', name]);
+    expect(toggled.status, toggled.stderr).toBe(0);
+    expect(Number(toggled.json?.before)).toBeLessThan(Number(toggled.json?.after));
+  }, 90000);
+
+  it('compares a single row\u2019s revisions, and reports the unmet precondition honestly when there is nothing to compare', () => {
+    const compared = lever(['compare', '--run', name, '--mode', 'before', '--row', '0']);
+    expect([0, 4]).toContain(compared.status);
+    if (compared.status === 4) {
+      expect(compared.json?.error).toMatchObject({ class: 'unreachable' });
+    }
   }, 90000);
 
   it('never discards writing across a reload, a service restart and a browser restart', () => {
     const note = 'Draft that must survive';
-    expect(lever(['select', '--run', name, '--tool', 'element', '--target', '.gallery-note']).status).toBe(0);
+    expect(lever(['select', '--run', name, '--tool', 'point', '--target', '.gallery-note']).status).toBe(0);
     expect(lever(['annotate', '--run', name, '--note', note]).status).toBe(0);
     expect(annotations().some((annotation) => annotation.note === note)).toBe(true);
 
@@ -279,10 +322,10 @@ describe('Lever contract: a first-tier drive', () => {
     expect(annotations().some((annotation) => annotation.note === note)).toBe(true);
     expect(snapshotContains(note)).toBe(true);
     expect(existsSync(runDir)).toBe(true);
-  }, 150000);
+  }, 180000);
 });
 
-describe('Lever contract: every verdict path', () => {
+describe('Lever contract: every verdict path that remains a row control', () => {
   const name = `verdicts-${process.pid}-${Date.now()}`;
 
   beforeAll(() => {
@@ -294,27 +337,35 @@ describe('Lever contract: every verdict path', () => {
     lever(['cleanup', '--run', name]);
   });
 
-  it('drives approve, reject, another-pass, supersede and obsolete and reads each back', () => {
-    const targets = ['.checkout-submit', '.gallery-note', 'h1', '.shipping-note', '.gallery'];
+  it('drives approve, reject, another-pass and obsolete and reads each back', () => {
+    const targets = ['.checkout-submit', '.gallery-note', 'h1', '.shipping-note'];
     for (const target of targets) {
-      expect(lever(['select', '--run', name, '--tool', 'element', '--target', target]).status).toBe(0);
+      expect(lever(['select', '--run', name, '--tool', 'point', '--target', target]).status).toBe(0);
       expect(lever(['annotate', '--run', name, '--note', `verdict path for ${target}`]).status).toBe(0);
       expect(lever(['queue', '--run', name]).status).toBe(0);
     }
-    expect(lever(['reorder', '--run', name, '--from', '4', '--direction', 'up']).status).toBe(0);
+    expect(lever(['reorder', '--run', name, '--from', '3', '--direction', 'up']).status).toBe(0);
     expect(lever(['send', '--run', name, '--intent', 'next-pass']).status).toBe(0);
     expect(lever(['verify', '--run', name]).status).toBe(0);
 
-    const verdicts = ['approve', 'reject', 'another-pass', 'supersede', 'obsolete'];
+    const verdicts = ['approve', 'reject', 'another-pass', 'obsolete'];
     for (let row = 0; row < verdicts.length; row += 1) {
-      const decided = lever(['decide', '--run', name, '--verdict', verdicts[row]!, '--row', String(row)]);
+      const decided = lever([
+        'decide',
+        '--run',
+        name,
+        '--verdict',
+        verdicts[row]!,
+        '--match',
+        `verdict path for ${targets[row]!}`
+      ]);
       expect(decided.status, decided.stderr).toBe(0);
     }
 
     const state = lever(['state', '--run', name]).json as { annotations: Array<Record<string, unknown>> };
     const states = state.annotations.map((annotation) => annotation.state);
-    expect(states).toEqual(expect.arrayContaining(['verified', 'rejected', 'another-pass', 'superseded', 'obsolete']));
+    expect(states).toEqual(expect.arrayContaining(['verified', 'rejected', 'another-pass', 'obsolete']));
     const approved = state.annotations.find((annotation) => annotation.state === 'verified')!;
     expect((approved.verification as Record<string, unknown>).verdict).toBe('approve');
-  }, 180000);
+  }, 240000);
 });

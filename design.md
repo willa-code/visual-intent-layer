@@ -39,7 +39,17 @@ role defined in §4.
 
 Dark mode is a designed counterpart, not an inversion and not the browser's
 default canvas. The hierarchy survives; the values are chosen for the dark
-ground and contrast-checked against it.
+ground and contrast-checked against it. It is drawn from the same warm family
+as the light primitives and holds the same luminance steps between surface,
+raised and sunken. A cool or purple cast is not a counterpart; it is a second
+design.
+
+**The theme is the operator's, never the artifact's.** The surface follows the
+platform preference until the operator chooses otherwise, and that choice is
+remembered. It never samples the artifact, derives a colour from it, or inverts
+it. The artifact is what is being judged; letting it theme the surface that
+judges it makes review non-reproducible, invites contrast failures we do not
+control, and destroys the boundary between the tool and the work.
 
 **Deliberate tightening relative to the reference palette.** The warm palette
 this direction is drawn from was authored for a spacious consumer application.
@@ -78,17 +88,23 @@ a semantic role.
 
 | Token | Value |
 | --- | --- |
-| `canvas` | `#14131A` |
-| `surface` | `#1D1B24` |
-| `surface.raised` | `#26232E` |
-| `surface.sunken` | `#100F16` |
-| `ink.primary` | `#F2F0F4` |
-| `ink.secondary` | `#ACA7B6` |
-| `ink.muted` | `#8B8794` |
-| `line.default` | `#302D38` |
-| `line.strong` | `#45414F` |
-| `accent` | `#6D9BF5` |
-| `accent.ink` | `#10131F` |
+| `canvas` | `#191614` |
+| `surface` | `#211D1A` |
+| `surface.raised` | `#2A2521` |
+| `surface.sunken` | `#12100E` |
+| `ink.primary` | `#F4F1ED` |
+| `ink.secondary` | `#B3ACA4` |
+| `ink.muted` | `#8D867E` |
+| `line.default` | `#332F2B` |
+| `line.strong` | `#474139` |
+| `accent` | `#7AA2F0` |
+| `accent.ink` | `#14110E` |
+
+Final values, replacing a cool/purple set that contradicted the warm base. The
+§9 gallery pass renders them in both themes, the token and screenshot baselines
+are regenerated from that pass, and a scripted contrast check holds every
+semantic surface/ink pair at the documented floor — so these are settled, not
+proposed.
 
 ### Semantic surface pairs
 
@@ -111,7 +127,7 @@ its own; a token pair is not licensed for a use it was not checked against.
 | `type.label` | sans | 12 / 16 | Control labels, chips, tool names |
 | `type.body` | sans | 13 / 18 | Notes, evidence, list content |
 | `type.body.strong` | sans | 13 / 18, 600 | Selected rows, active tool |
-| `type.panel.title` | sans | 15 / 22, 600 | Panel and card headings |
+| `type.panel.title` | sans | 15 / 22, 600 | Rail and card headings |
 | `type.stage.title` | sans | 18 / 26, 600 | Empty and terminal states only |
 | `type.identity` | mono | 12 / 18 | Revision ids, selectors, spans, paths |
 
@@ -123,10 +139,10 @@ look like a hash.
 
 | Group | Values |
 | --- | --- |
-| Spacing | `4, 8, 12, 16, 20, 24, 32, 40, 48`. Chrome uses 4–16; panel rhythm is 8/12/16; section separation is 24/32. |
-| Metrics | Top bar height `48`; panel width `380`; drawer width `380`; anchored card max width `340`; control height `32`, small `28`, large `36`; icon button `28×28`. |
-| Radius | `8` inputs and buttons; `12` cards and panel sections; `16` anchored card, drawer, dialog; `pill` chips and tags; `full` icon buttons. |
-| Elevation | `card`: `0 1px 2px rgba(20,18,28,.06), 0 8px 24px rgba(73,56,128,.08)`; `overlay`: `0 4px 12px rgba(20,18,28,.10), 0 16px 40px rgba(73,56,128,.14)`; `sheet`: `-8px 0 32px rgba(20,18,28,.12)`. Every elevated surface also carries a `line.default` border: a shadow is never the only boundary. |
+| Spacing | `4, 8, 12, 16, 20, 24, 32, 40, 48`. Chrome uses 4–16; rail rhythm is 8/12/16; section separation is 24/32. |
+| Metrics | Rail width `380`; drawer width `380`; anchored card max width `340`; control height `32`, small `28`, large `36`; icon button `28×28`. |
+| Radius | `8` inputs and buttons; `12` cards and rail sections; `16` anchored card, drawer, dialog; `pill` chips and tags; `full` icon buttons. |
+| Elevation | `card`: `0 1px 2px rgba(43,32,20,.06), 0 8px 24px rgba(43,32,20,.08)`; `overlay`: `0 4px 12px rgba(43,32,20,.10), 0 16px 40px rgba(43,32,20,.14)`; `sheet`: `-8px 0 32px rgba(43,32,20,.12)`. Every elevated surface also carries a `line.default` border: a shadow is never the only boundary. Shadows are warm neutral; a shadow tinted toward a colour is decoration. |
 | Motion | `fast` 120ms, `base` 200ms, `deliberate` 320ms, easing `cubic-bezier(.2,.8,.2,1)`. Spatial movement stays under 12px. No perpetual animation except the agent-activity indicator, which must be pausable. Reduced motion removes all transitions and all scale or lift. |
 
 ## 4. Semantic roles and the state vocabulary
@@ -137,46 +153,69 @@ a shape, a border, or a position.
 
 | Family | States | Role | Required cue beyond colour |
 | --- | --- | --- | --- |
-| Target | hovered, selected, focused | `accent` | Mark with a distinct border weight; focus uses a ring separate from selection |
+| Target the artifact owns | hovered, selected, focused | `accent` | Mark with a distinct border weight; focus uses a ring separate from selection |
+| Target the Builder-Reviewer drew | drawing, drawn, focused | `attention` while drawing, `accent` once drawn | A dashed, static boundary. A drawn target is never marked with the solid outline that means the artifact owns it |
+| Mode | operating (unarmed), point, box | `accent` on the armed tile, and no accent while operating | The lit tile, the cursor over the artifact, and the pre-commit hover outline. Operating is the unarmed state and is never a tile. Never colour alone |
 | Annotation | draft, queued, delivered, acknowledged, resolved, verified, rejected, superseded, obsolete | `progress` while in flight, `success` verified, `closed` rejected/superseded/obsolete | Label text per state; delivery and implementation are never shown as one state |
 | Resolution | matched, recovered, ambiguous, deleted | `success`, `progress`, `attention`, `closed` | Glyph plus label. Ambiguous shows its candidates and never resolves itself; deleted states that approval is blocked |
 | Revision | current, advanced | `closed`, `attention` | Annotation-level, never a target label. Phrased as "written before this revision", not as an error |
 | Provenance | source span, inferred, unavailable | `progress`, `closed`, `attention` | Always labelled. Never uses the word "exact", which belongs to resolution alone |
-| Agent position | awaiting you, working, acknowledged, stepped away | `progress`, `success`, `closed` | A sentence, not a dot. "Stepped away" must never read as "working" |
+| Agent position | awaiting you, working, acknowledged, stepped away | `progress`, `success`, `closed` | A sentence, not a dot, together with when the agent last checked. "Stepped away" must never read as "working"; a convention the agent is not honouring must be visible rather than assumed |
 | Attention | one or more items needing a decision | `attention` | Count badge on the drawer trigger, hidden at zero |
 
 ## 5. Surface composition
 
+One rail, and one island over the artifact. No chrome spans the window.
+
 ```
-┌─ top bar (48) ─────────────────────────────────────────────────────────────┐
-│ artifact identity · revision │ Review │ Verify │  tool row  │ agent · ▣ · ⋯ │
-├──────────────────────────────────────────────┬─────────────────────────────┤
-│                                              │  panel (380)                │
-│  stage: artifact frame                       │                             │
-│  + artifact-document overlay                 │  Review: queue + composer   │
-│    (hover, target marks, focus ring,         │          + send controls    │
-│     marquee, relation guides and handles,    │                             │
-│     before/after toggle)                     │  Verify: annotation list    │
-│                                              │          + verdicts         │
-│                                              │          + candidates       │
-└──────────────────────────────────────────────┴─────────────────────────────┘
+┌──────────────────────────────────────────────┬────────────────────────────┐
+│                                              │  rail (380, full height)   │
+│  stage: artifact frame                       │                            │
+│  + artifact-document overlay                 │  subject, agent position,  │
+│    (hover, target marks, focus ring,         │  attention                 │
+│     drawn-target boundary,                   │                            │
+│     before/after)                            │  one list: unsent, sent    │
+│                                              │                            │
+│         ┌─────────────────┐                  │  verdicts on each row      │
+│         │  mode island    │                  │                            │
+│         └─────────────────┘                  │  before/after on the stage │
+│                                              │  while something is due    │
+└──────────────────────────────────────────────┴────────────────────────────┘
         anchored annotation card sits over the stage, near its target
-        drawer (380) slides over the panel when the attention badge is used
+        drawer (380) slides over the rail when the attention badge is used
 ```
 
-**Review state:** artifact is exercised normally; the tool row is present; the
-panel is a queue with a composer and send controls; anchored annotation cards
-open on selection; the drawer is available.
+**The rail is the only chrome region.** It carries the artifact's identity
+because identity is what the rail's own content is qualified by: an Annotation
+marked "written before this revision" is only meaningful beside the revision on
+screen. Identity, agent position and the attention trigger are pinned at its
+head; the list scrolls beneath them. The Stop action sits beside the agent
+position, because it acts on the agent rather than on an Annotation.
 
-**Verify state:** tool row is absent; the panel is a list of annotations with
-per-annotation verdict controls and a candidate chooser where a resolution is
-ambiguous; the stage carries a before/after revision toggle; the drawer is
-available.
+**The mode island is the only chrome over the artifact.** It holds two tiles —
+point and box — and sits at the stage's lower edge, nearest the pointer it
+governs. Operating the artifact is the unarmed state rather than a tile: neither
+tile lit is the resting state, and arming an armed tile again returns to it. The
+island is never hidden and never covers the target of the current selection; the
+anchored card is positioned so the two cannot overlap.
 
-Anything that is not one of the two states' core jobs lives in the overflow
-menu or the drawer. The overflow menu holds end session, reload artifact, copy
-artifact path, copy evidence, and open the disclosure. It never holds a
-frequent action.
+**One state, one list.** The rail holds every Annotation — unsent and sent — in
+the order the Builder-Reviewer set. The state pill carries the difference, so
+nothing leaves the list when it is sent and nothing has to be found again in a
+second state. Verdict controls appear on an Annotation's own row once it has
+been delivered, and a resolution that is ambiguous shows its candidates there.
+The stage carries the before/after revision toggle only while something is
+deliverable.
+
+**Reloading asks.** When the artifact's bytes change under review, the stage
+says so and offers one action. The surface never swaps the artifact out from
+under an open card, because which revision an Annotation was written against is
+part of what the Annotation means.
+
+Anything that is not one of these core jobs lives in the overflow menu or the
+drawer. The overflow menu holds end session, reload artifact, copy artifact
+path, copy evidence, open the disclosure, and choose the theme. It never holds
+a frequent action.
 
 ## 6. Component inventory
 
@@ -185,26 +224,28 @@ gallery in §9 renders them.
 
 | Component | Variants and states |
 | --- | --- |
-| `TopBar` | default; revision chip `current` / `advanced` |
-| `StateSwitch` | Review active / Verify active; Verify disabled while nothing is deliverable |
-| `ToolRow` | per tool: default, hover, active, focus, disabled; roving tabindex |
+| `RailHead` | pinned; artifact name and kind; revision chip `current` / `advanced`; agent position; attention trigger |
+| `ModeIsland` | resting, with neither tile armed; point armed; box armed; per tile below |
+| `ModeTile` | default, hover, armed, focus, disabled; icon only, with an accessible name and a tooltip sentence |
 | `RevisionChip` | current, advanced; mono identity |
-| `AgentPosition` | awaiting, working, acknowledged, stepped away; each with its sentence |
+| `AgentPosition` | awaiting, working, acknowledged, stepped away; each with its sentence and when the agent last checked |
 | `AttentionTrigger` | hidden at zero, badge with count |
 | `OverflowMenu` | closed, open, item focus |
-| `ArtifactFrame` | loading, ready, unreachable, policy-blocked |
-| `OverlayMark` | hover, selected, focused, ambiguous-candidate highlight, relation member |
-| `Marquee` | drawing; below the minimum-size threshold it produces nothing |
-| `RelationGuide` / `RelationHandle` | available, dragging, snapped, invalid |
-| `RelationSentence` | readable sentence of the current relation set |
-| `BeforeAfterToggle` | before, after, off |
+| `ArtifactFrame` | loading, ready, unreachable, policy-blocked, changed |
+| `OverlayMark` | hover, selected, focused, drawn-target boundary, ambiguous-candidate highlight |
+| `DrawnTargetBoundary` | drawing; drawn; below the minimum-size threshold it produces nothing |
+| `RelationGuide` / `RelationHandle` / `RelationSentence` | not built in this iteration: Relational Intent is deferred, see §11 |
+| `BeforeAfterToggle` | before, after, off; present only while something is deliverable |
 | `AnchoredCard` | positioned left/right/flipped, clamped to viewport, dismissed |
-| `AnnotationCard` | drafting; with attachment; with relation; actions: queue, delete |
+| `AnnotationCard` | drafting; with attachment. Its target line is a kind icon plus what was pointed at, never the bare kind word. `Queue` is the only worded action, with attach and delete as icons. No instruction copy: the placeholder carries the question |
 | `AttachmentChip` | uploading, ready, failed, removed |
-| `QueueList` | empty, populated, reordering |
+| `AnnotationList` | empty; unsent; sent; superseded with its successor linked. One list, where the state pill carries the difference so sending never moves an Annotation out of view; actionable Annotations first, and closed ones behind a filter rather than deleted |
 | `AnnotationPill` | draft, queued, delivered, acknowledged, resolved, verified, rejected, superseded, obsolete |
 | `Composer` | empty, typing, over threshold, disabled |
-| `SendControls` | send queue; send-and-hold; disabled with the reason stated |
+| `SendAction` | one verb, with no intent selector to choose from; disabled with the reason stated; the agent's position and whether it is holding the call are stated beside it |
+| `AmendAction` | offered on a sent Annotation that is not yet verified: supersedes it, links the successor, and delivers the amendment with the steering intent |
+| `StopAction` | offered while the agent is working or has acknowledged an Annotation, and absent otherwise; states which delivery channel applies and when the agent last checked |
+| `ThemeControl` | auto, light, dark; the choice is remembered |
 | `AnnotationRow` | matched, recovered, ambiguous, deleted, advanced |
 | `CandidateChooser` | none, several, one chosen |
 | `VerdictControls` | enabled, blocked with reason, recorded |
@@ -215,18 +256,29 @@ gallery in §9 renders them.
 | `ToggleGroup`, `Pill`, `Badge`, `StatusDot`, `Tooltip`, `Toast`, `Textarea`, `Listbox`, `ScrollArea`, `Dialog` | default plus the states they can reach |
 
 Consequential actions use visible text. An icon-only control is permitted only
-where its meaning is unambiguous and it carries an accessible name.
+where its meaning is unambiguous and it carries an accessible name. Selecting a
+mode is such a control: it is reversible and has no side effect, so it is
+icon-only, states itself through the lit tile, the cursor over the artifact and
+the pre-commit hover outline, and explains itself in a tooltip rather than in
+permanent copy. Deleting an unsent Annotation is also icon-only: nothing has left
+the machine, nothing in the artifact changed, and the Annotation can be composed
+again, so it is not consequential in the sense this section means.
 
 ## 7. Interaction and keyboard
 
-- `Cmd/Ctrl+I` toggles Review. Leaving Review never discards anything.
-- In Review: `V` Pointer, `E` Element, `T` Text, `G` Region, `A` Arrange. Single
-  keys are ignored while focus is in a text field or a contenteditable region.
+- In Review there are two tiles and three keys: `P` points at things, `B` boxes
+  an area, and `V` returns to operating the artifact, which is the unarmed
+  state. Single keys are ignored while focus is in a text field or a
+  contenteditable region. The island stays visible and pointer-reachable at all
+  times, so focus in a field never strands the operator in a mode.
+- Pointing is one state with two outcomes the gesture already distinguishes:
+  clicking targets a thing the artifact owns, and dragging across words targets
+exactly those words.
 - `Enter` in an anchored annotation card queues the annotation. `Cmd/Ctrl+Enter`
   queues and sends the whole queue.
 - `Escape` unwinds exactly one level and no more: close the anchored card, then
-  clear the selection, then leave Review, then return focus to the state switch.
-  `Escape` never discards unsent text.
+  clear the selection, then return to operating the artifact, then move focus to
+  the mode island. `Escape` never discards unsent text.
 - Native application controls stay operable in Review without a state change.
   Custom non-native controls opt out of targeting explicitly.
 - The artifact document never traps focus. Chrome layers do.
@@ -244,9 +296,10 @@ WCAG 2.2 AA is the floor, not an aspiration.
   its own surface.
 - Pointer targets meet the 24×24 minimum.
 - Focus is always visible and is never removed without replacement.
-- The tool row, target marks, resolution labels and verdict controls have
+- The mode island, target marks, resolution labels and verdict controls have
   programmatic names that state position and meaning, for example
-  "Target 2 of 3, Place order button, button".
+  "Target 2 of 3, Place order button, button". Each mode tile is at least 24×24,
+  including while the island is at rest.
 - Reduced motion removes transitions, scale and lift.
 - State changes that a sighted user sees as motion are announced where they
   change the meaning of the surface, in particular revision advance and
@@ -270,7 +323,7 @@ seam asserts against when it needs a component in isolation.
 Recorded because each one has a plausible-sounding reason to exist:
 
 - A style-value editor of any kind: typography, colour, spacing values, borders,
-  shadows or content. This product expresses relationships and leaves the
+  shadows or content. This product expresses what should change and leaves the
   implementation to the agent.
 - A freehand pen, highlighter, arrow or shape palette.
 - Decorative colour, gradients, glass blur or texture in chrome.
@@ -285,6 +338,29 @@ Recorded because each one has a plausible-sounding reason to exist:
 - Perpetual animation.
 - Approximating a missing target rather than showing it as missing.
 - Shrinking the chrome below the 11px floor to fit more controls.
+- A theme sampled or derived from the artifact under review. The artifact is
+  judged, not consulted.
+- A permanent sentence explaining a control that teaches itself through its
+  icon, its armed state and the cursor.
+- A solid boundary for a target the Builder-Reviewer drew. A drawn target is
+  dashed and static; motion is reserved for agent activity.
+- A mode control at the far edge of the window. The control that governs the
+  pointer belongs beside the pointer.
+- A platform form widget as a primary surface control. A native select, a
+  full-width system button or a default checkbox in the rail is how a work tool
+  comes to read as a web form, which is what the surface is not.
+- Presenting the resting state as a peer of the modes. Operating the artifact is
+  where the operator already is; it is the unarmed state, not a third tile to
+  pick.
+- A delivery intent the Builder-Reviewer has to choose. The intent follows from
+  which Annotation they acted on: sending a queue, amending something already
+  sent, and asking an agent to stop are three different acts, not three options
+  in one list.
+- A capability flag gating behaviour that does not exist. A host is never asked
+  to declare something the product cannot honour.
+- Editing a delivered Annotation in place. What the agent was told is a record;
+  an amendment supersedes it and states what replaced it.
+- Reloading the artifact without being asked.
 
 ## 11. Amendment process
 
@@ -295,4 +371,129 @@ preference is not available; the conflict goes up the precedence list instead.
 
 ### Amendments
 
-_None yet._
+### 2026-09-16 — Direction after dogfooding 0.3.0-next.1
+
+Reason: the dogfood surfaced a vocabulary and composition problem rather than a
+styling problem. Five word-labelled tools presented two different questions —
+"what am I pointing at?" and "what am I doing?" — as equals; two of them could
+only produce silence in the case a newcomer would try first (`Arrange` clicked
+before anything was selected, `Text` used outside a text drag), and `Pointer`
+presented the absence of a mode as a peer of three real ones. The window-level
+bar held identity, surface state, tools, agent position, a selection count and
+an attention trigger at once, and the agent sentence overflowed its fixed height
+whenever it was present.
+
+Replaces:
+
+- §2's account of dark mode, with an operator-chosen theme that is never derived
+  from the artifact and a dark counterpart drawn from the same warm family as the
+  light primitives.
+- §3's dark primitive table, proposed pending the §9 gallery pass.
+- §4's state families: adds Mode, and separates a target the artifact owns from
+  a target the operator drew.
+- §5's composition: one full-height rail and a mode island over the stage,
+  replacing the top bar plus panel.
+- §6's `TopBar`, `ToolRow`, `Marquee` and `OverlayMark` entries.
+- §7's Review keys: `V` / `E` / `B` replace `V` / `E` / `T` / `G` / `A`.
+- §10's anti-pattern list.
+
+Unchanged by this amendment, and carrying open questions from the same dogfood:
+the two surface states of §5, the anchored card and its copy, the send controls
+and their delivery intents, and the verify block.
+
+### 2026-09-16 — Delivery stops pretending, and Verify stops being a place
+
+Reason: the same dogfood showed the delivery vocabulary was three options with
+two behaviours and one false claim. `Draft` created a batch and moved
+Annotations to `delivered` while telling the Builder-Reviewer that nothing was
+sent. `Steering` was offered although no host ever declares the capability, and
+`deliveryPlan`'s output is never branched on anywhere — the strategy is computed,
+returned and ignored, so "deliver now" and "queue locally" are one code path
+with different prose. The surface also emptied its queue on send, leaving the
+Builder-Reviewer with no record of what they had asked for.
+
+Replaces:
+
+- §3's metrics, elevation tints and the rail's title token use.
+- §4's Agent-position cue: adds when the agent last checked.
+- §5's two surface states, with one list and a conditional before/after toggle;
+  adds the reload rule.
+- §6's `StateSwitch`, `QueueList` and `SendControls` entries.
+- §7's `Cmd/Ctrl+I` binding, which toggled a state that no longer exists.
+- §10's anti-pattern list.
+
+The delivery intents remain in the envelope. They stop being a question the
+Builder-Reviewer answers: sending a queue is `next-pass`, amending something
+already sent is `steering`, and asking an agent to stop is `review-interruption`.
+Steering is treated as a published convention — the agent checks for new
+direction between its own steps — rather than a host capability to detect, and
+the surface states when the agent last checked so a convention that is not being
+honoured is visible.
+
+Still open from the same dogfood, and amended separately: the anchored card and
+its copy, and the Stop action and its host contract.
+
+### 2026-09-16 — The card, the Stop action, the theme control, and two tiles
+
+Reason: independent review of this iteration found that tickets covering the
+anchored card, the Stop action and the theme control rested on contract text that
+did not exist, because amendment 2 deferred all three to a later amendment and
+none was recorded; resolving them by implementation decision is what §1 forbids.
+The same review found the contract contradicting itself in two places. §10 forbade
+presenting the absence of a mode as a peer of the modes while §5 and §6 described
+an island whose first tile was exactly that. And §5 said the island hides while an
+anchored card is open while §7 said it stays pointer-reachable, which cannot both
+hold when every text field lives in the card.
+
+Replaces:
+
+- §4's Mode row: operating is the unarmed state, not a tile.
+- §5's mode island paragraph; the Stop action's place in the rail; and the
+  overflow menu's contents.
+- §6's `ModeIsland`, `AnnotationCard` and `AnnotationList` entries, the
+  delete-is-consequential judgement, and the new `StopAction` and `ThemeControl`.
+- §7's mode keys, and the relational gesture that amendment 2 left undefined when
+  it removed the `Arrange` tool.
+- §8's accessibility line, which still named a tool row that no longer exists.
+- §10's resting-state anti-pattern, restated so it cannot be read as licensing an
+  operate tile.
+- Corrects amendment 1's account of the window-level bar: its height was fixed
+  and the agent sentence overflowed it rather than growing it.
+
+The Stop action's host contract, recorded here because tickets depend on it: an
+MCP server cannot put anything into an agent's running turn, so delivery has
+exactly two forms — returning a held tool call early, which is guaranteed and
+already implemented, and an agent-initiated Check-In, which is a convention this
+product publishes. Steering and interruption are the second form. The surface
+states which form applies and when the agent last checked. ADR-0018 records the
+decision, the rejected alternatives, and the retirement of ADR-0008's active-turn
+steering clause.
+
+### 2026-09-16 — Relational Intent is deferred, and the rail is not a form
+
+Reason: two findings, one from the independent review and one from the
+maintainer's judgement about scope. Expressing a relationship by dragging a
+selected target was the last thing the mode change left undefined, and the
+`Arrange` tool that carried it was undiscoverable — it did nothing until two
+targets were already selected, and a newcomer clicking it first saw silence.
+Relational Intent is the product's stated differentiator, but nothing in the
+dogfood asked for it and this iteration's purpose is a focused surface. It is
+deferred rather than dropped: the envelope keeps its support for relationships,
+`CONTEXT.md` keeps the term, and the capability returns in a later iteration with
+a gesture that is designed rather than inherited. Separately, the loudest signal
+that the surface read as a web form was a native select and a full-width primary
+button in the panel; deleting the feature that used the select removed one
+instance and left the rule unstated.
+
+Replaces:
+
+- §5's composition diagram: the overlay no longer draws relation guides or handles.
+- §6's `RelationGuide`, `RelationHandle` and `RelationSentence` entries, and the
+  `AnnotationCard`'s relation variant.
+- §7's relational-drag binding, which was the one design call this iteration
+  carried that the maintainer had not reviewed.
+- §10's anti-pattern list.
+
+Consequence worth stating plainly: this iteration does not demonstrate Relational
+Intent, which the previous spec named as the product's non-parity differentiator.
+No relation will be built, and the contract no longer promises one.

@@ -37,3 +37,8 @@ Preconditions:
 - The `awaiting-you` position needs a live agent call being held; a completed call falls back to another position.
 - The position sentence appears in the topbar and the Send footer at the same time; they are one fact, not two.
 - Acknowledgement updates the position but leaves the Annotation awaiting a Builder-Reviewer verdict.
+## Driving the stop request and the Check-In channel
+
+- **Ask the agent to stop.** With the agent working or having acknowledged an Annotation, run `… lever.mjs stop`. Exit `0`; `… lever.mjs state` shows `agent.pendingInterruption` true and `pendingInterruptionSince` set. The surface says the request has not been collected, not that work stopped.
+- **State the channel.** `… lever.mjs state` reports `agent.channel` as `held-call` while a call is held and `next-check-in` otherwise, with `lastCheckedInAt` when the agent has checked in, and no timestamp at all when it never has.
+- **Collect it.** Run `… lever.mjs mcp --run <name> --tool check_in --args '{"sessionId":"<id>"}'`. The interruption is returned and cleared, and the contact time is recorded.

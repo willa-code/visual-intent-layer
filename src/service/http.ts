@@ -308,20 +308,97 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
       return;
     }
     const body = await readJsonBody(request, response);
-    const intent = isIntent((body as { intent?: unknown } | undefined)?.intent)
-      ? ((body as { intent: 'next-pass' | 'steering' | 'draft' | 'review-interruption' }).intent)
-      : 'next-pass';
+    const requestedIntent = (body as { intent?: unknown } | undefined)?.intent;
+    if (requestedIntent !== undefined && requestedIntent !== 'next-pass') {
+      sendText(
+        response,
+        400,
+        'The one send action always delivers Next-Pass Intent. Steering Intent comes from amending a delivered Annotation; Review Interruption comes from asking an agent to stop.'
+      );
+      return;
+    }
     try {
-      const sent = review.sendQueue(session.sessionId, { host: 'browser', intent });
+      const outcome = review.sendQueue(session.sessionId, { host: 'browser', intent: 'next-pass' });
+      if (!outcome.delivered) {
+        sendJson(response, 200, { delivered: false, intent: outcome.intent, reason: outcome.reason });
+        return;
+      }
+      const result = outcome.result;
       sendJson(response, 200, {
-        envelopeId: sent.batch.envelopeId,
-        annotationIds: sent.batch.annotationIds,
-        delivery: sent.delivery.label,
-        idempotencyKey: sent.batch.idempotencyKey
+        envelopeId: result.batch.envelopeId,
+        annotationIds: result.batch.annotationIds,
+        intent: result.batch.intent,
+        channel: result.channel,
+        holding: result.holding,
+        idempotencyKey: result.batch.idempotencyKey
       });
     } catch (error) {
       sendText(response, 409, error instanceof Error ? error.message : 'send failed');
     }
+    return;
+  }
+
+  const amendMatch = /^\/api\/sessions\/([^/]+)\/amend$/.exec(path);
+  if (method === 'POST' && amendMatch) {
+    const session = authorizedOrRefuse(context, amendMatch[1]!, url);
+    if (!session) {
+      return;
+    }
+    const body = await readJsonBody(request, response);
+    if (body === undefined) {
+      return;
+    }
+    const annotationId = (body as { annotationId?: unknown }).annotationId;
+    if (typeof annotationId !== 'string' || annotationId.length === 0) {
+      sendText(response, 400, 'Expected { annotationId: string }');
+      return;
+    }
+    const note = (body as { note?: unknown }).note;
+    try {
+      const amended = review.amendAnnotation(session.sessionId, annotationId, {
+        host: 'browser',
+        ...(typeof note === 'string' ? { note } : {})
+      });
+      sendJson(response, 200, {
+        original: amended.original,
+        successor: amended.successor,
+        envelopeId: amended.delivery.batch.envelopeId,
+        intent: amended.delivery.batch.intent,
+        channel: amended.delivery.channel,
+        holding: amended.delivery.holding
+      });
+    } catch (error) {
+      sendText(response, 409, error instanceof Error ? error.message : 'amendment refused');
+    }
+    return;
+  }
+
+  const interruptionMatch = /^\/api\/sessions\/([^/]+)\/interruptions$/.exec(path);
+  if (method === 'POST' && interruptionMatch) {
+    const session = authorizedOrRefuse(context, interruptionMatch[1]!, url);
+    if (!session) {
+      return;
+    }
+    const record = review.requestInterruption(session.sessionId, { host: 'browser' });
+    sendJson(response, 200, {
+      interruptionId: record.interruptionId,
+      requestedAt: record.requestedAt,
+      message: 'Stop requested. Your agent sees this at its next Check-In; nothing has been stopped yet.'
+    });
+    return;
+  }
+
+  const adoptMatch = /^\/api\/sessions\/([^/]+)\/reload$/.exec(path);
+  if (method === 'POST' && adoptMatch) {
+    const session = authorizedOrRefuse(context, adoptMatch[1]!, url);
+    if (!session) {
+      return;
+    }
+    const status = await sessionStatus(session);
+    const current = typeof status['currentRevision'] === 'string' ? status['currentRevision'] : session.revision;
+    sessions.put({ ...session, adoptedRevision: current });
+    const reloaded = sessions.get(session.sessionId)!;
+    sendJson(response, 200, await sessionStatus(reloaded));
     return;
   }
 
@@ -362,7 +439,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
       resolveTarget(target, candidates as ResolutionCandidate[])
     );
     review.annotations.noteRevisionAdvance(annotation.artifactId, revision);
-    const updated = review.annotations.recordResolutions(annotationId, resolutions);
+    const updated = review.annotations.recordResolutions(annotationId, resolutions, revision);
     sendJson(response, 200, { annotation: updated, resolutions });
     return;
   }
@@ -418,7 +495,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     }
     const verdict = (body as { verdict?: unknown }).verdict;
     if (!isVerdict(verdict)) {
-      sendText(response, 400, 'Invalid verdict: expected approve, reject, another-pass, supersede, or obsolete');
+      sendText(response, 400, 'Invalid verdict: expected approve, reject, another-pass, or obsolete');
       return;
     }
     try {
@@ -774,24 +851,27 @@ function artifactFile(session: SessionRecord): string | undefined {
 }
 
 async function sessionStatus(session: SessionRecord): Promise<Record<string, unknown>> {
+  const adoptedRevision = session.adoptedRevision ?? session.revision;
+  const base = {
+    sessionId: session.sessionId,
+    artifactId: session.artifactId,
+    openedRevision: session.revision,
+    adoptedRevision
+  };
   const absolute = artifactFile(session);
   if (absolute) {
     try {
       const bytes = readFileSync(absolute);
       const revision = computeRevision(bytes, []);
       return {
-        sessionId: session.sessionId,
-        artifactId: session.artifactId,
-        openedRevision: session.revision,
+        ...base,
         currentRevision: revision,
-        changed: revision !== session.revision
+        changed: revision !== adoptedRevision
       };
     } catch {
       return {
-        sessionId: session.sessionId,
-        artifactId: session.artifactId,
-        openedRevision: session.revision,
-        currentRevision: session.revision,
+        ...base,
+        currentRevision: adoptedRevision,
         changed: false,
         unreadable: true
       };
@@ -801,28 +881,22 @@ async function sessionStatus(session: SessionRecord): Promise<Record<string, unk
     try {
       const revision = await fetchAppRevision(session.source);
       return {
-        sessionId: session.sessionId,
-        artifactId: session.artifactId,
-        openedRevision: session.revision,
+        ...base,
         currentRevision: revision,
-        changed: revision !== session.revision
+        changed: revision !== adoptedRevision
       };
     } catch {
       return {
-        sessionId: session.sessionId,
-        artifactId: session.artifactId,
-        openedRevision: session.revision,
-        currentRevision: session.revision,
+        ...base,
+        currentRevision: adoptedRevision,
         changed: false,
         unreadable: true
       };
     }
   }
   return {
-    sessionId: session.sessionId,
-    artifactId: session.artifactId,
-    openedRevision: session.revision,
-    currentRevision: session.revision,
+    ...base,
+    currentRevision: adoptedRevision,
     changed: false
   };
 }
@@ -1150,18 +1224,13 @@ function sendJson(response: ServerResponse, status: number, value: unknown): voi
   response.end(JSON.stringify(value, null, 2));
 }
 
-function isVerdict(value: unknown): value is 'approve' | 'reject' | 'another-pass' | 'supersede' | 'obsolete' {
+function isVerdict(value: unknown): value is 'approve' | 'reject' | 'another-pass' | 'obsolete' {
   return (
     value === 'approve' ||
     value === 'reject' ||
     value === 'another-pass' ||
-    value === 'supersede' ||
     value === 'obsolete'
   );
-}
-
-function isIntent(value: unknown): value is 'next-pass' | 'steering' | 'draft' | 'review-interruption' {
-  return value === 'next-pass' || value === 'steering' || value === 'draft' || value === 'review-interruption';
 }
 
 function normalizeMedia(value: string | undefined): string {
