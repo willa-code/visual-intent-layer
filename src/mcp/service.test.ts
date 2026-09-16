@@ -110,11 +110,11 @@ describe('browser send and agent position', () => {
     if (!sent.delivered) {
       return;
     }
-    expect(sent.result.batch.annotationIds).toEqual([annotation.annotationId]);
-    expect(sent.result.batch.intent).toBe('next-pass');
+    expect(sent.result.pass.annotationIds).toEqual([annotation.annotationId]);
+    expect(sent.result.pass.intent).toBe('next-pass');
     expect(sent.result.channel).toBe('held-call');
     const woken = await waiting;
-    expect(woken?.envelopeId).toBe(sent.result.batch.envelopeId);
+    expect(woken?.envelopeId).toBe(sent.result.pass.envelopeId);
     expect(woken?.envelope.annotations[0]?.note).toBe('Fix the header.');
   });
 
@@ -212,27 +212,27 @@ describe('delivery by a named set', () => {
     const sent = service.sendQueue(opened.sessionId, { host: 'browser' });
     expect(sent.delivered).toBe(true);
     if (!sent.delivered) return;
-    expect(sent.result.batch.annotationIds).toEqual([annotation.annotationId]);
+    expect(sent.result.pass.annotationIds).toEqual([annotation.annotationId]);
   });
 
-  it('a draft intent creates no batch and moves nothing out of draft or queued', async () => {
+  it('a draft intent creates no Pass and moves nothing out of draft or queued', async () => {
     const service = setup();
     const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
     const annotation = seed(service, opened, 'stays local');
     const outcome = service.sendQueue(opened.sessionId, { host: 'browser', intent: 'draft' });
     expect(outcome.delivered).toBe(false);
-    expect(service.listBatches()).toHaveLength(0);
+    expect(service.listPasses()).toHaveLength(0);
     expect(service.annotations.get(annotation.annotationId)?.state).toBe('draft');
   });
 
-  it('is idempotent: the same set and intent produce one batch', async () => {
+  it('is idempotent: the same set and intent produce one Pass', async () => {
     const service = setup();
     const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
     const annotation = seed(service, opened, 'once');
     const first = service.deliverAnnotations(opened.sessionId, { annotationIds: [annotation.annotationId], intent: 'next-pass' });
     const second = service.deliverAnnotations(opened.sessionId, { annotationIds: [annotation.annotationId], intent: 'next-pass' });
-    expect(second.batch.envelopeId).toBe(first.batch.envelopeId);
-    expect(service.listBatches()).toHaveLength(1);
+    expect(second.pass.envelopeId).toBe(first.pass.envelopeId);
+    expect(service.listPasses()).toHaveLength(1);
   });
 
   it('resolves a held call for an amendment or an interruption', async () => {
@@ -249,21 +249,21 @@ describe('delivery by a named set', () => {
 });
 
 describe('amending something sent', () => {
-  it('supersedes the original, records the successor, and keeps the original intact', async () => {
+  it('replaces the original, records the Replacement, and keeps the original intact', async () => {
     const service = setup();
     const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
     const original = seed(service, opened, 'first wording');
     service.deliverAnnotations(opened.sessionId, { annotationIds: [original.annotationId], intent: 'next-pass' });
 
     const amended = service.amendAnnotation(opened.sessionId, original.annotationId, { note: 'clearer wording' });
-    expect(amended.original.state).toBe('superseded');
-    expect(amended.original.supersededBy).toBe(amended.successor.annotationId);
+    expect(amended.original.state).toBe('replaced');
+    expect(amended.original.replacedBy).toBe(amended.successor.annotationId);
     expect(amended.original.note).toBe('first wording');
-    expect(amended.successor.supersedes).toBe(original.annotationId);
+    expect(amended.successor.replaces).toBe(original.annotationId);
     expect(amended.successor.note).toBe('clearer wording');
     expect(amended.successor.state).toBe('delivered');
-    expect(amended.delivery.batch.intent).toBe('steering');
-    expect(amended.delivery.batch.annotationIds).toEqual([amended.successor.annotationId]);
+    expect(amended.delivery.pass.intent).toBe('steering');
+    expect(amended.delivery.pass.annotationIds).toEqual([amended.successor.annotationId]);
   });
 
   it('refuses to edit a delivered Annotation in place', async () => {
@@ -309,7 +309,7 @@ describe('check-in and interruption', () => {
     const next = service.checkIn(opened.sessionId, { cursor });
     expect(next.deliveries.map((entry) => entry.intent)).toContain('steering');
     expect(next.amendments).toEqual(
-      expect.arrayContaining([{ supersededId: original.annotationId, successorId: amended.successor.annotationId }])
+      expect.arrayContaining([{ replacedId: original.annotationId, replacementId: amended.successor.annotationId }])
     );
   });
 
@@ -317,7 +317,7 @@ describe('check-in and interruption', () => {
     const service = setup();
     const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
     service.requestInterruption(opened.sessionId, { requestedBy: 'builder-reviewer' });
-    expect(service.listBatches()).toHaveLength(0);
+    expect(service.listPasses()).toHaveLength(0);
     const result = service.checkIn(opened.sessionId);
     expect(result.interruption?.interruptionId).toMatch(/^int-/);
     expect(result.interruption?.sentence).toMatch(/request, not a fact/);
@@ -349,6 +349,6 @@ describe('an interruption is never carried in an envelope', () => {
     const service = setup();
     const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
     service.requestInterruption(opened.sessionId);
-    expect(service.listBatches()).toHaveLength(0);
+    expect(service.listPasses()).toHaveLength(0);
   });
 });

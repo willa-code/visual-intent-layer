@@ -64,6 +64,8 @@ export type ShellMarkTargets = {
   selectors?: string[];
   chosenNodeId?: string;
 };
+export type CandidateMark = { nodeId?: string; selector?: string; numeral: number; label: string };
+export type ShellMarkCandidates = { source: 'vil-shell'; type: 'mark-candidates'; candidates: CandidateMark[] };
 export type ShellRequestCandidates = { source: 'vil-shell'; type: 'request-candidates' };
 export type ShellBeforeAfter = { source: 'vil-shell'; type: 'before-after'; mode: 'before' | 'after' | 'off' };
 
@@ -71,6 +73,7 @@ export type ShellMessage =
   | ShellConfigure
   | ShellClearSelection
   | ShellMarkTargets
+  | ShellMarkCandidates
   | ShellRequestCandidates
   | ShellBeforeAfter;
 

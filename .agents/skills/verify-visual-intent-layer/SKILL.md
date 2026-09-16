@@ -78,7 +78,7 @@ $LEVER mode --to point|box|operate
 $LEVER annotate --note "Make the Place order button impossible to miss."
 $LEVER queue
 $LEVER send --intent next-pass                                        # the one send action: Next-Pass Intent
-$LEVER amend --note "Clearer wording." --match "Make the Place order"  # supersedes, Steering Intent
+$LEVER amend --note "Clearer wording." --match "Make the Place order"  # Replaces, Steering Intent
 $LEVER stop                                                           # asks the agent to stop; Review Interruption
 $LEVER attach --file /tmp/reference.png
 $LEVER reload                                                         # adopt the changed Artifact revision
@@ -90,9 +90,9 @@ Judging a result where it sits:
 ```sh
 $LEVER verify
 $LEVER compare --mode before --row 0
-$LEVER choose --node <nodeId> --target <targetId>
-$LEVER decide --verdict approve --row 0                               # reject, another-pass, obsolete
-$LEVER closed-rows                                                     # one toggle for verified, superseded and obsolete rows
+$LEVER repoint --row 0 --target "h1"                           # re-point a target that could not be matched
+$LEVER decide --verdict approve --row 0                               # reject, not-fixed, obsolete
+$LEVER closed-rows                                                     # one toggle for verified, replaced and obsolete rows
 ```
 
 Keyboard and surface navigation:

@@ -130,8 +130,8 @@ body.gallery-body {
 .before-after-host {
   position: absolute;
   left: var(--space-3);
-  bottom: var(--space-3);
-  z-index: 20;
+  top: var(--space-3);
+  z-index: 22;
 }
 
 .before-after {
@@ -206,29 +206,45 @@ body.gallery-body {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
-.hint-host {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(var(--space-3) + var(--island-tile) + var(--space-3));
-  z-index: 21;
-  max-width: min(520px, 92%);
+.coachmark-host {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  pointer-events: none;
 }
 
-.first-run-hint {
+.coachmark {
+  position: fixed;
+  max-width: 300px;
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
   border-radius: var(--radius-card);
-  border: 1px solid var(--line-default);
-  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  background: var(--ink-primary);
+  color: var(--canvas);
   box-shadow: var(--elevation-overlay);
   font: var(--type-label);
+  pointer-events: auto;
 }
 
-.first-run-hint p {
+.coachmark__title {
   margin: 0;
+  font: var(--type-label);
+  font-weight: 600;
+}
+
+.coachmark__body {
+  margin: 0;
+  font: var(--type-body);
+}
+
+.coachmark .button {
+  align-self: flex-start;
+  color: var(--canvas);
+  border-color: var(--line-strong);
+  background: transparent;
 }
 
 /* ---------------------------------------------------------------- rail */
@@ -238,8 +254,38 @@ body.gallery-body {
   flex-direction: column;
   min-height: 0;
   height: 100vh;
-  background: var(--surface);
+  background: var(--canvas);
   border-left: 1px solid var(--line-default);
+}
+
+.rail__notice {
+  flex: 0 0 auto;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--line-default);
+  background: var(--canvas);
+}
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-raised);
+  color: var(--ink-primary);
+  font: var(--type-label);
+}
+
+.notice__text {
+  margin: 0;
+}
+
+.notice__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .rail__head {
@@ -251,7 +297,7 @@ body.gallery-body {
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--line-default);
-  background: var(--surface);
+  background: var(--canvas);
 }
 
 .rail__identity {
@@ -286,10 +332,35 @@ body.gallery-body {
   color: var(--ink-muted);
 }
 
-.rail__agent {
+.rail__status {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+.status-line {
+  margin: 0;
+  font: var(--type-body);
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.status-line[data-state='ready'] {
+  color: var(--attention-ink);
+}
+
+.agent-disclosure {
+  font: var(--type-meta);
+  color: var(--ink-secondary);
+}
+
+.agent-disclosure summary {
+  cursor: pointer;
+}
+
+.agent-disclosure p {
+  margin: var(--space-1) 0 0;
 }
 
 .rail__actions {
@@ -324,6 +395,7 @@ body.gallery-body {
 .rail__footer {
   border-top: 1px solid var(--line-default);
   padding: var(--space-3) var(--space-4);
+  background: var(--canvas);
 }
 
 .rail__title {
@@ -450,6 +522,46 @@ body.gallery-body {
   font: var(--type-meta);
   color: var(--ink-muted);
   margin: 0;
+}
+
+/* ------------------------------------------------------------- passes */
+
+.pass-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.pass-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--line-default);
+  background: var(--surface);
+}
+
+.pass-header__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.pass-header__title {
+  font: var(--type-label);
+  font-weight: 600;
+}
+
+.pass-header__outstanding {
+  font: var(--type-meta);
+  color: var(--ink-secondary);
+}
+
+.annotation-row__result-revision {
+  font: var(--type-meta);
+  color: var(--ink-muted);
 }
 
 /* ------------------------------------------------------------ rows */
@@ -753,16 +865,6 @@ body.gallery-body {
   gap: var(--space-2);
 }
 
-.relation-sentence {
-  font: var(--type-body);
-  color: var(--progress-ink);
-  background: var(--progress-surface);
-  border: 1px solid var(--progress-ink);
-  border-radius: var(--radius-input);
-  padding: var(--space-2);
-  margin: 0;
-}
-
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -929,24 +1031,35 @@ body.gallery-body {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
-/* ------------------------------------------------------------------ toast */
+/* ------------------------------------------------------- verdict overflow */
 
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: var(--space-6);
-  transform: translateX(-50%);
-  z-index: 60;
-  background: var(--surface-raised);
-  border: 1px solid var(--line-default);
-  border-radius: var(--radius-card);
-  box-shadow: var(--elevation-overlay);
-  padding: var(--space-2) var(--space-4);
-  font: var(--type-body);
+.verdict-overflow {
+  position: relative;
+  display: inline-block;
+  font: var(--type-label);
 }
 
-.toast[hidden] {
-  display: none;
+.verdict-overflow summary {
+  display: inline-flex;
+  align-items: center;
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-input);
+  border: 1px solid var(--line-default);
+  background: transparent;
+  color: var(--ink-primary);
+  cursor: pointer;
+}
+
+.verdict-overflow__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  margin-top: var(--space-1);
+  border-radius: var(--radius-input);
+  border: 1px solid var(--line-default);
+  background: var(--surface);
 }
 
 /* --------------------------------------------------------------- gallery */
@@ -1005,7 +1118,9 @@ body.gallery-body {
 .gallery .drawer,
 .gallery .overflow-menu,
 .gallery .before-after,
-.gallery .mode-island {
+.gallery .mode-island,
+.gallery .coachmark,
+.gallery .verdict-overflow__body {
   position: static;
   transform: none;
   inset: auto;

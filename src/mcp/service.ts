@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { computeRevision, stableArtifactId } from '../artifact/revision.js';
 import { validateEnvelope, type Envelope } from '../envelope/validate.js';
-import { AnnotationStore, type DeliveryBatch } from '../annotation/store.js';
+import { AnnotationStore, type Pass } from '../annotation/store.js';
 import { AttachmentStore } from '../annotation/attachments.js';
 import { SnapshotStore } from '../artifact/snapshots.js';
 import { isInQueue, summarise, type Annotation, type AnnotationSummary } from '../annotation/model.js';
@@ -52,7 +52,7 @@ export type AgentPositionReport = {
 };
 
 export type DeliveryResult = {
-  batch: DeliveryBatch;
+  pass: Pass;
   channel: DeliveryChannel;
   holding: boolean;
 };
@@ -61,20 +61,20 @@ export type DeliveryOutcome =
   | { delivered: true; result: DeliveryResult }
   | { delivered: false; intent: 'draft'; reason: string };
 
-export type DeliverySignal = { batch?: DeliveryBatch; interruption?: InterruptionRecord };
+export type DeliverySignal = { pass?: Pass; interruption?: InterruptionRecord };
 
 export type CheckInResult = {
   checkedInAt: string;
   since: string | null;
   cursor: string;
   deliveries: Array<{ envelopeId: string; intent: DeliveryIntent; annotationIds: string[]; at: string }>;
-  amendments: Array<{ supersededId: string; successorId: string }>;
+  amendments: Array<{ replacedId: string; replacementId: string }>;
   interruption: { interruptionId: string; requestedAt: string; sentence: string } | null;
   annotations: AnnotationSummary[];
 };
 
 export type SendResult = {
-  batch: DeliveryBatch;
+  pass: Pass;
   artifact: { id: string; kind: string; revision: string; displayName: string };
   channel: DeliveryChannel;
   holding: boolean;
@@ -102,7 +102,7 @@ export type ReviewService = {
   submitEnvelope(envelopeJson: unknown, options?: { host?: string }): Promise<{ envelopeId: string; status: string; duplicate: boolean }>;
   acknowledge(envelopeId: string, agentId: string, annotationId?: string): Promise<{ envelopeId: string; annotationIds: string[] }>;
   getBatchStatus(envelopeId: string): BatchStatus;
-  listBatches(): Array<{ envelopeId: string; status: string; annotationIds: string[] }>;
+  listPasses(): Array<{ passId: string; envelopeId: string; state: string; status: string; annotationIds: string[] }>;
   deliverAnnotations(
     sessionId: string,
     request: { annotationIds: string[]; intent: Exclude<DeliveryIntent, 'draft'>; host?: string }
@@ -117,7 +117,7 @@ export type ReviewService = {
   pendingInterruption(sessionId: string): InterruptionRecord | undefined;
   checkIn(sessionId: string, options?: { cursor?: string; agentId?: string }): CheckInResult;
   mostRecentSessionId(): string | undefined;
-  waitForSend(sessionId: string, timeoutMs: number): Promise<DeliveryBatch | null>;
+  waitForSend(sessionId: string, timeoutMs: number): Promise<Pass | null>;
   waitForDelivery(sessionId: string, timeoutMs: number): Promise<DeliverySignal>;
   noteAgentContact(sessionId: string): void;
   agentPosition(sessionId: string): AgentPositionReport;
@@ -263,10 +263,10 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
       throw new Error(`Invalid Visual Intent Envelope: ${result.errors.join('; ')}`);
     }
     const envelope = result.value;
-    const before = annotations.findBatchByIdempotencyKey(envelope.delivery.idempotencyKey);
+    const before = annotations.findPassByIdempotencyKey(envelope.delivery.idempotencyKey);
     const host = submitOptions.host ?? 'mcp';
-    const batch = annotations.importEnvelope(envelope, host);
-    return { envelopeId: batch.envelopeId, status: 'host-accepted', duplicate: before !== undefined };
+    const pass = annotations.importEnvelope(envelope, host);
+    return { envelopeId: pass.envelopeId, status: 'host-accepted', duplicate: before !== undefined };
   }
 
   async function acknowledge(
@@ -276,17 +276,15 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
   ): Promise<{ envelopeId: string; annotationIds: string[] }> {
     const targets = annotationId
       ? [annotationId]
-      : annotations.annotationsOfBatch(envelopeId).map((annotation) => annotation.annotationId);
+      : annotations.annotationsOfPass(envelopeId).map((annotation) => annotation.annotationId);
     if (targets.length === 0) {
       throw new Error(`Unknown envelope ${envelopeId}`);
     }
     for (const id of targets) {
       annotations.acknowledge(id, agentId);
     }
-    const batch = annotations.getBatch(envelopeId);
-    const session = batch
-      ? sessions.findByArtifactRevision(batch.envelope.artifact.id, batch.envelope.artifact.revision)
-      : undefined;
+    const pass = annotations.getPass(envelopeId);
+    const session = pass ? sessions.findByArtifact(pass.envelope.artifact.id) : undefined;
     if (session) {
       checkIns.recordContact(session.sessionId);
     }
@@ -294,36 +292,36 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
   }
 
   function getBatchStatus(envelopeId: string): BatchStatus {
-    const batch = annotations.getBatch(envelopeId);
-    if (!batch) {
+    const pass = annotations.getPass(envelopeId);
+    if (!pass) {
       throw new Error(`Unknown envelope ${envelopeId}`);
     }
-    const owned = annotations.annotationsOfBatch(envelopeId);
-    const session = sessions.findByArtifactRevision(batch.envelope.artifact.id, batch.envelope.artifact.revision);
+    const owned = annotations.annotationsOfPass(envelopeId);
+    const session = sessions.findByArtifact(pass.envelope.artifact.id);
     if (session) {
       checkIns.recordContact(session.sessionId);
     }
     return {
       envelopeId,
       status: statusOf(owned),
-      artifact: batch.envelope.artifact,
+      artifact: pass.envelope.artifact,
       annotations: owned.map(summarise),
       agent: agentPosition(session?.sessionId ?? ''),
-      deliveryHistory: batch
-        ? owned.flatMap((annotation) =>
-            annotation.history
-              .filter((event) => event.type === 'delivered' || event.type === 'acknowledged' || event.type === 'verified')
-              .map((event) => ({ type: event.type, at: event.at, ...(event.detail ? { detail: event.detail } : {}) }))
-          )
-        : []
+      deliveryHistory: owned.flatMap((annotation) =>
+        annotation.history
+          .filter((event) => event.type === 'delivered' || event.type === 'acknowledged' || event.type === 'verified')
+          .map((event) => ({ type: event.type, at: event.at, ...(event.detail ? { detail: event.detail } : {}) }))
+      )
     };
   }
 
-  function listBatches(): Array<{ envelopeId: string; status: string; annotationIds: string[] }> {
-    return annotations.listBatches().map((batch) => ({
-      envelopeId: batch.envelopeId,
-      status: statusOf(annotations.annotationsOfBatch(batch.envelopeId)),
-      annotationIds: batch.annotationIds
+  function listPasses(): Array<{ passId: string; envelopeId: string; state: string; status: string; annotationIds: string[] }> {
+    return annotations.listPasses().map((pass) => ({
+      passId: pass.passId,
+      envelopeId: pass.envelopeId,
+      state: pass.state,
+      status: statusOf(annotations.annotationsOfPass(pass.passId)),
+      annotationIds: pass.annotationIds
     }));
   }
 
@@ -336,28 +334,28 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
       throw new Error('A delivery needs at least one Annotation; an empty set has nothing to deliver.');
     }
     const host = request.host ?? 'browser';
-    const batch = annotations.markDelivered(request.annotationIds, {
+    const pass = annotations.markDelivered(request.annotationIds, {
       host,
       intent: request.intent,
       artifact: {
         id: session.artifactId,
         kind: session.kind as 'saved-html' | 'react-vite-app',
-        revision: session.revision,
+        revision: session.adoptedRevision ?? session.revision,
         displayName: session.displayName
       }
     });
-    const signal: DeliverySignal = { batch };
+    const signal: DeliverySignal = { pass };
     const holding = (waiters.get(sessionId)?.length ?? 0) > 0;
     resolveWaiters(sessionId, signal);
-    return { batch, channel: holding ? 'held-call' : 'next-check-in', holding };
+    return { pass, channel: holding ? 'held-call' : 'next-check-in', holding };
   }
 
   function sendQueue(
     sessionId: string,
-    sendOptions: { host?: string; intent?: 'next-pass' | 'draft' } = {}
+    sendOptions: { host?: string; intent?: string } = {}
   ): DeliveryOutcome {
     const intent = sendOptions.intent ?? 'next-pass';
-    if (intent === 'draft') {
+    if (intent !== 'next-pass') {
       return {
         delivered: false,
         intent: 'draft',
@@ -411,10 +409,10 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     const session = requireSession(sessionId);
     const checkedInAt = new Date().toISOString();
     const since = options.cursor ?? null;
-    const batches = annotations
-      .listBatches()
-      .filter((batch) => batch.envelope.artifact.id === session.artifactId)
-      .filter((batch) => since === null || batch.at > since);
+    const passes = annotations
+      .listPasses()
+      .filter((pass) => pass.artifactId === session.artifactId)
+      .filter((pass) => since === null || pass.at > since);
     const interruption = checkIns.pendingInterruption(sessionId);
     if (interruption) {
       checkIns.collectInterruption(sessionId, interruption.interruptionId);
@@ -425,21 +423,21 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
       .filter((annotation) => !isInQueue(annotation.state));
     const amendments = annotations
       .listArtifact(session.artifactId)
-      .filter((annotation) => annotation.supersedes !== undefined)
+      .filter((annotation) => annotation.replaces !== undefined)
       .filter(
         (annotation) =>
           since === null || annotation.history.some((event) => event.type === 'amended' && event.at > since)
       )
-      .map((annotation) => ({ supersededId: annotation.supersedes!, successorId: annotation.annotationId }));
+      .map((annotation) => ({ replacedId: annotation.replaces!, replacementId: annotation.annotationId }));
     return {
       checkedInAt,
       since,
       cursor: checkedInAt,
-      deliveries: batches.map((batch) => ({
-        envelopeId: batch.envelopeId,
-        intent: batch.intent,
-        annotationIds: batch.annotationIds,
-        at: batch.at
+      deliveries: passes.map((pass) => ({
+        envelopeId: pass.envelopeId,
+        intent: pass.intent,
+        annotationIds: pass.annotationIds,
+        at: pass.at
       })),
       amendments,
       interruption: interruption
@@ -469,9 +467,9 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     });
   }
 
-  async function waitForSend(sessionId: string, timeout: number): Promise<DeliveryBatch | null> {
+  async function waitForSend(sessionId: string, timeout: number): Promise<Pass | null> {
     const signal = await waitForDelivery(sessionId, timeout);
-    return signal.batch ?? null;
+    return signal.pass ?? null;
   }
 
   function resolveWaiters(sessionId: string, signal: DeliverySignal): boolean {
@@ -597,7 +595,7 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
       {
         name: 'check_in',
         description:
-          'Check in between your own steps to read new direction. Returns everything that arrived since your last check-in: newly delivered Annotations with their delivery intent, amendments that superseded something, a pending stop request, and the current state of everything you were given before. This is the Check-In convention: the Builder-Reviewer can amend or interrupt work while you are busy, and it is seen here rather than mid-step. Call it without an envelopeId; there is no push channel and no wake mechanism. It also records that you checked in, which is what lets the surface say when the agent last checked in.',
+          'Check in between your own steps to read new direction. Returns everything that arrived since your last check-in: newly delivered Annotations with their delivery intent, a Replacement that replaced something, a pending stop request, and the current state of everything you were given before. This is the Check-In convention: the Builder-Reviewer can amend or interrupt work while you are busy, and it is seen here rather than mid-step. Call it without an envelopeId; there is no push channel and no wake mechanism. It also records that you checked in, which is what lets the surface say when the agent last checked in.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -641,7 +639,7 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     submitEnvelope,
     acknowledge,
     getBatchStatus,
-    listBatches,
+    listPasses,
     deliverAnnotations,
     sendQueue,
     amendAnnotation,

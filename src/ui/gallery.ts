@@ -1,24 +1,25 @@
 import type { Annotation } from '../annotation/model.js';
 import { approvalBlockers } from '../annotation/model.js';
 import type { AgentPositionReport } from '../mcp/service.js';
+import type { SessionPass } from './api.js';
 import type { TargetResolutionRecord } from '../resolution/resolve.js';
 import {
-  agentPositionEl,
   attachmentChips,
-  candidateChooser,
-  checkedSentence,
+  coachmark,
   disclosureList,
   drawer,
   modeIsland,
+  noticeElement,
   overflowMenu,
+  passHeader,
   pill,
-  relationSentenceEl,
+  repointAction,
   resolutionItem,
   revisionChip,
   statePill,
+  statusLine,
   stopAction,
   themeControl,
-  toastElement,
   verdictControls
 } from './components.js';
 import { button, h, iconButton } from './dom.js';
@@ -76,6 +77,21 @@ const RESOLUTION_RECORDS: TargetResolutionRecord[] = [
   { targetId: 't-4', match: 'unresolved', candidates: [], resolvedAt: '' }
 ];
 
+function samplePass(state: SessionPass['state'], overrides: Partial<SessionPass> = {}): SessionPass {
+  return {
+    passId: `pass-${state}`,
+    envelopeId: `env-${state}`,
+    state,
+    fromRevision: 'blake3:0123456789abcdef',
+    toRevision: 'blake3:fedcba9876543210',
+    annotationIds: ['ann-queued'],
+    outcome: { answered: 3, untouched: 1, gone: 1 },
+    intent: 'next-pass',
+    openedAt: '2026-09-16T00:00:00.000Z',
+    ...overrides
+  };
+}
+
 function sampleAnnotation(state: Annotation['state'], overrides: Partial<Annotation> = {}): Annotation {
   const targets: Annotation['targets'] = [
     {
@@ -104,7 +120,6 @@ function sampleAnnotation(state: Annotation['state'], overrides: Partial<Annotat
     references: [],
     attachments: [],
     resolutions: [],
-    chosenCandidates: {},
     history: [],
     createdAt: '',
     updatedAt: '',
@@ -221,21 +236,24 @@ function themeSection(theme: 'light' | 'dark'): HTMLElement {
           'div',
           { class: 'chips' },
           (
-            ['draft', 'queued', 'delivered', 'resolved', 'acknowledged', 'verified', 'rejected', 'another-pass', 'superseded', 'obsolete'] as Annotation['state'][]
+            ['draft', 'queued', 'delivered', 'resolved', 'acknowledged', 'verified', 'rejected', 'not-fixed', 'replaced', 'obsolete'] as Annotation['state'][]
           ).map((state) => statePill(state))
         )
       ),
+      panel('Pass states', h('div', { class: 'chips' }, ...(['open', 'in-flight', 'ready', 'closed'] as const).map((state) => passHeader({ pass: samplePass(state), number: 1, outstanding: 2, onClose: () => undefined })))),
       panel('Resolution labels', h('ul', { class: 'resolution-list' }, ...RESOLUTION_RECORDS.map((record) => resolutionItem(record, record.targetId)))),
       panel('Revision', revisionChip('blake3:0123456789abcdef', false, 'current revision'), revisionChip('blake3:0123456789abcdef', true, 'written before this revision')),
       panel('Provenance confidence labelled separately', pill('exact source span', 'progress'), ' ', pill('inferred', 'closed'), ' ', pill('unavailable', 'attention'))
     ),
-    h('h2', { text: 'Agent position and the Check-In convention' }),
+    h('h2', { text: 'Status line and the Check-In convention' }),
     h(
       'div',
       { class: 'gallery__row' },
       ...agentStates.map((state) =>
-        panel(state.position, agentPositionEl(state), h('p', { class: 'hint', text: checkedSentence(state) }))
+        panel(state.position, statusLine([samplePass('in-flight')], state, 0), h('p', { class: 'hint', text: state.sentence }))
       ),
+      panel('Status line — open', statusLine([], agentStates[3]!, 3)),
+      panel('Status line — ready', statusLine([samplePass('ready')], agentStates[3]!, 0)),
       panel(
         'StopAction',
         stopAction({ offered: true, report: agentStates[1]!, onStop: () => undefined }) ?? h('span'),
@@ -262,7 +280,8 @@ function themeSection(theme: 'light' | 'dark'): HTMLElement {
       panel('ThemeControl', themeControl('auto', () => undefined), ' ', themeControl('light', () => undefined), ' ', themeControl('dark', () => undefined)),
       panel('OverflowMenu', overflowMenu({ open: true, items: [{ label: 'Reload artifact', icon: 'reload', onSelect: () => undefined }, { label: 'End session', icon: 'close', onSelect: () => undefined }], extra: h('div', { class: 'overflow-menu__theme' }, h('span', { class: 'hint', text: 'Theme' }), themeControl('auto', () => undefined)) })),
       panel('Textarea', h('textarea', { class: 'textarea', attrs: { rows: '3' }, text: 'Make the Place order button impossible to miss.' })),
-      panel('Toast', toastElement()),
+      panel('Notice', noticeElement({ message: 'Approval is blocked until the lost target is re-pointed.', onDismiss: () => undefined }), noticeElement({ message: 'The artifact could not be read.', action: { label: 'Try again', onSelect: () => undefined }, onDismiss: () => undefined })),
+      panel('Coachmark', coachmark({ title: 'Pointing', body: 'Click a thing, or drag across words. Press V to operate the artifact again.', anchor: document.createElement('span'), onDismiss: () => undefined })),
       panel('BeforeAfterToggle (present only while a selected row has something to compare)', h('div', { class: 'before-after' }, h('button', { attrs: { 'aria-pressed': 'false' }, text: 'Before (01234567)' }), h('button', { attrs: { 'aria-pressed': 'true' }, text: 'After (89abcdef)' }))),
       panel('Dialog / Drawer', drawer({ open: true, title: 'Needs you', onClose: () => undefined }, disclosureList([{ title: 'Annotation would leave on send', body: 'Selector, role, name, box' }]))),
       panel('Listbox', h('select', { class: 'select', attrs: { size: '3' } }, h('option', { text: 'Point at things' }), h('option', { text: 'Box an area' }), h('option', { text: 'Operating the artifact' }))),
@@ -273,60 +292,57 @@ function themeSection(theme: 'light' | 'dark'): HTMLElement {
       'div',
       { class: 'gallery__row' },
       panel('ModeIsland — resting', modeIsland('operate', () => undefined)),
-      panel('ModeIsland — point armed', modeIsland('point', () => undefined)),
-      panel('ModeIsland — box armed', modeIsland('box', () => undefined)),
+      panel('ModeIsland — point armed, filled glyph', modeIsland('point', () => undefined)),
+      panel('ModeIsland — box armed, filled glyph', modeIsland('box', () => undefined)),
       panel(
-        'OverlayMark / DrawnTargetBoundary',
+        'OverlayMark / DrawnTargetBoundary / CandidateMark',
         h(
           'div',
           { style: 'position:relative;height:120px;background:var(--surface-sunken);border-radius:12px' },
           h('div', { style: 'position:absolute;left:12px;top:12px;width:90px;height:34px;border:1px solid var(--accent);background:rgba(43,95,215,.14);border-radius:4px' }),
-          h('div', { style: 'position:absolute;left:120px;top:12px;width:90px;height:34px;border:2px dashed var(--attention-ink);background:rgba(107,74,0,.12);border-radius:4px' })
+          h('div', { style: 'position:absolute;left:120px;top:12px;width:90px;height:34px;border:2px dashed var(--attention-ink);background:rgba(107,74,0,.12);border-radius:4px' }),
+          h('div', { style: 'position:absolute;left:230px;top:12px;width:90px;height:34px;border:2px dashed var(--attention-ink);border-radius:4px' }, h('span', { style: 'position:absolute;top:-9px;left:-9px;min-width:18px;height:18px;border-radius:999px;background:var(--attention-ink);color:#fff;font:600 11px/18px system-ui;text-align:center', text: '2' }))
         )
       ),
       panel(
         'ArtifactFrame states',
         h('p', { class: 'hint', text: 'loading · ready · unreachable · policy-blocked · changed' }),
         h('div', { class: 'stage__placeholder', style: 'position:static;padding:16px' }, h('h2', { text: 'This artifact will contact a remote origin' }), h('ul', {}, h('li', {}, h('code', { text: 'https://cdn.example.com' }))))
-      ),
-      panel('RelationGuide / RelationHandle / RelationSentence', h('p', { class: 'hint', text: 'Not built in this iteration: Relational Intent is deferred, see design.md §11.' }))
+      )
     ),
     h('h2', { text: 'Annotations and verification' }),
     h(
       'div',
       { class: 'gallery__row' },
-      panel('AnnotationList — unsent', annotationRowSample(sampleAnnotation('queued'), { actions: 'unsent' })),
-      panel('AnnotationList — delivered with verdicts', annotationRowSample(sampleAnnotation('delivered', { resolutions: [RESOLUTION_RECORDS[0]!] }), { amend: true })),
-      panel('AnnotationList — ambiguous', annotationRowSample(sampleAnnotation('resolved', { resolutions: [RESOLUTION_RECORDS[2]!], chosenCandidates: {} }), { candidates: true })),
-      panel('AnnotationList — deleted, approval blocked', annotationRowSample(sampleAnnotation('resolved', { resolutions: [RESOLUTION_RECORDS[3]!] }), { candidates: false })),
-      panel('AnnotationList — written before this revision', annotationRowSample(sampleAnnotation('acknowledged', { revisionRelation: 'advanced', resolutions: [RESOLUTION_RECORDS[1]!] }), {})),
-      panel('AnnotationList — superseded with successor', annotationRowSample(sampleAnnotation('superseded', { supersededBy: 'ann-successor' }), {})),
-      panel('CandidateChooser', candidateChooser(sampleAnnotation('resolved', { resolutions: [RESOLUTION_RECORDS[2]!] }), 't-3', RESOLUTION_RECORDS[2]!, () => undefined)),
+      panel('PassLedger — unsent', annotationRowSample(sampleAnnotation('queued'), { actions: 'unsent' })),
+      panel('PassLedger — delivered with verdicts', annotationRowSample(sampleAnnotation('delivered', { resolutions: [RESOLUTION_RECORDS[0]!] }), { amend: true })),
+      panel('PassLedger — a lost target', annotationRowSample(sampleAnnotation('resolved', { resolutions: [RESOLUTION_RECORDS[2]!] }), { repoint: true })),
+      panel('PassLedger — deleted, approval blocked', annotationRowSample(sampleAnnotation('resolved', { resolutions: [RESOLUTION_RECORDS[3]!] }), { repoint: true })),
+      panel('PassLedger — written before this revision', annotationRowSample(sampleAnnotation('acknowledged', { revisionRelation: 'advanced', resolutions: [RESOLUTION_RECORDS[1]!] }), {})),
+      panel('PassLedger — replaced with its Replacement', annotationRowSample(sampleAnnotation('replaced', { replacedBy: 'ann-successor' }), {})),
+      panel('RepointAction', repointAction(sampleAnnotation('resolved'), { active: false, onRepoint: () => undefined }), ' ', repointAction(sampleAnnotation('resolved'), { active: true, onRepoint: () => undefined })),
       panel('VerdictControls', verdictControls(sampleAnnotation('acknowledged'), { blocked: [], onVerdict: () => undefined })),
-      panel('VerdictControls blocked', verdictControls(sampleAnnotation('resolved', { resolutions: [RESOLUTION_RECORDS[3]!] }), { blocked: ['Place order button could not be found in this revision, so approval is blocked.'], onVerdict: () => undefined })),
+      panel('VerdictControls blocked', verdictControls(sampleAnnotation('resolved', { resolutions: [RESOLUTION_RECORDS[3]!] }), { blocked: ['Place order button is deleted from this revision, so approval is blocked.'], onVerdict: () => undefined })),
       panel('AttachmentChip', attachmentChipSample()),
       panel(
         'AnchoredCard — no instruction copy',
         h(
           'div',
           { class: 'anchored-card', style: 'position:static;width:100%' },
-          h('p', { class: 'anchored-card__target' }, 'Place order button'),
+          h('p', { class: 'anchored-card__target' }, icon('box', { size: 14 }), 'Area enclosing Place order'),
           h('textarea', { class: 'textarea', attrs: { rows: '3', placeholder: 'What should change?' } }),
           h('div', { class: 'anchored-card__actions' }, button('Queue', { variant: 'primary' }), h('div', { class: 'chips' }, iconButton('Attach a reference image', 'attach', () => undefined), iconButton('Delete Annotation ann-demo', 'delete', () => undefined)))
         )
       ),
-      panel('SendAction', button('Send the queue', { variant: 'primary' }), h('p', { class: 'hint', text: '2 Annotations will be delivered as Next-Pass Intent. Direction is read at the agent\u2019s next Check-In.' }))
-    ),
-    h('h2', { text: 'Deferred and test-only' }),
-    h(
-      'div',
-      { class: 'gallery__row' },
-      panel('RelationSentence (envelope support only)', relationSentenceEl(sampleAnnotation('draft', { relationships: [{ relationshipId: 'rel-1', type: 'alignment', operator: 'align-left', targetIds: ['t-1'] }] })) ?? h('span'))
+      panel('SendAction', button('Send the queue', { variant: 'primary' }))
     )
   );
 }
 
-function annotationRowSample(annotation: Annotation, options: { amend?: boolean; candidates?: boolean; actions?: 'unsent' }): HTMLElement {
+function annotationRowSample(
+  annotation: Annotation,
+  options: { amend?: boolean; repoint?: boolean; actions?: 'unsent' }
+): HTMLElement {
   const row = h(
     'article',
     { class: 'annotation-row', attrs: { 'data-state': annotation.state } },
@@ -334,15 +350,12 @@ function annotationRowSample(annotation: Annotation, options: { amend?: boolean;
       'div',
       { class: 'annotation-row__head' },
       statePill(annotation.state),
-      annotation.revisionRelation === 'advanced' ? pill('Written before this revision', 'attention', 'alert') : pill('Written against this revision', 'closed', 'check')
+      annotation.revisionRelation === 'advanced' ? pill('Written before this revision', 'attention', 'alert') : null
     ),
-    annotation.supersededBy ? h('p', { class: 'hint', text: `Replaced by “Make it clearer.”` }) : null,
+    annotation.replacedBy ? h('p', { class: 'hint', text: `Replaced by “Make it clearer.”` }) : null,
     h('p', { class: 'annotation-row__note', text: annotation.note }),
-    relationSentenceEl(annotation) ?? h('span'),
     h('ul', { class: 'resolution-list' }, ...annotation.resolutions.map((record) => resolutionItem(record, record.targetId))),
-    options.candidates
-      ? candidateChooser(annotation, 't-3', RESOLUTION_RECORDS[2]!, () => undefined)
-      : null,
+    options.repoint ? repointAction(annotation, { active: false, onRepoint: () => undefined }) : null,
     verdictControls(annotation, { blocked: approvalBlockers(annotation), onVerdict: () => undefined }),
     h(
       'div',

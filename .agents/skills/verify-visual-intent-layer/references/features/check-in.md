@@ -8,7 +8,7 @@ _Partly driven live: the call, durable contact, an amendment and an interruption
 
 - `check-in-call` returns new direction since a cursor without an `envelopeId`.
 - `check-in-deliveries` returns newly delivered Annotations with their intent.
-- `check-in-amendment` returns an amendment that superseded something.
+- `check-in-amendment` returns a Replacement that replaced something.
 - `check-in-interruption` returns a pending stop request.
 - `check-in-contact` records contact durably, so the surface states when the agent last checked.
 - `check-in-never` says the agent has never checked in rather than showing a zero.

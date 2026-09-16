@@ -1,8 +1,22 @@
 import type { Annotation, AnnotationSummary, AnnotationTarget } from '../annotation/model.js';
 import type { MigrationReport } from '../annotation/migrate.js';
+import type { PassState, PassOutcome } from '../annotation/store.js';
 import type { AgentPositionReport } from '../mcp/service.js';
 import type { ResolutionCandidate, TargetResolutionRecord } from '../resolution/resolve.js';
 import type { LayerTarget } from './protocol.js';
+
+export type SessionPass = {
+  passId: string;
+  envelopeId: string;
+  state: PassState;
+  fromRevision: string;
+  toRevision?: string;
+  annotationIds: string[];
+  outcome: PassOutcome;
+  intent: string;
+  openedAt: string;
+  closedAt?: string;
+};
 
 export type SessionSnapshot = {
   sessionId: string;
@@ -11,7 +25,7 @@ export type SessionSnapshot = {
   summaries: AnnotationSummary[];
   agent: AgentPositionReport;
   migration: MigrationReport;
-  batches: Array<{ envelopeId: string; status: string; annotationIds: string[] }>;
+  passes: SessionPass[];
 };
 
 export type SessionStatus = {
@@ -138,12 +152,16 @@ export class Api {
     return result.resolutions;
   }
 
-  async chooseCandidate(annotationId: string, targetId: string, nodeId: string): Promise<Annotation> {
-    const result = await this.json<{ annotation: Annotation }>(this.url(`/api/annotations/${annotationId}/candidate`), {
+  async repoint(annotationId: string, targets: LayerTarget[]): Promise<Annotation> {
+    const result = await this.json<{ annotation: Annotation }>(this.url(`/api/annotations/${annotationId}/repoint`), {
       method: 'POST',
-      body: JSON.stringify({ targetId, nodeId })
+      body: JSON.stringify({ targets })
     });
     return result.annotation;
+  }
+
+  async closePass(passId: string): Promise<void> {
+    await this.json(this.url(`/api/passes/${passId}/close`), { method: 'POST' });
   }
 
   async verify(annotationId: string, verdict: string): Promise<Annotation> {

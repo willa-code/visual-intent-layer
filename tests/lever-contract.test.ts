@@ -262,7 +262,7 @@ describe('Lever contract: a first-tier drive', () => {
     expect(String(steering.json?.error && (steering.json.error as Record<string, unknown>).next)).toMatch(/amend/);
   }, 60000);
 
-  it('amends a sent Annotation by supersession with Steering Intent', () => {
+  it('replaces a sent Annotation with a Replacement delivered as Steering Intent', () => {
     expect(lever(['select', '--run', name, '--tool', 'point', '--target', '.shipping-note']).status).toBe(0);
     expect(lever(['annotate', '--run', name, '--note', 'first wording']).status).toBe(0);
     expect(lever(['queue', '--run', name]).status).toBe(0);
@@ -270,13 +270,13 @@ describe('Lever contract: a first-tier drive', () => {
 
     const amended = lever(['amend', '--run', name, '--note', 'clearer wording', '--match', 'first wording']);
     expect(amended.status, amended.stderr).toBe(0);
-    expect(amended.json).toMatchObject({ superseded: true, steering: true });
+    expect(amended.json).toMatchObject({ replaced: true, steering: true });
 
     const original = annotations().find((annotation) => annotation.note === 'first wording');
     const successor = annotations().find((annotation) => annotation.note === 'clearer wording');
-    expect(original?.state).toBe('superseded');
-    expect(original?.supersededBy).toBe(successor?.annotationId);
-    expect(successor?.supersedes).toBe(original?.annotationId);
+    expect(original?.state).toBe('replaced');
+    expect(original?.replacedBy).toBe(successor?.annotationId);
+    expect(successor?.replaces).toBe(original?.annotationId);
   }, 150000);
 
   it('asks an agent to stop, and the request is recorded session-scoped', () => {
@@ -337,7 +337,7 @@ describe('Lever contract: every verdict path that remains a row control', () => 
     lever(['cleanup', '--run', name]);
   });
 
-  it('drives approve, reject, another-pass and obsolete and reads each back', () => {
+  it('drives approve, reject, not-fixed and obsolete and reads each back', () => {
     const targets = ['.checkout-submit', '.gallery-note', 'h1', '.shipping-note'];
     for (const target of targets) {
       expect(lever(['select', '--run', name, '--tool', 'point', '--target', target]).status).toBe(0);
@@ -348,7 +348,7 @@ describe('Lever contract: every verdict path that remains a row control', () => 
     expect(lever(['send', '--run', name, '--intent', 'next-pass']).status).toBe(0);
     expect(lever(['verify', '--run', name]).status).toBe(0);
 
-    const verdicts = ['approve', 'reject', 'another-pass', 'obsolete'];
+    const verdicts = ['approve', 'reject', 'not-fixed', 'obsolete'];
     for (let row = 0; row < verdicts.length; row += 1) {
       const decided = lever([
         'decide',
@@ -364,7 +364,7 @@ describe('Lever contract: every verdict path that remains a row control', () => 
 
     const state = lever(['state', '--run', name]).json as { annotations: Array<Record<string, unknown>> };
     const states = state.annotations.map((annotation) => annotation.state);
-    expect(states).toEqual(expect.arrayContaining(['verified', 'rejected', 'another-pass', 'obsolete']));
+    expect(states).toEqual(expect.arrayContaining(['verified', 'rejected', 'not-fixed', 'obsolete']));
     const approved = state.annotations.find((annotation) => annotation.state === 'verified')!;
     expect((approved.verification as Record<string, unknown>).verdict).toBe('approve');
   }, 240000);

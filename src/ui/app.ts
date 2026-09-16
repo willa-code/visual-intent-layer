@@ -1,36 +1,39 @@
 import type { Annotation } from '../annotation/model.js';
 import { approvalBlockers, isInQueue, isVerification, stateLabel } from '../annotation/model.js';
+import { deriveResolutionLabel } from '../resolution/model.js';
 import type { ResolutionCandidate } from '../resolution/resolve.js';
-import { Api, type Policy, type SessionSnapshot, type SessionStatus } from './api.js';
+import { Api, type Policy, type SessionPass, type SessionSnapshot, type SessionStatus } from './api.js';
 import {
-  agentPositionEl,
+  agentDisclosure,
   attachmentChips,
-  annotationStateCue,
-  candidateChooser,
-  checkedSentence,
+  coachmark,
   describeEvidence,
   disclosureList,
   drawer,
   modeIsland,
+  noticeElement,
   overflowMenu,
+  passHeader,
+  passNumber,
   pill,
-  relationSentenceEl,
+  repointAction,
   resolutionItem,
   revisionChip,
   statePill,
+  statusLine,
   stopAction,
   themeControl,
-  toastElement,
   verdictControls,
   type ThemeChoice
 } from './components.js';
 import { button, clear, h, iconButton, qs } from './dom.js';
 import { icon, type IconName } from './icons.js';
-import type { LayerMessage, LayerTarget, LayerTool, ShellMessage, ShellMarkTargets } from './protocol.js';
+import type { LayerMessage, LayerTarget, LayerTool, ShellMarkTargets, ShellMessage } from './protocol.js';
 import { debounce, readConfig, type ShellConfig } from './runtime.js';
 
 const THEME_KEY = 'vil-theme';
-const HINT_KEY_PREFIX = 'vil-hint-';
+const GUIDANCE_KEY = 'vil-guidance';
+const NOTICE_TIMEOUT_MS = 6000;
 
 class App {
   private readonly config: ShellConfig = readConfig();
@@ -41,6 +44,7 @@ class App {
   private selection: LayerTarget[] = [];
   private activeAnnotationId?: string;
   private amendFor?: string;
+  private repointFor?: string;
   private candidates?: ResolutionCandidate[];
   private resolvedRevision?: string;
   private currentRevision = this.config.revision;
@@ -49,12 +53,15 @@ class App {
   private artifactLoaded = false;
   private drawerOpen = false;
   private menuOpen = false;
-  private toastTimer?: number;
+  private noticeTimer?: number;
+  private notice?: { message: string; action?: { label: string; onSelect: () => void } };
+  private coachmarkId?: string;
+  private coachmarkAnchor?: HTMLElement;
+  private guidance = readGuidance();
   private beforeAfter: 'before' | 'after' = 'after';
   private selectedRowId?: string;
   private closedHidden = true;
   private theme: ThemeChoice = readStoredTheme();
-  private hintDismissed = false;
   private uploads: Array<{
     id: string;
     annotationId: string;
@@ -69,16 +76,16 @@ class App {
   private stage!: HTMLElement;
   private placeholder!: HTMLElement;
   private railHead!: HTMLElement;
+  private railNotice!: HTMLElement;
   private railScroll!: HTMLElement;
   private railFooter!: HTMLElement;
   private cardHost!: HTMLElement;
   private banner!: HTMLElement;
+  private coachmarkHost!: HTMLElement;
   private beforeAfterHost!: HTMLElement;
   private islandHost!: HTMLElement;
-  private hintHost!: HTMLElement;
   private drawerHost!: HTMLElement;
   private menuHost!: HTMLElement;
-  private toast!: HTMLElement;
 
   async start(): Promise<void> {
     this.buildShell();
@@ -107,16 +114,17 @@ class App {
     this.banner = h('div', { class: 'banner', hidden: true, attrs: { role: 'alert' } });
     this.beforeAfterHost = h('div', { class: 'before-after-host', hidden: true });
     this.islandHost = h('div', { class: 'island-host' });
-    this.hintHost = h('div', { class: 'hint-host' });
     this.cardHost = h('div', { class: 'card-host' });
-    this.stage.append(this.placeholder, this.iframe, this.banner, this.beforeAfterHost, this.cardHost, this.islandHost, this.hintHost);
+    this.stage.append(this.placeholder, this.iframe, this.beforeAfterHost, this.banner, this.cardHost, this.islandHost);
 
     this.railHead = h('header', { class: 'rail__head' });
+    this.railNotice = h('div', { class: 'rail__notice', hidden: true });
     this.railScroll = h('div', { class: 'rail__scroll' });
     this.railFooter = h('div', { class: 'rail__footer' });
     const rail = h(
       'aside',
       { class: 'rail', attrs: { 'aria-label': 'Annotations' } },
+      this.railNotice,
       this.railHead,
       this.railScroll,
       this.railFooter
@@ -125,16 +133,16 @@ class App {
     const workspace = h('div', { class: 'workspace' }, this.stage, rail);
     this.drawerHost = h('div');
     this.menuHost = h('div');
-    this.toast = toastElement();
+    this.coachmarkHost = h('div', { class: 'coachmark-host' });
 
-    document.body.append(workspace, this.drawerHost, this.menuHost, this.toast);
+    document.body.append(workspace, this.drawerHost, this.menuHost, this.coachmarkHost);
   }
 
   private async refresh(): Promise<void> {
     try {
       this.snapshot = await this.api.snapshot();
     } catch (error) {
-      this.showToast(`Could not read local state: ${messageOf(error)}`);
+      this.showNotice(`Could not read local state: ${messageOf(error)}`);
       return;
     }
     if (!this.policy) {
@@ -147,9 +155,9 @@ class App {
     this.renderList();
     this.renderFooter();
     this.renderIsland();
-    this.renderHint();
     this.renderDrawer();
     this.renderMenu();
+    this.renderCandidateMarks();
   }
 
   private renderGate(): void {
@@ -218,12 +226,13 @@ class App {
     );
     const agentRow = h(
       'div',
-      { class: 'rail__agent' },
-      agentPositionEl(this.snapshot.agent),
+      { class: 'rail__status' },
+      statusLine(this.snapshot.passes, this.snapshot.agent, this.queue().length),
+      agentDisclosure(this.snapshot.agent),
       this.stopAction()
     );
     const actions = h('div', { class: 'rail__actions' });
-    const attention = this.attentionItems();
+    const attention = this.needsDecisionCount();
     if (attention > 0) {
       actions.appendChild(this.attentionTrigger(attention));
     }
@@ -269,22 +278,38 @@ class App {
 
   private renderList(): void {
     clear(this.railScroll);
-    const all = [...this.snapshot.annotations].sort((a, b) => a.order - b.order);
-    const open = all.filter((annotation) => !isClosed(annotation.state));
-    const closed = all.filter((annotation) => isClosed(annotation.state));
-    open.sort((a, b) => rank(a) - rank(b) || a.order - b.order);
+    const passes = this.snapshot.passes;
+    const passIds = new Set(passes.map((pass) => pass.passId));
+    const ungrouped = this.snapshot.annotations.filter((annotation) => !annotation.passId || !passIds.has(annotation.passId));
 
-    const lastRun = this.lastResolvedAt();
-    const header = h('div', { class: 'rail__list-head' });
-    header.appendChild(
-      h('span', { class: 'rail__count', text: open.length === 0 ? 'Nothing open' : `${open.length} needing attention` })
-    );
-    if (lastRun) {
-      header.appendChild(h('span', { class: 'hint', text: `Re-resolved ${relativeTime(lastRun)}` }));
+    if (ungrouped.length > 0) {
+      const queue = ungrouped.filter((annotation) => isInQueue(annotation.state));
+      const open = ungrouped.filter((annotation) => !isInQueue(annotation.state) && !isClosed(annotation.state));
+      open.sort((a, b) => rank(a) - rank(b) || a.order - b.order);
+      this.railScroll.appendChild(this.annotationList([...queue, ...open]));
     }
-    this.railScroll.appendChild(header);
 
-    if (open.length === 0 && (closed.length === 0 || this.closedHidden)) {
+    for (const pass of passes) {
+      const members = this.snapshot.annotations
+        .filter((annotation) => annotation.passId === pass.passId)
+        .sort((a, b) => a.order - b.order);
+      const outstanding = members.filter((annotation) => !isVerification(annotation.state)).length;
+      const group = h(
+        'section',
+        { class: 'pass-group', dataset: { state: pass.state }, attrs: { 'data-state': pass.state, 'data-pass': pass.passId } },
+        passHeader({
+          pass,
+          number: passNumber(passes, pass),
+          outstanding,
+          onClose: () => void this.closePass(pass.passId)
+        }),
+        this.annotationList(members, { hideClosed: this.closedHidden })
+      );
+      this.railScroll.appendChild(group);
+    }
+
+    const hasRows = this.railScroll.querySelector('.annotation-row');
+    if (!hasRows) {
       this.railScroll.appendChild(
         h('div', {
           class: 'empty',
@@ -295,31 +320,28 @@ class App {
         })
       );
     }
+  }
 
+  private annotationList(annotations: Annotation[], options: { hideClosed?: boolean } = {}): HTMLElement {
     const list = h('ul', { class: 'annotation-list' });
-    for (const annotation of open) {
+    const closed = annotations.filter((annotation) => isClosed(annotation.state));
+    const visible = options.hideClosed ? annotations.filter((annotation) => !isClosed(annotation.state)) : annotations;
+    visible.sort((a, b) => rank(a) - rank(b) || a.order - b.order);
+    for (const annotation of visible) {
       list.appendChild(this.annotationRow(annotation));
     }
-    if (!this.closedHidden) {
-      for (const annotation of closed) {
-        list.appendChild(this.annotationRow(annotation));
-      }
-    }
-    if (list.childElementCount > 0) {
-      this.railScroll.appendChild(list);
-    }
-
-    if (closed.length > 0) {
-      const toggle = button(this.closedHidden ? `Show ${closed.length} closed` : 'Hide closed', {
+    if (options.hideClosed && closed.length > 0) {
+      const toggle = button(`Show ${closed.length} closed`, {
         variant: 'ghost',
         onClick: () => {
-          this.closedHidden = !this.closedHidden;
+          this.closedHidden = false;
           this.renderList();
         }
       });
       toggle.dataset['toggle'] = 'closed';
-      this.railScroll.appendChild(toggle);
+      list.appendChild(h('li', {}, toggle));
     }
+    return list;
   }
 
   private annotationRow(annotation: Annotation): HTMLElement {
@@ -328,31 +350,35 @@ class App {
       dataset: { active: String(annotation.annotationId === this.selectedRowId) },
       attrs: { 'data-active': annotation.annotationId === this.selectedRowId, 'data-state': annotation.state }
     });
-    const head = h(
-      'div',
-      { class: 'annotation-row__head' },
-      statePill(annotation.state),
-      annotation.revisionRelation === 'advanced'
-        ? pill('Written before this revision', 'attention', 'alert')
-        : pill('Written against this revision', 'closed', 'check')
-    );
-    row.appendChild(head);
-
-    if (annotation.supersedes) {
-      const predecessor = this.snapshot.annotations.find((entry) => entry.annotationId === annotation.supersedes);
-      row.appendChild(
-        h('p', {
-          class: 'hint',
-          text: `Amends ${predecessor?.note ? `“${trim(predecessor.note)}”` : annotation.supersedes}`
+    const head = h('div', { class: 'annotation-row__head' }, statePill(annotation.state));
+    if (annotation.revisionRelation === 'advanced') {
+      head.appendChild(pill('Written before this revision', 'attention', 'alert'));
+    }
+    if (annotation.resolvedRevision && annotation.resolvedRevision !== annotation.writtenRevision) {
+      head.appendChild(
+        h('span', {
+          class: 'annotation-row__result-revision',
+          text: `Result from ${annotation.resolvedRevision.replace(/^blake3:/, '').slice(0, 8)}`
         })
       );
     }
-    if (annotation.supersededBy) {
-      const successor = this.snapshot.annotations.find((entry) => entry.annotationId === annotation.supersededBy);
+    row.appendChild(head);
+
+    if (annotation.replaces) {
+      const predecessor = this.snapshot.annotations.find((entry) => entry.annotationId === annotation.replaces);
       row.appendChild(
         h('p', {
           class: 'hint',
-          text: `Replaced by ${successor?.note ? `“${trim(successor.note)}”` : annotation.supersededBy}`
+          text: `Replaced ${predecessor?.note ? `“${trim(predecessor.note)}”` : annotation.replaces}`
+        })
+      );
+    }
+    if (annotation.replacedBy) {
+      const successor = this.snapshot.annotations.find((entry) => entry.annotationId === annotation.replacedBy);
+      row.appendChild(
+        h('p', {
+          class: 'hint',
+          text: `Replaced by ${successor?.note ? `“${trim(successor.note)}”` : annotation.replacedBy}`
         })
       );
     }
@@ -361,7 +387,6 @@ class App {
       row.appendChild(this.amendEditor(annotation));
     } else {
       row.appendChild(h('p', { class: 'annotation-row__note', text: annotation.note || 'No note' }));
-      row.appendChild(relationSentenceEl(annotation) ?? h('span'));
     }
 
     const targets = h('ul', { class: 'resolution-list' });
@@ -374,18 +399,26 @@ class App {
       row.appendChild(targets);
     }
     for (const resolution of annotation.resolutions) {
-      if (resolution.match === 'unresolved' && resolution.candidates.length > 0) {
-        const target = annotation.targets.find((entry) => entry.targetId === resolution.targetId);
-        row.appendChild(
-          h('p', {
-            class: 'hint',
-            text: `Choose a candidate for ${target?.label ?? resolution.targetId}; nothing is auto-selected.`
-          })
-        );
-        row.appendChild(
-          candidateChooser(annotation, resolution.targetId, resolution, (targetId, nodeId) => void this.choose(targetId, nodeId))
-        );
+      if (resolution.match !== 'unresolved') {
+        continue;
       }
+      const target = annotation.targets.find((entry) => entry.targetId === resolution.targetId);
+      const label = target?.label ?? resolution.targetId;
+      row.appendChild(
+        h('p', {
+          class: 'hint',
+          text:
+            resolution.candidates.length === 0
+              ? `${label} is not in this revision, so approval is blocked.`
+              : `${label} could not be matched in this revision, so approval is blocked.`
+        })
+      );
+      row.appendChild(
+        repointAction(annotation, {
+          active: this.repointFor === annotation.annotationId,
+          onRepoint: () => this.startRepoint(annotation.annotationId)
+        })
+      );
     }
 
     const delivered = isDelivered(annotation.state);
@@ -406,7 +439,11 @@ class App {
 
     const actions = h('div', { class: 'annotation-row__actions' });
     actions.appendChild(
-      button('Show on the artifact', { variant: 'ghost', onClick: () => void this.activateAnnotation(annotation.annotationId) })
+      iconButton(
+        `Show ${trim(annotation.note) || 'this note'} on the artifact`,
+        'show',
+        () => void this.activateAnnotation(annotation.annotationId)
+      )
     );
     if (delivered) {
       const amend = button('Amend', { variant: 'ghost', onClick: () => this.openAmend(annotation.annotationId) });
@@ -421,7 +458,7 @@ class App {
     }
     row.appendChild(actions);
     row.addEventListener('click', (event) => {
-      if ((event.target as HTMLElement).closest('button, input, textarea, label')) {
+      if ((event.target as HTMLElement).closest('button, input, textarea, label, summary, details, a')) {
         return;
       }
       this.selectRow(annotation.annotationId);
@@ -439,9 +476,9 @@ class App {
     const wrapper = h(
       'div',
       { class: 'amend-editor' },
-      h('p', { class: 'hint', text: 'This supersedes what was sent; the record of what the agent was told stays.' }),
+      h('p', { class: 'hint', text: 'This replaces what was sent; the record of what the agent was told stays.' }),
       textarea,
-      h('p', { class: 'amend-editor__was', text: annotation.supersedes ? `Was: ${trim(this.noteOf(annotation.supersedes), 160)}` : '' }),
+      h('p', { class: 'amend-editor__was', text: annotation.replaces ? `Was: ${trim(this.noteOf(annotation.replaces), 160)}` : '' }),
       h(
         'div',
         { class: 'chips' },
@@ -472,7 +509,6 @@ class App {
   private renderFooter(): void {
     clear(this.railFooter);
     const queue = this.queue();
-    const report = this.snapshot.agent;
     const send = button('Send the queue', {
       variant: 'primary',
       disabled: queue.length === 0,
@@ -480,19 +516,7 @@ class App {
       onClick: () => void this.sendQueue()
     });
     send.dataset['action'] = 'send';
-    const wrapper = h(
-      'div',
-      { class: 'send-action' },
-      send,
-      h('p', {
-        class: 'hint',
-        text:
-          queue.length === 0
-            ? 'Send is disabled because nothing is queued.'
-            : `${queue.length} Annotation${queue.length === 1 ? '' : 's'} will be delivered as Next-Pass Intent. ${checkedSentence(report)}`
-      })
-    );
-    this.railFooter.appendChild(wrapper);
+    this.railFooter.appendChild(h('div', { class: 'send-action' }, send));
   }
 
   private renderIsland(): void {
@@ -500,25 +524,31 @@ class App {
     this.islandHost.appendChild(modeIsland(this.mode, (mode) => this.setMode(mode)));
   }
 
-  private renderHint(): void {
-    clear(this.hintHost);
-    if (this.hintDismissed || window.localStorage.getItem(`${HINT_KEY_PREFIX}${this.config.artifactId}`) === 'seen') {
+  private renderCoachmark(): void {
+    clear(this.coachmarkHost);
+    if (!this.coachmarkId || !this.coachmarkAnchor) {
       return;
     }
-    const hint = h(
-      'div',
-      { class: 'first-run-hint', attrs: { role: 'note' } },
-      h('p', { text: 'Point at things by clicking, or drag across words to take exactly those words. Box an area to mark a patch that is not one thing. Press V to go back to operating the artifact.' }),
-      button('Got it', {
-        variant: 'ghost',
-        onClick: () => {
-          window.localStorage.setItem(`${HINT_KEY_PREFIX}${this.config.artifactId}`, 'seen');
-          this.hintDismissed = true;
-          this.renderHint();
-        }
-      })
-    );
-    this.hintHost.appendChild(hint);
+    const entry = COACHMARKS[this.coachmarkId];
+    if (!entry) {
+      return;
+    }
+    const element = coachmark({
+      title: entry.title,
+      body: entry.body,
+      anchor: this.coachmarkAnchor,
+      onDismiss: () => this.dismissCoachmark()
+    });
+    this.coachmarkHost.appendChild(element);
+    const anchorRect = this.coachmarkAnchor.getBoundingClientRect();
+    const box = element.getBoundingClientRect();
+    let top = anchorRect.bottom + 8;
+    if (top + box.height > window.innerHeight - 8) {
+      top = anchorRect.top - box.height - 8;
+    }
+    const left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - box.width - 8));
+    element.style.top = `${Math.round(top)}px`;
+    element.style.left = `${Math.round(left)}px`;
   }
 
   private renderCard(): void {
@@ -543,10 +573,6 @@ class App {
     }) as HTMLTextAreaElement;
     textarea.value = annotation.note;
     card.appendChild(textarea);
-    const relationSentence = relationSentenceEl(annotation);
-    if (relationSentence) {
-      card.appendChild(relationSentence);
-    }
     card.appendChild(this.attachmentRow(annotation));
     const actions = h(
       'div',
@@ -562,14 +588,12 @@ class App {
     card.appendChild(actions);
 
     this.cardHost.appendChild(card);
-    positionCard(card, bounds, this.stage, this.islandHost);
+    positionCard(card, bounds, this.stage, this.islandHost, !this.beforeAfterHost.hidden);
     card.addEventListener('paste', (event) => this.onPaste(event as ClipboardEvent));
     card.addEventListener('dragover', (event) => event.preventDefault());
     card.addEventListener('drop', (event) => this.onDrop(event as DragEvent));
     textarea.focus();
-    if (resolution && resolution.match === 'unresolved' && resolution.candidates.length > 0) {
-      card.appendChild(candidateChooser(annotation, resolution.targetId, resolution, (targetId, nodeId) => void this.choose(targetId, nodeId)));
-    }
+    void resolution;
   }
 
   private targetLine(annotation: Annotation, target: LayerTarget | undefined): HTMLElement {
@@ -584,14 +608,7 @@ class App {
     const pending = this.uploads.filter((upload) => upload.annotationId === annotation.annotationId);
     const ready = attachmentChips(annotation, { onRemove: (id) => void this.removeAttachment(annotation.annotationId, id) });
     if (!ready && pending.length === 0) {
-      if (annotation.note.trim().length > 0) {
-        return h('div', { class: 'section' });
-      }
-      return h(
-        'div',
-        { class: 'section' },
-        h('p', { class: 'hint', text: 'Add an image by picking a file, pasting, or dropping it here.' })
-      );
+      return h('div', { class: 'section' });
     }
     return h(
       'div',
@@ -706,6 +723,11 @@ class App {
             onSelect: () => void this.copy(this.queue().flatMap((annotation) => describeEvidence(annotation)).map((item) => `${item.title}: ${item.body}`).join('\n'))
           },
           { label: 'Open the disclosure', icon: 'attention', onSelect: () => this.toggleDrawer(true) },
+          {
+            label: this.guidance.suppressed ? 'Restore guidance' : 'Clear all guidance',
+            icon: 'attention',
+            onSelect: () => this.toggleGuidance()
+          },
           { label: 'End session', icon: 'close', onSelect: () => this.endSession() }
         ],
         extra: h(
@@ -737,6 +759,44 @@ class App {
     this.mode = mode;
     this.configureLayer();
     this.renderIsland();
+    if (mode === 'point' || mode === 'box') {
+      const anchor = qs<HTMLElement>(this.islandHost, `[data-mode="${mode}"]`);
+      if (anchor) {
+        this.maybeCoachmark(`mode:${mode}`, anchor);
+      }
+    }
+  }
+
+  private maybeCoachmark(id: string, anchor: HTMLElement): void {
+    if (this.guidance.suppressed || this.guidance.dismissed[id]) {
+      return;
+    }
+    this.coachmarkId = id;
+    this.coachmarkAnchor = anchor;
+    this.renderCoachmark();
+  }
+
+  private dismissCoachmark(): void {
+    if (this.coachmarkId) {
+      this.guidance.dismissed[this.coachmarkId] = true;
+      writeGuidance(this.guidance);
+    }
+    this.coachmarkId = undefined;
+    this.coachmarkAnchor = undefined;
+    this.renderCoachmark();
+  }
+
+  private toggleGuidance(): void {
+    if (this.guidance.suppressed) {
+      this.guidance = { suppressed: false, dismissed: {} };
+    } else {
+      this.guidance = { suppressed: true, dismissed: {} };
+      this.coachmarkId = undefined;
+      this.coachmarkAnchor = undefined;
+    }
+    writeGuidance(this.guidance);
+    this.renderCoachmark();
+    this.renderMenu();
   }
 
   private configureLayer(): void {
@@ -792,9 +852,8 @@ class App {
       case 'candidates':
         this.candidates = message.candidates;
         void this.resolveAll(message.revision);
-        break;
-      case 'notice':
-        this.showToast(message.message);
+        break;      case 'notice':
+        this.showNotice(message.message);
         break;
       case 'hover':
         break;
@@ -807,13 +866,20 @@ class App {
       this.renderCard();
       return;
     }
+    if (this.repointFor) {
+      const annotation = this.snapshot.annotations.find((entry) => entry.annotationId === this.repointFor);
+      if (annotation) {
+        await this.submitRepoint(annotation, targets);
+      }
+      return;
+    }
     const active = this.activeAnnotation();
     if (active && isInQueue(active.state)) {
       try {
         await this.api.patchAnnotation(active.annotationId, { targets });
         await this.refresh();
       } catch (error) {
-        this.showToast(messageOf(error));
+        this.showNotice(messageOf(error));
       }
     } else {
       try {
@@ -822,7 +888,7 @@ class App {
         this.selectedRowId = annotation.annotationId;
         await this.refresh();
       } catch (error) {
-        this.showToast(messageOf(error));
+        this.showNotice(messageOf(error));
       }
     }
     this.renderCard();
@@ -851,7 +917,7 @@ class App {
     void this.api
       .patchAnnotation(annotationId, { note: value })
       .then(() => this.refresh())
-      .catch((error) => this.showToast(messageOf(error)));
+      .catch((error) => this.showNotice(messageOf(error)));
   }, 250);
 
   private async flushNote(): Promise<void> {
@@ -865,7 +931,7 @@ class App {
     if (!annotation || annotation.note === pending.value) {
       return;
     }
-    await this.api.patchAnnotation(pending.annotationId, { note: pending.value }).catch((error) => this.showToast(messageOf(error)));
+    await this.api.patchAnnotation(pending.annotationId, { note: pending.value }).catch((error) => this.showNotice(messageOf(error)));
   }
 
   private async queueActive(): Promise<void> {
@@ -881,9 +947,8 @@ class App {
       this.selection = [];
       this.postToLayer({ source: 'vil-shell', type: 'clear-selection' });
       this.renderCard();
-      this.showToast('Queued. It stays on this machine until you send.');
     } catch (error) {
-      this.showToast(messageOf(error));
+      this.showNotice(messageOf(error));
     }
   }
 
@@ -892,14 +957,13 @@ class App {
       await this.flushNote();
       const result = await this.api.send();
       if (result.delivered === false) {
-        this.showToast(result.reason ?? 'Nothing was delivered.');
+        this.showNotice(result.reason ?? 'Nothing was delivered.');
         return;
       }
       this.activeAnnotationId = undefined;
       await this.refresh();
-      this.showToast(`Delivered as Next-Pass Intent${result.holding ? ' to a call that is being held' : '; the agent reads it at its next Check-In'}.`);
     } catch (error) {
-      this.showToast(messageOf(error));
+      this.showNotice(messageOf(error), { label: 'Try again', onSelect: () => void this.sendQueue() });
     }
   }
 
@@ -919,11 +983,8 @@ class App {
       this.amendFor = undefined;
       this.selectedRowId = result.successor.annotationId;
       await this.refresh();
-      this.showToast(
-        `Amendment delivered as Steering Intent${result.holding ? ' to a call that is being held' : '; the agent reads it at its next Check-In'}.`
-      );
     } catch (error) {
-      this.showToast(messageOf(error));
+      this.showNotice(messageOf(error));
     }
   }
 
@@ -931,9 +992,9 @@ class App {
     try {
       const result = await this.api.interrupt();
       await this.refresh();
-      this.showToast(result.message);
+      this.showNotice(result.message);
     } catch (error) {
-      this.showToast(messageOf(error));
+      this.showNotice(messageOf(error));
     }
   }
 
@@ -948,7 +1009,7 @@ class App {
       await this.refresh();
       this.renderCard();
     } catch (error) {
-      this.showToast(messageOf(error));
+      this.showNotice(messageOf(error));
     }
   }
 
@@ -966,20 +1027,39 @@ class App {
       await this.api.reorder(ids);
       await this.refresh();
     } catch (error) {
-      this.showToast(messageOf(error));
+      this.showNotice(messageOf(error));
     }
   }
 
-  private async choose(targetId: string, nodeId: string): Promise<void> {
-    const annotation = this.activeAnnotation() ?? this.deliverable().find((entry) => entry.targets.some((target) => target.targetId === targetId));
-    if (!annotation) {
-      return;
+  private startRepoint(annotationId: string): void {
+    this.repointFor = this.repointFor === annotationId ? undefined : annotationId;
+    this.activeAnnotationId = undefined;
+    this.amendFor = undefined;
+    this.renderCard();
+    this.renderList();
+    if (this.repointFor) {
+      this.setMode('point');
     }
+  }
+
+  private async submitRepoint(annotation: Annotation, targets: LayerTarget[]): Promise<void> {
     try {
-      await this.api.chooseCandidate(annotation.annotationId, targetId, nodeId);
+      await this.api.repoint(annotation.annotationId, targets);
+      this.repointFor = undefined;
+      this.resolvedRevision = undefined;
+      await this.refresh();
+      this.postToLayer({ source: 'vil-shell', type: 'request-candidates' });
+    } catch (error) {
+      this.showNotice(messageOf(error));
+    }
+  }
+
+  private async closePass(passId: string): Promise<void> {
+    try {
+      await this.api.closePass(passId);
       await this.refresh();
     } catch (error) {
-      this.showToast(messageOf(error));
+      this.showNotice(messageOf(error));
     }
   }
 
@@ -988,7 +1068,7 @@ class App {
       await this.api.verify(annotationId, verdict);
       await this.refresh();
     } catch (error) {
-      this.showToast(`Refused: ${messageOf(error)}`);
+      this.showNotice(`Refused: ${messageOf(error)}`);
     }
   }
 
@@ -998,7 +1078,7 @@ class App {
       await this.refresh();
       this.renderCard();
     } catch (error) {
-      this.showToast(messageOf(error));
+      this.showNotice(messageOf(error));
     }
   }
 
@@ -1048,7 +1128,7 @@ class App {
         reason: 'larger than the 5MB limit, so its bytes were never read'
       });
       this.renderCard();
-      this.showToast('That file is larger than the 5MB limit, so its bytes were never read.');
+      this.showNotice('That file is larger than the 5MB limit, so its bytes were never read.');
       return;
     }
     if (!file.type.startsWith('image/')) {
@@ -1061,7 +1141,7 @@ class App {
         reason: `${file.type || 'that file'} is not an allowed reference image type`
       });
       this.renderCard();
-      this.showToast(`${file.type || 'That file'} is not an allowed reference image type.`);
+      this.showNotice(`${file.type || 'That file'} is not an allowed reference image type.`);
       return;
     }
     this.uploads.push({ id, annotationId: annotation.annotationId, name: file.name, file, state: 'uploading' });
@@ -1071,7 +1151,6 @@ class App {
       this.uploads = this.uploads.filter((upload) => upload.id !== id);
       await this.refresh();
       this.renderCard();
-      this.showToast('Reference image attached.');
     } catch (error) {
       const entry = this.uploads.find((upload) => upload.id === id);
       if (entry) {
@@ -1079,7 +1158,7 @@ class App {
         entry.reason = messageOf(error);
       }
       this.renderCard();
-      this.showToast(`Upload failed: ${messageOf(error)}`);
+      this.showNotice(`Upload failed: ${messageOf(error)}`);
     }
   }
 
@@ -1131,9 +1210,15 @@ class App {
 
   private setBeforeAfter(mode: 'before' | 'after'): void {
     this.beforeAfter = mode;
-    this.iframe.src = mode === 'before' ? `/artifact/${this.config.sessionId}/before` : this.config.src || `/artifact/${this.config.sessionId}`;
+    const annotation = this.snapshot.annotations.find((entry) => entry.annotationId === this.selectedRowId);
+    const comparison = this.comparisonFor(annotation);
+    if (mode === 'before' && comparison) {
+      this.iframe.src = `/artifact/${this.config.sessionId}/before?revision=${encodeURIComponent(comparison.from)}`;
+    } else {
+      this.iframe.src = this.config.src || `/artifact/${this.config.sessionId}`;
+    }
     this.renderBeforeAfter();
-    this.showToast(mode === 'before' ? 'Showing the revision this direction was written against.' : 'Showing the revision the result came from.');
+    this.renderCandidateMarks();
   }
 
   private async resolveAll(revision: string): Promise<void> {
@@ -1157,8 +1242,9 @@ class App {
       }
       this.resolvedRevision = revision;
       await this.refresh();
+      this.renderCandidateMarks();
     } catch (error) {
-      this.showToast(messageOf(error));
+      this.showNotice(messageOf(error));
     } finally {
       this.reading = false;
       const next = this.queuedRevision;
@@ -1170,6 +1256,31 @@ class App {
   }
 
   private queuedRevision?: string;
+
+  private renderCandidateMarks(): void {
+    if (this.beforeAfter !== 'after') {
+      this.postToLayer({ source: 'vil-shell', type: 'mark-candidates', candidates: [] });
+      return;
+    }
+    const marks: Array<{ nodeId?: string; selector?: string; numeral: number; label: string }> = [];
+    for (const annotation of this.snapshot.annotations) {
+      for (const resolution of annotation.resolutions) {
+        if (resolution.match !== 'unresolved' || resolution.candidates.length === 0) {
+          continue;
+        }
+        resolution.candidates.forEach((entry, index) => {
+          const candidate = entry.candidate;
+          marks.push({
+            nodeId: candidate.nodeId,
+            ...(candidate.selectors?.[0] ? { selector: candidate.selectors[0] } : {}),
+            numeral: index + 1,
+            label: candidate.accessibleName ?? candidate.semanticRole ?? candidate.tag ?? candidate.nodeId
+          });
+        });
+      }
+    }
+    this.postToLayer({ source: 'vil-shell', type: 'mark-candidates', candidates: marks });
+  }
 
   private async pollStatus(): Promise<void> {
     try {
@@ -1219,7 +1330,7 @@ class App {
       await this.refresh();
       this.postToLayer({ source: 'vil-shell', type: 'request-candidates' });
     } catch (error) {
-      this.showToast(messageOf(error));
+      this.showNotice(messageOf(error));
     }
   }
 
@@ -1231,15 +1342,8 @@ class App {
       .pop();
   }
 
-  private attentionItems(): number {
-    const unresolved = this.snapshot.annotations.filter(
-      (annotation) => !isVerification(annotation.state) && annotation.resolutions.some((resolution) => resolution.match === 'unresolved')
-    ).length;
-    const advanced = this.snapshot.annotations.filter(
-      (annotation) => annotation.revisionRelation === 'advanced' && !isVerification(annotation.state)
-    ).length;
-    const leaving = this.queue().length > 0 ? 1 : 0;
-    return unresolved + advanced + leaving;
+  private needsDecisionCount(): number {
+    return this.snapshot.annotations.filter(needsDecision).length;
   }
 
   private toggleDrawer(open: boolean): void {
@@ -1292,16 +1396,16 @@ class App {
   }
 
   private endSession(): void {
-    this.showToast('Session ended. Your unsent Annotations are still stored on this machine.');
+    this.showNotice('Session ended. Your unsent Annotations are still stored on this machine.');
     window.close();
   }
 
   private async copy(text: string): Promise<void> {
     try {
       await navigator.clipboard.writeText(text);
-      this.showToast('Copied.');
+      this.showNotice('Copied.');
     } catch {
-      this.showToast('Could not copy to the clipboard.');
+      this.showNotice('Could not copy to the clipboard.');
     }
   }
 
@@ -1309,26 +1413,41 @@ class App {
     const target = event.target as HTMLElement | null;
     const typing = !!target && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable);
     if (typing) {
+      const textarea = target?.tagName === 'TEXTAREA' ? (target as HTMLTextAreaElement) : undefined;
       if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
         event.preventDefault();
-        void this.sendQueue();
-      } else if (event.key === 'Enter' && target?.tagName === 'TEXTAREA' && !event.shiftKey) {
+        if (!this.amendFor) {
+          void this.sendQueue();
+        }
+      } else if (event.key === 'Enter' && textarea && !event.shiftKey) {
         event.preventDefault();
-        void this.queueActive();
+        if (this.amendFor) {
+          void this.submitAmend(this.amendFor, textarea.value);
+        } else {
+          void this.queueActive();
+        }
       } else if (event.key === 'Escape') {
         event.preventDefault();
+        if (this.amendFor) {
+          this.closeAmend();
+          return;
+        }
         this.activeAnnotationId = undefined;
         this.renderCard();
       }
       return;
     }
     if (event.key === 'Escape') {
-      if (this.drawerOpen) {
-        this.toggleDrawer(false);
+      if (this.coachmarkId) {
+        this.dismissCoachmark();
       } else if (this.menuOpen) {
         this.toggleMenu(false);
+      } else if (this.drawerOpen) {
+        this.toggleDrawer(false);
       } else if (this.amendFor) {
         this.closeAmend();
+      } else if (this.repointFor) {
+        this.startRepoint(this.repointFor);
       } else if (this.activeAnnotationId) {
         this.activeAnnotationId = undefined;
         this.renderCard();
@@ -1367,23 +1486,42 @@ class App {
     return this.snapshot.annotations.filter((annotation) => isInQueue(annotation.state));
   }
 
-  private deliverable(): Annotation[] {
-    return this.snapshot.annotations.filter((annotation) => !isInQueue(annotation.state));
-  }
-
   private postToLayer(message: ShellMessage): void {
     this.iframe.contentWindow?.postMessage(message, '*');
   }
 
-  private showToast(message: string): void {
-    this.toast.textContent = message;
-    this.toast.hidden = false;
-    if (this.toastTimer !== undefined) {
-      window.clearTimeout(this.toastTimer);
+  private showNotice(message: string, action?: { label: string; onSelect: () => void }): void {
+    this.notice = action ? { message, action } : { message };
+    this.renderNotice();
+    if (this.noticeTimer !== undefined) {
+      window.clearTimeout(this.noticeTimer);
+      this.noticeTimer = undefined;
     }
-    this.toastTimer = window.setTimeout(() => {
-      this.toast.hidden = true;
-    }, 4000);
+    if (!action) {
+      this.noticeTimer = window.setTimeout(() => {
+        this.notice = undefined;
+        this.renderNotice();
+      }, NOTICE_TIMEOUT_MS);
+    }
+  }
+
+  private renderNotice(): void {
+    clear(this.railNotice);
+    if (!this.notice) {
+      this.railNotice.hidden = true;
+      return;
+    }
+    this.railNotice.hidden = false;
+    this.railNotice.appendChild(
+      noticeElement({
+        message: this.notice.message,
+        ...(this.notice.action ? { action: this.notice.action } : {}),
+        onDismiss: () => {
+          this.notice = undefined;
+          this.renderNotice();
+        }
+      })
+    );
   }
 }
 
@@ -1392,7 +1530,7 @@ function kindIcon(kind: string): IconName {
 }
 
 function isClosed(state: Annotation['state']): boolean {
-  return state === 'verified' || state === 'superseded' || state === 'obsolete';
+  return state === 'verified' || state === 'replaced' || state === 'obsolete';
 }
 
 function isDelivered(state: Annotation['state']): boolean {
@@ -1426,6 +1564,42 @@ function readStoredTheme(): ThemeChoice {
   return stored === 'light' || stored === 'dark' ? stored : 'auto';
 }
 
+type GuidanceState = { suppressed: boolean; dismissed: Record<string, boolean> };
+
+const COACHMARKS: Record<string, { title: string; body: string }> = {
+  'mode:point': {
+    title: 'Pointing',
+    body: 'Click a thing, or drag across words to take exactly those words. Press V to operate the artifact again.'
+  },
+  'mode:box': {
+    title: 'Boxing an area',
+    body: 'Drag to bound a patch that is not one thing. Press V to operate the artifact again.'
+  }
+};
+
+function readGuidance(): GuidanceState {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(GUIDANCE_KEY) ?? '{}') as Partial<GuidanceState>;
+    return {
+      suppressed: parsed.suppressed === true,
+      dismissed: typeof parsed.dismissed === 'object' && parsed.dismissed !== null ? parsed.dismissed : {}
+    };
+  } catch {
+    return { suppressed: false, dismissed: {} };
+  }
+}
+
+function writeGuidance(guidance: GuidanceState): void {
+  window.localStorage.setItem(GUIDANCE_KEY, JSON.stringify(guidance));
+}
+
+function needsDecision(annotation: Annotation): boolean {
+  if (isVerification(annotation.state)) {
+    return false;
+  }
+  return isDelivered(annotation.state) || annotation.resolutions.some((resolution) => resolution.match === 'unresolved');
+}
+
 function relativeTime(iso: string): string {
   const delta = Date.now() - Date.parse(iso);
   const seconds = Math.max(0, Math.round(delta / 1000));
@@ -1451,16 +1625,18 @@ function positionCard(
   card: HTMLElement,
   bounds: { x: number; y: number; width: number; height: number } | undefined,
   stage: HTMLElement,
-  islandHost: HTMLElement
+  islandHost: HTMLElement,
+  comparisonVisible: boolean
 ): void {
   const stageRect = stage.getBoundingClientRect();
   const islandRect = islandHost.getBoundingClientRect();
   const width = 340;
   const height = card.getBoundingClientRect().height || 240;
+  const ceiling = comparisonVisible ? 56 : 12;
   const floor = islandRect.height > 0 ? stageRect.height - islandRect.height - 24 : stageRect.height;
   if (!bounds) {
     card.style.left = `${Math.max(12, stageRect.width / 2 - width / 2)}px`;
-    card.style.top = `${Math.max(12, floor / 2 - height / 2)}px`;
+    card.style.top = `${Math.max(ceiling, floor / 2 - height / 2)}px`;
     return;
   }
   let left = bounds.x + bounds.width + 12;
@@ -1468,7 +1644,7 @@ function positionCard(
     left = bounds.x - width - 12;
   }
   left = Math.max(12, Math.min(left, stageRect.width - width - 12));
-  const top = Math.max(12, Math.min(bounds.y, floor - height - 12));
+  const top = Math.max(ceiling, Math.min(bounds.y, floor - height - 12));
   card.style.left = `${left}px`;
   card.style.top = `${top}px`;
 }

@@ -1,14 +1,9 @@
 import type { Annotation, AnnotationState } from '../annotation/model.js';
-import { relationSentence, stateLabel } from '../annotation/model.js';
+import { stateLabel } from '../annotation/model.js';
 import type { AgentPositionReport } from '../mcp/service.js';
-import { candidateLabel } from '../annotation/model.js';
-import {
-  deriveResolutionLabel,
-  resolutionLabelCue,
-  resolutionLabelText,
-  type ResolutionLabel
-} from '../resolution/model.js';
-import type { ScoredCandidate, TargetResolutionRecord } from '../resolution/resolve.js';
+import type { SessionPass } from './api.js';
+import { deriveResolutionLabel, resolutionLabelText, type ResolutionLabel } from '../resolution/model.js';
+import type { TargetResolutionRecord } from '../resolution/resolve.js';
 import { apiBaseUrl } from './runtime.js';
 import { button, h, iconButton } from './dom.js';
 import { icon, type IconName } from './icons.js';
@@ -40,8 +35,8 @@ export function stateTone(state: AnnotationState): Tone {
     case 'verified':
       return 'success';
     case 'rejected':
-    case 'another-pass':
-    case 'superseded':
+    case 'not-fixed':
+    case 'replaced':
     case 'obsolete':
       return 'closed';
   }
@@ -55,8 +50,8 @@ const STATE_CUES: Record<AnnotationState, IconName> = {
   acknowledged: 'check',
   verified: 'check',
   rejected: 'reject',
-  'another-pass': 'another-pass',
-  superseded: 'another-pass',
+  'not-fixed': 'redo',
+  replaced: 'redo',
   obsolete: 'obsolete'
 };
 
@@ -93,40 +88,87 @@ export function resolutionItem(record: TargetResolutionRecord, label: string): H
   const cueName: IconName = derived === 'matched' ? 'check' : derived === 'recovered' ? 'recovered' : derived === 'ambiguous' ? 'ambiguous' : 'deleted';
   const item = h('li', { class: 'resolution', dataset: { label: derived }, attrs: { 'data-label': derived } });
   const cue = h('span', { class: 'resolution__cue', attrs: { 'aria-hidden': 'true' } });
-  if (typeof resolutionLabelCue(derived) === 'string' && resolutionLabelCue(derived).length <= 2) {
-    cue.textContent = resolutionLabelCue(derived);
-  } else {
-    cue.appendChild(icon(cueName, { size: 14 }));
-  }
+  cue.appendChild(icon(cueName, { size: 14 }));
   item.append(cue, h('span', { text: `${label}: ${resolutionLabelText(derived)}` }));
-  if (record.match === 'unresolved' && record.candidates.length > 0) {
-    item.appendChild(pill(`${record.candidates.length} candidate${record.candidates.length === 1 ? '' : 's'}`, 'attention'));
-  }
   return item;
 }
 
-export function agentPositionEl(report: AgentPositionReport): HTMLElement {
-  const cue: IconName =
-    report.position === 'awaiting-you'
-      ? 'attention'
-      : report.position === 'working'
-        ? 'send'
-        : report.position === 'acknowledged'
-          ? 'check'
-          : 'obsolete';
-  const element = h('span', {
-    class: 'agent-position',
-    dataset: { position: report.position },
-    attrs: { 'data-position': report.position, role: 'status', 'aria-label': `Agent position: ${report.position}` }
+export function statusLine(passes: SessionPass[], report: AgentPositionReport, queueCount: number): HTMLElement {
+  const ready = [...passes].reverse().find((pass) => pass.state === 'ready');
+  const inFlight = [...passes].reverse().find((pass) => pass.state === 'in-flight');
+  const text = statusText(passes, report, queueCount, ready, inFlight);
+  return h('p', {
+    class: 'status-line',
+    text,
+    dataset: { state: statusState(report, queueCount, ready, inFlight) },
+    attrs: { 'data-state': statusState(report, queueCount, ready, inFlight), role: 'status', 'aria-live': 'polite' }
   });
-  const cueEl = h('span', { class: 'agent-position__cue', attrs: { 'aria-hidden': 'true' } });
-  cueEl.appendChild(icon(cue, { size: 14 }));
-  element.append(
-    cueEl,
-    h('span', { class: 'agent-position__sentence', text: report.sentence }),
-    h('span', { class: 'agent-position__checked', text: checkedSentence(report) })
+}
+
+function statusState(
+  report: AgentPositionReport,
+  queueCount: number,
+  ready: SessionPass | undefined,
+  inFlight: SessionPass | undefined
+): string {
+  if (ready) {
+    return 'ready';
+  }
+  if (queueCount > 0) {
+    return 'open';
+  }
+  if (inFlight) {
+    return report.position === 'stepped-away' ? 'stepped-away' : 'in-flight';
+  }
+  return 'idle';
+}
+
+function statusText(
+  passes: SessionPass[],
+  report: AgentPositionReport,
+  queueCount: number,
+  ready: SessionPass | undefined,
+  inFlight: SessionPass | undefined
+): string {
+  const held = report.channel === 'held-call' ? ' · call held' : '';
+  if (ready) {
+    return `Your turn · Pass ${passNumber(passes, ready)} ready${held}`;
+  }
+  if (queueCount > 0) {
+    return `Your turn · ${queueCount} note${queueCount === 1 ? '' : 's'} to send${held}`;
+  }
+  if (inFlight) {
+    const whose = report.position === 'stepped-away' ? 'Agent away' : "Agent's turn";
+    return `${whose} · Pass ${passNumber(passes, inFlight)} in flight${held}`;
+  }
+  return 'Your turn · nothing queued';
+}
+
+export function passNumber(passes: SessionPass[], pass: SessionPass): number {
+  const index = passes.findIndex((entry) => entry.passId === pass.passId);
+  return index === -1 ? passes.length : index + 1;
+}
+
+export function passStateLabel(state: SessionPass['state']): string {
+  switch (state) {
+    case 'open':
+      return 'Open';
+    case 'in-flight':
+      return 'In flight';
+    case 'ready':
+      return 'Ready';
+    case 'closed':
+      return 'Closed';
+  }
+}
+
+export function agentDisclosure(report: AgentPositionReport): HTMLElement {
+  return h(
+    'details',
+    { class: 'agent-disclosure' },
+    h('summary', { text: 'Agent' }),
+    h('p', { class: 'hint', text: checkedSentence(report) })
   );
-  return element;
 }
 
 export function checkedSentence(report: AgentPositionReport): string {
@@ -173,9 +215,9 @@ export function shortRevision(revision: string): string {
   return revision.replace(/^blake3:/, '').slice(0, 12);
 }
 
-export const MODE_TILES: Array<{ mode: Exclude<LayerTool, 'operate'>; icon: IconName; label: string; key: string; hint: string }> = [
-  { mode: 'point', icon: 'point', label: 'Point at things', key: 'P', hint: 'Click a thing to point at it, or drag across words to take exactly those words. (P)' },
-  { mode: 'box', icon: 'box', label: 'Box an area', key: 'B', hint: 'Drag to bound an area that is not one thing. (B)' }
+export const MODE_TILES: Array<{ mode: Exclude<LayerTool, 'operate'>; icon: IconName; filledIcon: IconName; label: string; key: string; hint: string }> = [
+  { mode: 'point', icon: 'point', filledIcon: 'point-filled', label: 'Point at things', key: 'P', hint: 'Click a thing to point at it, or drag across words to take exactly those words. (P)' },
+  { mode: 'box', icon: 'box', filledIcon: 'box-filled', label: 'Box an area', key: 'B', hint: 'Drag to bound an area that is not one thing. (B)' }
 ];
 
 export function modeIsland(active: LayerTool, onSelect: (mode: LayerTool) => void): HTMLElement {
@@ -198,7 +240,7 @@ export function modeIsland(active: LayerTool, onSelect: (mode: LayerTool) => voi
       },
       on: { click: () => onSelect(armed ? 'operate' : entry.mode) }
     });
-    tile.appendChild(icon(entry.icon, { size: 20 }));
+    tile.appendChild(icon(armed ? entry.filledIcon : entry.icon, { size: 20 }));
     island.appendChild(tile);
   }
   return island;
@@ -219,10 +261,6 @@ export function stopAction(options: { offered: boolean; report: AgentPositionRep
   stop.append('Ask the agent to stop');
   wrapper.append(
     stop,
-    h('p', {
-      class: 'hint',
-      text: `This asks the agent to stop; it does not stop anything itself. ${checkedSentence(options.report)}`
-    }),
     ...(options.report.pendingInterruption
       ? [
           h('p', {
@@ -261,43 +299,17 @@ export function themeControl(current: ThemeChoice, onSelect: (choice: ThemeChoic
   return group;
 }
 
-export function relationSentenceEl(annotation: Pick<Annotation, 'relationships' | 'targets'>): HTMLElement | null {
-  const sentence = relationSentence(annotation);
-  return sentence ? h('p', { class: 'relation-sentence', text: sentence }) : null;
-}
-
-export function candidateChooser(
-  annotation: Annotation,
-  targetId: string,
-  record: TargetResolutionRecord,
-  onChoose: (targetId: string, nodeId: string) => void
-): HTMLElement {
-  const list = h('div', { class: 'section', attrs: { role: 'radiogroup', 'aria-label': `Candidates for ${targetId}` } });
-  const chosen = annotation.chosenCandidates[targetId];
-  record.candidates.forEach((entry: ScoredCandidate, index: number) => {
-    const id = `cand-${annotation.annotationId}-${targetId}-${index}`;
-    list.appendChild(
-      h(
-        'label',
-        { class: 'resolution', attrs: { for: id } },
-        h('input', {
-          id,
-          type: 'radio',
-          attrs: { name: `cand-${annotation.annotationId}-${targetId}`, value: entry.candidate.nodeId },
-          on: { change: () => onChoose(targetId, entry.candidate.nodeId) }
-        }),
-        h('span', { text: `${index + 1}. ${candidateLabel(entry.candidate)}` }),
-        h('span', { class: 'pill', text: `${Math.round(entry.score * 100)}% evidence` })
-      )
-    );
-    if (chosen === entry.candidate.nodeId) {
-      const input = list.lastElementChild?.querySelector('input') as HTMLInputElement | null;
-      if (input) {
-        input.checked = true;
-      }
-    }
+export function repointAction(annotation: Annotation, options: { active: boolean; onRepoint: () => void }): HTMLElement {
+  const control = button(options.active ? 'Point at the right target, then click it' : 'Re-point this target', {
+    variant: options.active ? 'primary' : 'secondary',
+    title: 'The next thing you point at becomes this Annotation\u2019s target.',
+    onClick: options.onRepoint
   });
-  return list;
+  control.dataset['action'] = 'repoint';
+  control.dataset['annotation'] = annotation.annotationId;
+  control.append(options.active ? '…' : '');
+  control.prepend(icon('point', { size: 14 }));
+  return control;
 }
 
 export function verdictControls(
@@ -306,16 +318,14 @@ export function verdictControls(
 ): HTMLElement {
   const approveBlocked = options.blocked.length > 0;
   const group = h('div', { class: 'chips', attrs: { role: 'group', 'aria-label': 'Decision' } });
-  const entries: Array<[string, string, IconName, 'primary' | 'secondary' | 'ghost']> = [
-    ['approve', 'Approve', 'check', 'primary'],
-    ['reject', 'Reject', 'reject', 'secondary'],
-    ['another-pass', 'Request another pass', 'another-pass', 'secondary'],
-    ['obsolete', 'Mark obsolete', 'obsolete', 'ghost']
+  const primaryEntries: Array<[string, string, IconName]> = [
+    ['approve', 'Approve', 'check'],
+    ['reject', 'Reject', 'reject']
   ];
-  for (const [verdict, label, iconName, variant] of entries) {
+  for (const [verdict, label, iconName] of primaryEntries) {
     const disabled = verdict === 'approve' && approveBlocked;
     const control = button(label, {
-      variant,
+      variant: verdict === 'approve' ? 'primary' : 'secondary',
       disabled,
       ...(disabled ? { title: options.blocked.join(' ') } : {}),
       onClick: () => options.onVerdict(verdict)
@@ -324,9 +334,23 @@ export function verdictControls(
     control.prepend(icon(iconName, { size: 14 }));
     group.appendChild(control);
   }
+  const overflow = h('details', { class: 'verdict-overflow' });
+  overflow.appendChild(h('summary', { text: 'More verdicts' }));
+  const overflowBody = h('div', { class: 'verdict-overflow__body' });
+  for (const [verdict, label, iconName] of [
+    ['not-fixed', 'Not Fixed', 'redo'],
+    ['obsolete', 'Mark obsolete', 'obsolete']
+  ] as Array<[string, string, IconName]>) {
+    const control = button(label, { variant: 'ghost', onClick: () => options.onVerdict(verdict) });
+    control.dataset['verdict'] = verdict;
+    control.prepend(icon(iconName, { size: 14 }));
+    overflowBody.appendChild(control);
+  }
+  overflow.appendChild(overflowBody);
+  group.appendChild(overflow);
   const wrapper = h('div', { class: 'section' }, group);
   if (approveBlocked) {
-    wrapper.appendChild(h('p', { class: 'hint', text: `Approval is refused: ${options.blocked.join(' ')}` }));
+    wrapper.appendChild(h('p', { class: 'hint', text: `Approval is blocked: ${options.blocked.join(' ')}` }));
   }
   if (options.recorded) {
     wrapper.appendChild(h('p', { class: 'hint', text: options.recorded }));
@@ -412,8 +436,91 @@ export function disclosureList(items: Array<{ title: string; body: string }>): H
   );
 }
 
-export function toastElement(): HTMLElement {
-  return h('div', { class: 'toast', hidden: true, attrs: { role: 'status', 'aria-live': 'polite' } });
+export type NoticeOptions = {
+  message: string;
+  action?: { label: string; onSelect: () => void };
+  onDismiss: () => void;
+};
+
+export function noticeElement(options: NoticeOptions): HTMLElement {
+  const notice = h('div', {
+    class: 'notice',
+    attrs: { role: 'status', 'aria-live': 'polite' }
+  });
+  notice.appendChild(h('p', { class: 'notice__text', text: options.message }));
+  const actions = h('div', { class: 'notice__actions' });
+  if (options.action) {
+    actions.appendChild(button(options.action.label, { variant: 'secondary', onClick: options.action.onSelect }));
+  }
+  actions.appendChild(iconButton('Dismiss notice', 'close', options.onDismiss));
+  notice.appendChild(actions);
+  return notice;
+}
+
+export function coachmark(options: { title: string; body: string; anchor: HTMLElement; onDismiss: () => void }): HTMLElement {
+  const rect = options.anchor.getBoundingClientRect();
+  return h(
+    'div',
+    {
+      class: 'coachmark',
+      attrs: { role: 'note' },
+      style: { left: `${Math.round(rect.left)}px`, top: `${Math.round(rect.bottom + 8)}px` }
+    },
+    h('p', { class: 'coachmark__title', text: options.title }),
+    h('p', { class: 'coachmark__body', text: options.body }),
+    button('Got it', { variant: 'ghost', onClick: options.onDismiss })
+  );
+}
+
+export function passHeader(options: {
+  pass: SessionPass;
+  number: number;
+  outstanding: number;
+  onClose: () => void;
+}): HTMLElement {
+  const { pass } = options;
+  const header = h('header', {
+    class: 'pass-header',
+    dataset: { state: pass.state },
+    attrs: { 'data-state': pass.state, 'data-pass': pass.passId }
+  });
+  const head = h(
+    'div',
+    { class: 'pass-header__head' },
+    h('span', { class: 'pass-header__title', text: `Pass ${options.number}` }),
+    pill(passStateLabel(pass.state), passTone(pass.state)),
+    h('span', {
+      class: 'pass-header__outstanding',
+      text: options.outstanding === 0 ? 'Nothing left to decide' : `${options.outstanding} to decide`
+    })
+  );
+  header.appendChild(head);
+  header.appendChild(
+    h('p', {
+      class: 'hint',
+      text: `${pass.outcome.answered} answered · ${pass.outcome.untouched} untouched · ${pass.outcome.gone} gone`
+    })
+  );
+  if (pass.state !== 'closed') {
+    const close = button(`Close Pass ${options.number}`, { variant: 'ghost', onClick: options.onClose });
+    close.dataset['action'] = 'close-pass';
+    header.appendChild(close);
+  } else if (pass.closedAt) {
+    header.appendChild(h('p', { class: 'hint', text: `Closed ${relativeTime(pass.closedAt)}` }));
+  }
+  return header;
+}
+
+function passTone(state: SessionPass['state']): Tone {
+  switch (state) {
+    case 'open':
+    case 'in-flight':
+      return 'progress';
+    case 'ready':
+      return 'attention';
+    case 'closed':
+      return 'closed';
+  }
 }
 
 export function describeEvidence(annotation: Annotation): Array<{ title: string; body: string }> {

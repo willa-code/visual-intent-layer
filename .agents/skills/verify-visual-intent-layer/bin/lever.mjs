@@ -70,8 +70,8 @@ Usage:
   lever restart-browser
   lever review
   lever verify
-  lever decide --verdict approve|reject|another-pass|obsolete [--row <n>|--match <text>]
-  lever choose --row <n> --target <targetId> --node <nodeId>
+  lever decide --verdict approve|reject|not-fixed|obsolete [--row <n>|--match <text>]
+  lever repoint --row <n> --target <css>
   lever compare --mode before|after [--row <n>]
   lever closed-rows
   lever measure
@@ -1000,7 +1000,7 @@ async function commandSend(flags) {
     const annotations = snapshot.json.annotations ?? [];
     if (annotations.some((annotation) => annotation.state === 'delivered' || annotation.state === 'resolved')) {
       delivered = true;
-      deliveredIntent = (snapshot.json.batches ?? []).at(-1)?.intent;
+      deliveredIntent = (snapshot.json.passes ?? []).at(-1)?.intent;
       break;
     }
     await sleep(200);
@@ -1040,26 +1040,26 @@ async function commandAmend(flags) {
   await host('/wait', { target: { selector: '.amend-editor textarea' }, state: 'visible' });
   await host('/fill', { target: { selector: '.amend-editor textarea' }, value: flags.note });
   await host('/click', { target: { role: 'button', name: 'Deliver the amendment', exact: true } });
-  let superseded = false;
+  let replaced = false;
   let steering = false;
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
     const snapshot = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
     const annotations = snapshot.json.annotations ?? [];
-    superseded = annotations.some((annotation) => annotation.state === 'superseded' && annotation.supersededBy);
-    steering = (snapshot.json.batches ?? []).some((batch) => batch.intent === 'steering');
-    if (superseded && steering) {
+    replaced = annotations.some((annotation) => annotation.state === 'replaced' && annotation.replacedBy);
+    steering = (snapshot.json.passes ?? []).some((pass) => pass.intent === 'steering');
+    if (replaced && steering) {
       break;
     }
     await sleep(200);
   }
   const shot = await host('/screenshot', { name: `amend-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: 'amend', path: shot.path });
-  if (!superseded || !steering) {
-    fail(EXIT.unreachable, 'Amending did not supersede the original with a Steering Intent delivery.', 'Read `lever state` to see what the amendment did.');
+  if (!replaced || !steering) {
+    fail(EXIT.unreachable, 'Amending did not replace the original with a Steering Intent delivery.', 'Read `lever state` to see what the amendment did.');
   }
-  recordCoverage(runDir, 'annotate-and-send', 'driven', 'amended a sent Annotation', ['amend-supersede', 'amend-steering']);
-  output({ ok: true, command: 'amend', note: flags.note, superseded, steering, screenshot: shot.path });
+  recordCoverage(runDir, 'annotate-and-send', 'driven', 'replaced a sent Annotation', ['amend-replace', 'amend-steering']);
+  output({ ok: true, command: 'amend', note: flags.note, replaced, steering, screenshot: shot.path });
 }
 
 async function commandStop(flags) {
@@ -1073,7 +1073,8 @@ async function commandStop(flags) {
   let offered = (await host('/count', { target: { role: 'button', name: 'Ask the agent to stop' } })).count > 0;
   if (!offered) {
     const snapshot = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
-    const lastBatch = (snapshot.json.batches ?? []).at(-1);
+    const lastPass = (snapshot.json.passes ?? []).at(-1);
+    const lastBatch = lastPass;
     if (lastBatch) {
       await productPost(secret, `/api/intents/${encodeURIComponent(lastBatch.envelopeId)}/acknowledge`, { agentId: 'lever' });
     }
@@ -1347,10 +1348,11 @@ async function commandDecide(flags) {
   const runDir = resolveRun(flags.run);
   const secret = await assertHealthy(runDir);
   const verdict = typeof flags.verdict === 'string' ? flags.verdict : undefined;
-  const label = { approve: 'Approve', reject: 'Reject', 'another-pass': 'Request another pass', obsolete: 'Mark obsolete' }[verdict];
+  const label = { approve: 'Approve', reject: 'Reject', 'not-fixed': 'Not Fixed', obsolete: 'Mark obsolete' }[verdict];
   if (!label) {
-    fail(EXIT.usage, 'decide needs --verdict approve|reject|another-pass|obsolete.', 'Supersede is reached through `lever amend`, not as a row verdict.');
+    fail(EXIT.usage, 'decide needs --verdict approve|reject|not-fixed|obsolete.', 'A Replacement is reached through `lever amend`, not as a row verdict.');
   }
+  const behindOverflow = verdict === 'not-fixed' || verdict === 'obsolete';
   const rowIndex = typeof flags.row === 'string' ? Number(flags.row) : 0;
   const match = typeof flags.match === 'string' ? flags.match : undefined;
   if (flags['dry-run']) {
@@ -1358,14 +1360,18 @@ async function commandDecide(flags) {
     return;
   }
   const host = hostCall(secret);
+  if (behindOverflow) {
+    const rowScope = match ? `.annotation-row:has-text(${JSON.stringify(match)})` : '.annotation-row';
+    await host('/click', { target: { selector: `${rowScope} .verdict-overflow summary`, nth: match ? 0 : rowIndex } });
+  }
   if (match) {
     await host('/click', {
       target: { selector: `.annotation-row:has-text(${JSON.stringify(match)}) [data-verdict="${verdict}"]` }
     });
   } else {
-    await host('/click', { target: { role: 'button', name: label, exact: true, nth: rowIndex } });
+    await host('/click', { target: { selector: `.annotation-row [data-verdict="${verdict}"]`, nth: rowIndex } });
   }
-  const expected = { approve: 'verified', reject: 'rejected', 'another-pass': 'another-pass', obsolete: 'obsolete' }[verdict];
+  const expected = { approve: 'verified', reject: 'rejected', 'not-fixed': 'not-fixed', obsolete: 'obsolete' }[verdict];
   const deadline = Date.now() + 10000;
   let annotations = [];
   let landed = false;
@@ -1390,30 +1396,30 @@ async function commandDecide(flags) {
   output({ ok: true, command: 'decide', verdict, states: annotations.map((annotation) => annotation.state), screenshot: shot.path });
 }
 
-async function commandChoose(flags) {
+async function commandRepoint(flags) {
   const runDir = resolveRun(flags.run);
   const secret = await assertHealthy(runDir);
-  const node = typeof flags.node === 'string' ? flags.node : undefined;
   const target = typeof flags.target === 'string' ? flags.target : undefined;
-  const index = typeof flags.index === 'string' ? Number(flags.index) : 0;
-  if (!node) {
-    fail(EXIT.usage, 'choose needs --node <nodeId> [--target <targetId>].', 'Read `lever state` for the candidates.');
+  const rowIndex = typeof flags.row === 'string' ? Number(flags.row) : 0;
+  if (!target) {
+    fail(EXIT.usage, 'repoint needs --target <css>.', 'Point at the target that should replace the lost one.');
   }
   if (flags['dry-run']) {
-    output({ dryRun: true, would: { node, target, index } });
+    output({ dryRun: true, would: { repoint: target, rowIndex } });
     return;
   }
   const host = hostCall(secret);
-  await host('/click', { target: { selector: `input[type="radio"][value="${node}"]` } });
+  await host('/click', { target: { selector: '[data-action="repoint"]', nth: rowIndex } });
+  await host('/click', { target: { selector: target }, frame: 'artifact' });
   await waitForAnnotations(
     secret,
-    (annotation) => Object.values(annotation.chosenCandidates ?? {}).includes(node),
-    `the chosen candidate ${node}`
+    (annotation) => Array.isArray(annotation.resolutions) && annotation.resolutions.length === 0,
+    'the re-pointed Annotation to lose its old resolution'
   );
-  const shot = await host('/screenshot', { name: `choose-${Date.now()}` });
-  recordEvidence(runDir, { kind: 'screenshot', name: 'choose', path: shot.path });
-  recordCoverage(runDir, 'resolution-and-honesty', 'driven', node, ['resolution-choose']);
-  output({ ok: true, command: 'choose', node, target, screenshot: shot.path });
+  const shot = await host('/screenshot', { name: `repoint-${Date.now()}` });
+  recordEvidence(runDir, { kind: 'screenshot', name: 'repoint', path: shot.path });
+  recordCoverage(runDir, 'resolution-and-honesty', 'driven', target, ['resolution-repoint']);
+  output({ ok: true, command: 'repoint', target, row: rowIndex, screenshot: shot.path });
 }
 
 async function commandMeasure(flags) {
@@ -1500,7 +1506,7 @@ async function commandState(flags) {
     changed: status.json.changed ?? false,
     currentRevision: status.json.currentRevision ?? null,
     agent: agent.json,
-    batches: snapshot.json.batches ?? [],
+    passes: snapshot.json.passes ?? [],
     annotations: (snapshot.json.annotations ?? []).map(safeAnnotation)
   });
 }
@@ -1515,10 +1521,10 @@ function safeAnnotation(annotation) {
     relationships: annotation.relationships,
     attachments: annotation.attachments,
     resolutions: annotation.resolutions,
-    chosenCandidates: annotation.chosenCandidates,
     verification: annotation.verification ?? null,
-    supersedes: annotation.supersedes ?? null,
-    supersededBy: annotation.supersededBy ?? null,
+    replaces: annotation.replaces ?? null,
+    replacedBy: annotation.replacedBy ?? null,
+    passId: annotation.passId ?? null,
     resolvedRevision: annotation.resolvedRevision ?? null,
     targets: (annotation.targets ?? []).map((target) => ({
       targetId: target.targetId,
@@ -1725,7 +1731,7 @@ async function main() {
     review: commandReview,
     verify: commandVerify,
     decide: commandDecide,
-    choose: commandChoose,
+    repoint: commandRepoint,
     compare: commandCompare,
     'closed-rows': commandClosedRows,
     measure: commandMeasure,

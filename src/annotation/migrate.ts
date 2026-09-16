@@ -99,7 +99,7 @@ function mapRecord(record: LegacyRecord, startOrder: number, at: string): Annota
       references: [],
       attachments: [],
       resolutions: mapResolutions(record),
-      chosenCandidates: {},
+      ...(record.successorId ? { replacedBy: record.successorId } : {}),
       ...(verificationOf(record) ? { verification: verificationOf(record)! } : {}),
       history: mapHistory(record, createdAt),
       createdAt,
@@ -147,7 +147,11 @@ function mapStatus(status: string): AnnotationState {
     case 'rejected':
       return 'rejected';
     case 'superseded':
-      return 'superseded';
+    case 'replaced':
+      return 'replaced';
+    case 'another-pass':
+    case 'not-fixed':
+      return 'not-fixed';
     case 'obsolete':
       return 'obsolete';
     default:
@@ -189,9 +193,11 @@ function normalizeVerdict(value: string): VerificationVerdict | undefined {
   switch (value) {
     case 'approve':
     case 'reject':
-    case 'another-pass':
     case 'obsolete':
       return value;
+    case 'another-pass':
+    case 'not-fixed':
+      return 'not-fixed';
     default:
       return undefined;
   }

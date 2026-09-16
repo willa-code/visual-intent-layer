@@ -21,7 +21,7 @@ The Review Surface's single state, in which Annotations are composed, queued, an
 _Avoid_: Annotate mode, edit mode, direct mode, design mode
 
 **Verify**:
-The act, on one Annotation, of comparing a resulting artifact revision against what that Annotation asked for and accepting it, rejecting it, requesting another pass, or marking it obsolete. It is a state of an Annotation, not a place in the Review Surface: an Annotation is verified where it sits. An amendment, not a verdict, is what supersedes a delivered Annotation.
+The act, on one Annotation, of comparing a resulting artifact revision against what that Annotation asked for and accepting it, rejecting it, marking it Not Fixed, or marking it obsolete. It is a state of an Annotation, not a place in the Review Surface: an Annotation is verified where it sits. A Replacement, not a verdict, is what closes a delivered Annotation.
 _Avoid_: Approval screen, review mode, diff view, verify mode
 
 **Visual Intent Layer**:
@@ -40,9 +40,21 @@ _Avoid_: Comment, mark, note, task, visual edit, item
 The ordered set of Annotations a Builder-Reviewer has composed but not yet sent. Their order is the order the agent receives them in.
 _Avoid_: Cart, basket, backlog, inbox
 
-**Supersession**:
-The relationship in which a later Annotation replaces an earlier one that was already delivered. What the agent was told stays a record, and the replacement states what replaced it.
-_Avoid_: Edit, update, revision
+**Pass**:
+One delivery of Annotations and the artifact revision that answers it. A Pass has a state (open, in flight, ready, closed) and a set of member Annotations, and only the Builder-Reviewer closes it.
+_Avoid_: Round, batch, iteration, cycle, review cycle
+
+**Replacement**:
+The relationship in which a later Annotation replaces an earlier one that was already delivered. The earlier Annotation is Replaced and states what replaced it, and what the agent was told stays a record; the published envelope schema still names the field `supersedes`, because a wire name is a compatibility surface rather than a word a Builder-Reviewer reads.
+_Avoid_: Supersession, superseded, successor, follow-up, edit, update, revision
+
+**Not Fixed**:
+The verdict on one Annotation that the revision under review does not satisfy it and another attempt is wanted. It judges one Annotation and asks for no new delivery.
+_Avoid_: Another pass, request changes, retry, failed, rejected
+
+**Another Pass**:
+The act of asking the agent to attempt the open Annotations of the current Pass again, carrying those Annotations rather than new direction. It is delivered as Next-Pass Intent.
+_Avoid_: Regenerate, rerun, retry, request changes, continue
 
 **Artifact**:
 Visible work that a Builder-Reviewer can direct and verify. Different artifact types may provide different levels of targeting fidelity while participating in the same Visual Direction Loop.
@@ -89,7 +101,7 @@ The point between an agent's own steps at which it reads new direction. Steering
 _Avoid_: Poll, subscription, wake
 
 **Steering Intent**:
-A Visual Intent Envelope that amends or redirects work an agent has already begun, seen at the agent's next Check-In rather than mid-step. It is produced by amending a delivered Annotation, which it supersedes; it is not a choice made when sending a queue.
+A Visual Intent Envelope that amends or redirects work an agent has already begun, seen at the agent's next Check-In rather than mid-step. It is produced by Replacing a delivered Annotation; it is not a choice made when sending a queue.
 _Avoid_: Instant interruption, live edit, host capability
 
 **Next-Pass Intent**:

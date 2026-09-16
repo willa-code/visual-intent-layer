@@ -75,6 +75,81 @@ describe('legacy migration', () => {
     expect(result.report.skipped[0]?.reason).toMatch(/direction/i);
   });
 
+  it('maps a legacy superseded status onto Replaced', () => {
+    const result = migrateLegacyRecords([legacyRecord({ status: 'superseded' })]);
+    expect(result.annotations.every((annotation) => annotation.state === 'replaced')).toBe(true);
+  });
+
+  it('maps a legacy another-pass verdict onto Not Fixed', () => {
+    const record = legacyRecord({
+      status: 'verified',
+      deliveryHistory: [
+        { type: 'saved-draft', at: '2026-01-01T00:00:00.000Z' },
+        { type: 'verified', at: '2026-01-01T00:02:00.000Z', verdict: 'another-pass' }
+      ]
+    });
+    const result = migrateLegacyRecords([record]);
+    expect(result.annotations.every((annotation) => annotation.verification?.verdict === 'not-fixed')).toBe(true);
+  });
+
+  it('reads a stored Annotation that still carries the old replaced names', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vil-migrate-replaced-'));
+    writeFileSync(
+      join(dir, 'annotations.json'),
+      JSON.stringify({
+        version: 2,
+        annotations: {
+          'ann-old': {
+            annotationId: 'ann-old',
+            artifactId: 'a',
+            writtenRevision: 'rev-1',
+            revisionRelation: 'current',
+            state: 'superseded',
+            order: 0,
+            note: 'first wording',
+            targets: [],
+            relationships: [],
+            references: [],
+            attachments: [],
+            resolutions: [],
+            supersededBy: 'ann-new',
+            history: [],
+            createdAt: '',
+            updatedAt: ''
+          },
+          'ann-new': {
+            annotationId: 'ann-new',
+            artifactId: 'a',
+            writtenRevision: 'rev-1',
+            revisionRelation: 'current',
+            state: 'delivered',
+            order: 1,
+            note: 'clearer wording',
+            targets: [],
+            relationships: [],
+            references: [],
+            attachments: [],
+            resolutions: [],
+            supersedes: 'ann-old',
+            history: [],
+            createdAt: '',
+            updatedAt: ''
+          }
+        },
+        passes: {},
+        byIdempotencyKey: {},
+        migration: { at: '', migrated: [], skipped: [], unreadable: [] }
+      }),
+      'utf8'
+    );
+    const store = new AnnotationStore(dir);
+    const original = store.get('ann-old')!;
+    const replacement = store.get('ann-new')!;
+    expect(original.state).toBe('replaced');
+    expect(original.replacedBy).toBe('ann-new');
+    expect(replacement.replaces).toBe('ann-old');
+  });
+
   it('migrates an existing lifecycle.json on first store open while leaving the original untouched', () => {
     const dir = mkdtempSync(join(tmpdir(), 'vil-migrate-'));
     const lifecycle = join(dir, 'lifecycle.json');

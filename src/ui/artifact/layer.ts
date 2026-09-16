@@ -1,5 +1,5 @@
 import { provenanceForElement } from '../../adapters/react-provenance.js';
-import type { Grounding, LayerMessage, LayerTarget, LayerTool, ShellMessage } from '../protocol.js';
+import type { CandidateMark, Grounding, LayerMessage, LayerTarget, LayerTool, ShellMessage } from '../protocol.js';
 import {
   LAYER_ATTRIBUTE,
   describeElement,
@@ -28,6 +28,7 @@ let targets: SelectedTarget[] = [];
 let hovered: HTMLElement | null = null;
 let marks: Mark[] = [];
 let regionMarks: HTMLElement[] = [];
+let candidateMarkBoxes: Array<{ box: HTMLElement; element: HTMLElement }> = [];
 let boxDrag: { startX: number; startY: number } | null = null;
 let pointDrag: { startX: number; startY: number; startedOnSelected: boolean; moved: boolean } | null = null;
 let hoverBox: HTMLElement | null = null;
@@ -49,13 +50,12 @@ function ensureOverlay(): HTMLElement {
   const element = document.createElement('div');
   element.setAttribute(LAYER_ATTRIBUTE, 'overlay');
   element.setAttribute('data-vil-overlay', '');
-  element.setAttribute('aria-hidden', 'true');
   element.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483000;';
   document.body.appendChild(element);
   return element;
 }
 
-function boxFor(element: Element | null, kind: 'owned' | 'drawn' | 'candidate', label: string): HTMLElement {
+function boxFor(element: Element | null, kind: 'owned' | 'drawn' | 'candidate' | 'hover', label: string): HTMLElement {
   const box = document.createElement('div');
   box.setAttribute(LAYER_ATTRIBUTE, 'mark');
   box.setAttribute('data-vil-mark', kind);
@@ -68,6 +68,9 @@ function boxFor(element: Element | null, kind: 'owned' | 'drawn' | 'candidate', 
         ? `border:2px dashed ${ATTENTION_INK};`
         : `border:1px solid ${SELECTION_INK};`;
   box.style.cssText = `position:fixed;pointer-events:none;border-radius:4px;box-sizing:border-box;${border}`;
+  if (kind !== 'candidate') {
+    box.setAttribute('aria-hidden', 'true');
+  }
   overlay.appendChild(box);
   return box;
 }
@@ -83,6 +86,11 @@ function positionBox(box: HTMLElement, element: Element): void {
 
 function redraw(): void {
   for (const mark of marks) {
+    if (mark.element.isConnected) {
+      positionBox(mark.box, mark.element);
+    }
+  }
+  for (const mark of candidateMarkBoxes) {
     if (mark.element.isConnected) {
       positionBox(mark.box, mark.element);
     }
@@ -112,7 +120,7 @@ function setHover(element: HTMLElement | null): void {
   }
   hovered = element;
   if (!hoverBox) {
-    hoverBox = boxFor(element, 'candidate', '');
+    hoverBox = boxFor(element, 'hover', '');
     hoverBox.style.border = `1px solid ${SELECTION_INK}`;
     hoverBox.style.background = SELECTION_HOVER_FILL;
   }
@@ -346,6 +354,7 @@ function drawMarquee(x1: number, y1: number, x2: number, y2: number): void {
     box = document.createElement('div');
     box.setAttribute(LAYER_ATTRIBUTE, 'marquee');
     box.setAttribute('data-vil-marquee', '');
+    box.setAttribute('aria-hidden', 'true');
     box.style.cssText = `position:fixed;pointer-events:none;border:2px dashed ${ATTENTION_INK};background:${ATTENTION_FILL};border-radius:4px;z-index:2147483001;`;
     overlay.appendChild(box);
   }
@@ -357,6 +366,46 @@ function drawMarquee(x1: number, y1: number, x2: number, y2: number): void {
 
 function removeMarquee(): void {
   document.querySelector(`[${LAYER_ATTRIBUTE}][data-vil-marquee]`)?.remove();
+}
+
+function clearCandidateMarks(): void {
+  for (const mark of candidateMarkBoxes) {
+    mark.box.remove();
+  }
+  candidateMarkBoxes = [];
+}
+
+function markCandidates(candidates: CandidateMark[]): void {
+  clearCandidateMarks();
+  for (const candidate of candidates) {
+    const element = candidate.nodeId ? elementByNodeId(document, candidate.nodeId) : selectorElement(candidate.selector);
+    if (!element) {
+      continue;
+    }
+    const box = boxFor(element, 'candidate', candidate.label);
+    box.setAttribute('role', 'img');
+    box.setAttribute('aria-label', `Candidate ${candidate.numeral}: ${candidate.label}`);
+    const numeral = document.createElement('span');
+    numeral.setAttribute(LAYER_ATTRIBUTE, 'candidate-numeral');
+    numeral.textContent = String(candidate.numeral);
+    numeral.style.cssText =
+      `position:absolute;top:-9px;left:-9px;min-width:18px;height:18px;border-radius:999px;` +
+      `background:${ATTENTION_INK};color:#fff;font:600 11px/18px system-ui,sans-serif;text-align:center;`;
+    box.appendChild(numeral);
+    positionBox(box, element);
+    candidateMarkBoxes.push({ box, element });
+  }
+}
+
+function selectorElement(selector: string | undefined): HTMLElement | null {
+  if (!selector) {
+    return null;
+  }
+  try {
+    return document.querySelector(selector) as HTMLElement | null;
+  } catch {
+    return null;
+  }
 }
 
 function markBySelectors(selectors: string[], nodeIds: string[], chosenNodeId?: string): void {
@@ -408,6 +457,9 @@ function onMessage(event: MessageEvent<ShellMessage>): void {
       break;
     case 'mark-targets':
       markBySelectors(message.selectors ?? [], message.nodeIds, message.chosenNodeId);
+      break;
+    case 'mark-candidates':
+      markCandidates(message.candidates);
       break;
     case 'request-candidates':
       post({ source: 'vil-layer', type: 'candidates', candidates: extractCandidates(document), revision });

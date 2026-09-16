@@ -81,4 +81,11 @@ describe('Visual Intent Envelope schema conformance (v0.2)', () => {
     expect(schema.$id).toContain('visual-intent-envelope');
     expect(schema['x-version']).toBe('0.2.0');
   });
+
+  it('keeps the published wire name supersedes on the envelope schema', () => {
+    const published = JSON.parse(readFileSync('schema/envelope-v0.1.schema.json', 'utf8')) as {
+      properties?: Record<string, unknown>;
+    };
+    expect(Object.keys(published.properties ?? {})).toContain('supersedes');
+  });
 });

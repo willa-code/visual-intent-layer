@@ -93,7 +93,7 @@ describe('Annotation store', () => {
     store.recordResolutions(annotation.annotationId, [resolution]);
     const stored = store.get(annotation.annotationId)!;
     expect(stored.resolutions[0]!.match).toBe('unresolved');
-    expect(stored.chosenCandidates).toEqual({});
+    expect(stored.resolutions[0]!.selectedNodeId).toBeUndefined();
   });
 
   it('refuses approval while a target is unresolved without candidates and records no verdict', () => {
@@ -116,13 +116,16 @@ describe('Annotation store', () => {
     expect(store.get(annotation.annotationId)?.verification).toBeUndefined();
   });
 
-  it('requires an explicit candidate choice before an ambiguous target can be approved', () => {
+  it('lets a lost target be repaired by re-pointing, with no candidate chosen', () => {
     const store = new AnnotationStore(dataDir());
     const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });
     const resolution = resolveTarget(target(), [candidate('n-a'), candidate('n-b')]);
     store.recordResolutions(annotation.annotationId, [resolution]);
-    expect(() => store.verify(annotation.annotationId, 'approve')).toThrow(/ambiguous/i);
-    store.chooseCandidate(annotation.annotationId, 't-1', 'n-a');
+    expect(() => store.verify(annotation.annotationId, 'approve')).toThrow(/could not be matched/i);
+    store.repoint(annotation.annotationId, [target()]);
+    const repaired = store.get(annotation.annotationId)!;
+    expect(repaired.resolutions).toEqual([]);
+    expect(repaired.history.some((event) => event.type === 'repointed')).toBe(true);
     expect(store.verify(annotation.annotationId, 'approve').state).toBe('verified');
   });
 

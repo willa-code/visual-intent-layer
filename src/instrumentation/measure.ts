@@ -118,7 +118,7 @@ export async function collectInstrumentation(options: { dataDir?: string } = {})
     if (!sent.delivered) {
       throw new Error('the instrumentation queue send did not deliver');
     }
-    const sentBatch = sent.result.batch;
+    const sentBatch = sent.result.pass;
     const candidates = [
       {
         nodeId: 'node-1',
@@ -179,7 +179,7 @@ export async function collectInstrumentation(options: { dataDir?: string } = {})
       })
     );
     const manyBatch = review.sendQueue(manySession.sessionId, { host: 'instrumentation' });
-    const manyBatchIds = manyBatch.delivered ? manyBatch.result.batch.annotationIds : [];
+    const manyBatchIds = manyBatch.delivered ? manyBatch.result.pass.annotationIds : [];
     const afterRapid = await (await fetch(`${service.baseUrl}/api/sessions/${watchSession.sessionId}?cap=${watchSession.capability}`)).json() as { changed: boolean };
     const annotationsIntact =
       manyBatchIds.length === 50 &&

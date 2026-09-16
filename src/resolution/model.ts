@@ -29,16 +29,3 @@ export function resolutionLabelText(label: ResolutionLabel): string {
       return 'Deleted';
   }
 }
-
-export function resolutionLabelCue(label: ResolutionLabel): string {
-  switch (label) {
-    case 'matched':
-      return '✓';
-    case 'recovered':
-      return '≈';
-    case 'ambiguous':
-      return '?';
-    case 'deleted':
-      return '∅';
-  }
-}

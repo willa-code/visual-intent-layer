@@ -192,7 +192,7 @@ async function handleRequest(context: RequestContext): Promise<void> {
     if (!session) {
       return;
     }
-    serveArtifactBefore(response, context.review, session, policies);
+    serveArtifactBefore(response, context.review, session, policies, url.searchParams.get('revision') ?? undefined);
     return;
   }
   const artifactAssetMatch = /^\/artifact\/([^/]+)\/(.+)$/.exec(path);
@@ -269,7 +269,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
       try {
         const annotation = review.annotations.createDraft({
           artifactId: session.artifactId,
-          writtenRevision: session.revision,
+          writtenRevision: session.adoptedRevision ?? session.revision,
           targets: normalizeTargets(targets),
           ...(typeof (body as { note?: unknown }).note === 'string' ? { note: (body as { note: string }).note } : {})
         });
@@ -325,12 +325,12 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
       }
       const result = outcome.result;
       sendJson(response, 200, {
-        envelopeId: result.batch.envelopeId,
-        annotationIds: result.batch.annotationIds,
-        intent: result.batch.intent,
+        envelopeId: result.pass.envelopeId,
+        annotationIds: result.pass.annotationIds,
+        intent: result.pass.intent,
         channel: result.channel,
         holding: result.holding,
-        idempotencyKey: result.batch.idempotencyKey
+        idempotencyKey: result.pass.idempotencyKey
       });
     } catch (error) {
       sendText(response, 409, error instanceof Error ? error.message : 'send failed');
@@ -362,8 +362,8 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
       sendJson(response, 200, {
         original: amended.original,
         successor: amended.successor,
-        envelopeId: amended.delivery.batch.envelopeId,
-        intent: amended.delivery.batch.intent,
+        envelopeId: amended.delivery.pass.envelopeId,
+        intent: amended.delivery.pass.intent,
         channel: amended.delivery.channel,
         holding: amended.delivery.holding
       });
@@ -397,8 +397,27 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     const status = await sessionStatus(session);
     const current = typeof status['currentRevision'] === 'string' ? status['currentRevision'] : session.revision;
     sessions.put({ ...session, adoptedRevision: current });
+    saveAdoptedSnapshot(review, session, current);
+    review.annotations.markPassesReady(session.artifactId, current);
     const reloaded = sessions.get(session.sessionId)!;
     sendJson(response, 200, await sessionStatus(reloaded));
+    return;
+  }
+
+  const closePassMatch = /^\/api\/passes\/([^/]+)\/close$/.exec(path);
+  if (method === 'POST' && closePassMatch) {
+    const passId = decodeURIComponent(closePassMatch[1]!);
+    const pass = review.annotations.getPass(passId);
+    if (!pass) {
+      sendText(response, 404, `Unknown Pass ${passId}`);
+      return;
+    }
+    const session = sessions.findByArtifact(pass.artifactId);
+    if (!session || !authorize(context, session.sessionId, url)) {
+      sendText(response, 401, 'Unauthorized');
+      return;
+    }
+    sendJson(response, 200, { pass: review.annotations.closePass(passId) });
     return;
   }
 
@@ -420,7 +439,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
       sendText(response, 404, `Unknown Annotation ${annotationId}`);
       return;
     }
-    const session = sessions.findByArtifactRevision(annotation.artifactId, annotation.writtenRevision);
+    const session = sessions.findByArtifact(annotation.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
       sendText(response, 401, 'Unauthorized');
       return;
@@ -444,15 +463,15 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     return;
   }
 
-  const candidateMatch = /^\/api\/annotations\/([^/]+)\/candidate$/.exec(path);
-  if (method === 'POST' && candidateMatch) {
-    const annotationId = decodeURIComponent(candidateMatch[1]!);
+  const repointMatch = /^\/api\/annotations\/([^/]+)\/repoint$/.exec(path);
+  if (method === 'POST' && repointMatch) {
+    const annotationId = decodeURIComponent(repointMatch[1]!);
     const annotation = review.annotations.get(annotationId);
     if (!annotation) {
       sendText(response, 404, `Unknown Annotation ${annotationId}`);
       return;
     }
-    const session = sessions.findByArtifactRevision(annotation.artifactId, annotation.writtenRevision);
+    const session = sessions.findByArtifact(annotation.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
       sendText(response, 401, 'Unauthorized');
       return;
@@ -461,17 +480,16 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     if (body === undefined) {
       return;
     }
-    const targetId = (body as { targetId?: unknown }).targetId;
-    const nodeId = (body as { nodeId?: unknown }).nodeId;
-    if (typeof targetId !== 'string' || typeof nodeId !== 'string') {
-      sendText(response, 400, 'Expected { targetId: string, nodeId: string }');
+    const targets = (body as { targets?: unknown }).targets;
+    if (!Array.isArray(targets) || targets.length === 0) {
+      sendText(response, 400, 'Expected { targets: AnnotationTarget[] }');
       return;
     }
     try {
-      const updated = review.annotations.chooseCandidate(annotationId, targetId, nodeId);
+      const updated = review.annotations.repoint(annotationId, normalizeTargets(targets));
       sendJson(response, 200, { annotation: updated });
     } catch (error) {
-      sendText(response, 409, error instanceof Error ? error.message : 'choice refused');
+      sendText(response, 409, error instanceof Error ? error.message : 're-point refused');
     }
     return;
   }
@@ -484,7 +502,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
       sendText(response, 404, `Unknown Annotation ${annotationId}`);
       return;
     }
-    const session = sessions.findByArtifactRevision(annotation.artifactId, annotation.writtenRevision);
+    const session = sessions.findByArtifact(annotation.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
       sendText(response, 401, 'Unauthorized');
       return;
@@ -495,7 +513,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     }
     const verdict = (body as { verdict?: unknown }).verdict;
     if (!isVerdict(verdict)) {
-      sendText(response, 400, 'Invalid verdict: expected approve, reject, another-pass, or obsolete');
+      sendText(response, 400, 'Invalid verdict: expected approve, reject, not-fixed, or obsolete');
       return;
     }
     try {
@@ -519,7 +537,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
       sendText(response, 404, `Unknown Annotation ${annotationId}`);
       return;
     }
-    const session = sessions.findByArtifactRevision(annotation.artifactId, annotation.writtenRevision);
+    const session = sessions.findByArtifact(annotation.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
       sendText(response, 401, 'Unauthorized');
       return;
@@ -536,7 +554,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
       sendText(response, 404, `Unknown Annotation ${annotationId}`);
       return;
     }
-    const session = sessions.findByArtifactRevision(annotation.artifactId, annotation.writtenRevision);
+    const session = sessions.findByArtifact(annotation.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
       sendText(response, 401, 'Unauthorized');
       return;
@@ -577,7 +595,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
       sendText(response, 404, `Unknown Annotation ${annotationId}`);
       return;
     }
-    const session = sessions.findByArtifactRevision(annotation.artifactId, annotation.writtenRevision);
+    const session = sessions.findByArtifact(annotation.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
       sendText(response, 401, 'Unauthorized');
       return;
@@ -615,7 +633,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
       sendText(response, 404, `Unknown Annotation ${annotationId}`);
       return;
     }
-    const session = sessions.findByArtifactRevision(annotation.artifactId, annotation.writtenRevision);
+    const session = sessions.findByArtifact(annotation.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
       sendText(response, 401, 'Unauthorized');
       return;
@@ -683,10 +701,8 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
       return;
     }
     const envelopeId = decodeURIComponent(legacyAckMatch[1]!);
-    const batch = review.annotations.getBatch(envelopeId);
-    const session = batch
-      ? sessions.findByArtifactRevision(batch.envelope.artifact.id, batch.envelope.artifact.revision)
-      : undefined;
+    const batch = review.annotations.getPass(envelopeId);
+    const session = batch ? sessions.findByArtifact(batch.artifactId) : undefined;
     if (!session || !authorize(context, session.sessionId, url)) {
       sendText(response, 401, 'Unauthorized');
       return;
@@ -713,7 +729,18 @@ function annotationSnapshot(review: ReviewService, session: SessionRecord): Reco
     summaries: annotations.map(summarise),
     agent: review.agentPosition(session.sessionId),
     migration: review.annotations.migrationReport(),
-    batches: review.annotations.listBatches()
+    passes: review.annotations.listPassesOfArtifact(session.artifactId).map((pass) => ({
+      passId: pass.passId,
+      envelopeId: pass.envelopeId,
+      state: pass.state,
+      fromRevision: pass.fromRevision,
+      ...(pass.toRevision ? { toRevision: pass.toRevision } : {}),
+      annotationIds: pass.annotationIds,
+      outcome: pass.outcome,
+      intent: pass.intent,
+      openedAt: pass.openedAt,
+      ...(pass.closedAt ? { closedAt: pass.closedAt } : {})
+    }))
   };
 }
 
@@ -850,6 +877,18 @@ function artifactFile(session: SessionRecord): string | undefined {
   return session.source.slice('file://'.length);
 }
 
+function saveAdoptedSnapshot(review: ReviewService, session: SessionRecord, revision: string): void {
+  const absolute = artifactFile(session);
+  if (!absolute || !existsSync(absolute)) {
+    return;
+  }
+  try {
+    review.snapshots.save(session.artifactId, revision, readFileSync(absolute));
+  } catch {
+    return;
+  }
+}
+
 async function sessionStatus(session: SessionRecord): Promise<Record<string, unknown>> {
   const adoptedRevision = session.adoptedRevision ?? session.revision;
   const base = {
@@ -960,10 +999,10 @@ function serveArtifactDocument(
     return readFileSync(cssPath, 'utf8');
   });
   policies.set(session.sessionId, analysis.remote);
-  if (session.kind === 'saved-html') {
-    review.snapshots.save(session.artifactId, session.revision, bytes);
-  }
   const currentRevision = computeRevision(bytes, []);
+  if (session.kind === 'saved-html') {
+    review.snapshots.save(session.artifactId, currentRevision, bytes);
+  }
   const html = injectArtifactLayerScript(analysis.html, session.sessionId, {
     'data-revision': currentRevision,
     'data-mode': 'after'
@@ -980,9 +1019,11 @@ function serveArtifactBefore(
   response: ServerResponse,
   review: ReviewService,
   session: SessionRecord,
-  policies: Map<string, RemoteOrigins>
+  policies: Map<string, RemoteOrigins>,
+  requestedRevision?: string
 ): void {
-  const snapshot = review.snapshots.read(session.artifactId, session.revision);
+  const revision = requestedRevision ?? session.revision;
+  const snapshot = review.snapshots.read(session.artifactId, revision);
   if (!snapshot) {
     serveArtifactDocument(response, session, policies, review);
     return;
@@ -990,7 +1031,7 @@ function serveArtifactBefore(
   const base = `/artifact/${session.sessionId}`;
   const analysis = rewriteHtml(snapshot.toString('utf8'), base);
   const html = injectArtifactLayerScript(analysis.html, session.sessionId, {
-    'data-revision': session.revision,
+    'data-revision': revision,
     'data-mode': 'before'
   });
   response.writeHead(200, {
@@ -1224,11 +1265,11 @@ function sendJson(response: ServerResponse, status: number, value: unknown): voi
   response.end(JSON.stringify(value, null, 2));
 }
 
-function isVerdict(value: unknown): value is 'approve' | 'reject' | 'another-pass' | 'obsolete' {
+function isVerdict(value: unknown): value is 'approve' | 'reject' | 'not-fixed' | 'obsolete' {
   return (
     value === 'approve' ||
     value === 'reject' ||
-    value === 'another-pass' ||
+    value === 'not-fixed' ||
     value === 'obsolete'
   );
 }

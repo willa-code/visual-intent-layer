@@ -11,6 +11,7 @@ import {
   type MigrationReport
 } from './migrate.js';
 import { buildBatchEnvelope, batchEnvelopeId, batchIdempotencyKey } from './envelope.js';
+import type { DeliveryIntent } from '../host/capabilities.js';
 import {
   isInQueue,
   isVerification,
@@ -24,20 +25,34 @@ import {
   type VerificationVerdict
 } from './model.js';
 
-export type DeliveryBatch = {
+export type PassState = 'open' | 'in-flight' | 'ready' | 'closed';
+
+export type PassOutcome = { answered: number; untouched: number; gone: number };
+
+export type Pass = {
+  passId: string;
+  artifactId: string;
+  fromRevision: string;
+  toRevision?: string;
+  annotationIds: string[];
+  state: PassState;
+  outcome: PassOutcome;
+  openedAt: string;
+  closedAt?: string;
   envelopeId: string;
   idempotencyKey: string;
   host: string;
-  intent: 'draft' | 'steering' | 'next-pass' | 'review-interruption';
-  annotationIds: string[];
+  intent: Exclude<DeliveryIntent, 'draft'>;
   envelope: Envelope;
   at: string;
 };
 
+export type { DeliveryIntent };
+
 type PersistedState = {
   version: number;
   annotations: Record<string, Annotation>;
-  batches: Record<string, DeliveryBatch>;
+  passes: Record<string, Pass>;
   byIdempotencyKey: Record<string, string>;
   migration: MigrationReport;
 };
@@ -99,7 +114,6 @@ export class AnnotationStore {
       references: [],
       attachments: [],
       resolutions: [],
-      chosenCandidates: {},
       history: [{ type: 'created', at }],
       createdAt: at,
       updatedAt: at
@@ -153,13 +167,13 @@ export class AnnotationStore {
         relationships: input.relationships ?? original.relationships
       });
       this.mutate(annotationId, (annotation) => {
-        annotation.state = 'superseded';
-        annotation.supersededBy = successor.annotationId;
-        annotation.history.push({ type: 'superseded', at: now(), detail: successor.annotationId });
+        annotation.state = 'replaced';
+        annotation.replacedBy = successor.annotationId;
+        annotation.history.push({ type: 'replaced', at: now(), detail: successor.annotationId });
         return annotation;
       });
       return this.mutate(successor.annotationId, (annotation) => {
-        annotation.supersedes = annotationId;
+        annotation.replaces = annotationId;
         annotation.history.push({ type: 'amended', at: now(), detail: annotationId });
         return annotation;
       });
@@ -167,25 +181,6 @@ export class AnnotationStore {
     throw new Error(
       `${annotationId} is ${original.state}, so it cannot be amended. Amend is offered only on a delivered Annotation that is not yet verified.`
     );
-  }
-
-  addRelation(annotationId: string, relation: AnnotationRelation): Annotation {
-    return this.mutate(annotationId, (annotation) => {
-      annotation.relationships = [
-        ...annotation.relationships.filter((entry) => entry.relationshipId !== relation.relationshipId),
-        relation
-      ];
-      annotation.history.push({ type: 'relation-added', at: now(), detail: relation.operator });
-      return annotation;
-    });
-  }
-
-  removeRelation(annotationId: string, relationshipId: string): Annotation {
-    return this.mutate(annotationId, (annotation) => {
-      annotation.relationships = annotation.relationships.filter((entry) => entry.relationshipId !== relationshipId);
-      annotation.history.push({ type: 'relation-removed', at: now(), detail: relationshipId });
-      return annotation;
-    });
   }
 
   addAttachment(annotationId: string, attachment: AnnotationAttachment): Annotation {
@@ -253,11 +248,8 @@ export class AnnotationStore {
 
   markDelivered(
     annotationIds: string[],
-    input: { host: string; intent: DeliveryBatch['intent']; artifact: DeliveryBatch['envelope']['artifact'] }
-  ): DeliveryBatch {
-    if (input.intent === 'draft') {
-      throw new Error('A draft intent stays on this machine: it creates no batch and moves no Annotation out of draft or queued.');
-    }
+    input: { host: string; intent: Exclude<DeliveryIntent, 'draft'>; artifact: Pass['envelope']['artifact'] }
+  ): Pass {
     const annotations = annotationIds.map((id) => {
       const annotation = this.state.annotations[id];
       if (!annotation) {
@@ -267,8 +259,8 @@ export class AnnotationStore {
     });
     const key = batchIdempotencyKey(annotations);
     const existingId = this.state.byIdempotencyKey[key];
-    if (existingId && this.state.batches[existingId]) {
-      return this.state.batches[existingId]!;
+    if (existingId && this.state.passes[existingId]) {
+      return this.state.passes[existingId]!;
     }
     const envelope = buildBatchEnvelope({
       artifact: input.artifact,
@@ -276,12 +268,18 @@ export class AnnotationStore {
       intent: input.intent
     });
     const at = now();
-    const batch: DeliveryBatch = {
+    const pass: Pass = {
+      passId: envelope.envelopeId,
+      artifactId: input.artifact.id,
+      fromRevision: input.artifact.revision,
+      annotationIds: annotations.map((annotation) => annotation.annotationId),
+      state: 'in-flight',
+      outcome: { answered: 0, untouched: 0, gone: 0 },
+      openedAt: at,
       envelopeId: envelope.envelopeId,
       idempotencyKey: key,
       host: input.host,
       intent: input.intent,
-      annotationIds: annotations.map((annotation) => annotation.annotationId),
       envelope,
       at
     };
@@ -289,14 +287,15 @@ export class AnnotationStore {
       if (annotation.state === 'draft' || annotation.state === 'queued') {
         annotation.state = 'delivered';
       }
+      annotation.passId = pass.passId;
       annotation.sentAt = at;
       annotation.history.push({ type: 'delivered', at, detail: input.host });
       annotation.updatedAt = at;
     }
-    this.state.batches[batch.envelopeId] = batch;
-    this.state.byIdempotencyKey[key] = batch.envelopeId;
+    this.state.passes[pass.passId] = pass;
+    this.state.byIdempotencyKey[key] = pass.passId;
     this.persist();
-    return batch;
+    return pass;
   }
 
   recordResolutions(annotationId: string, resolutions: TargetResolutionRecord[], revision?: string): Annotation {
@@ -309,18 +308,21 @@ export class AnnotationStore {
         annotation.state = 'resolved';
       }
       annotation.history.push({ type: 'resolved', at: now() });
+      if (annotation.passId) {
+        this.refreshPassOutcome(annotation.passId, revision);
+      }
       return annotation;
     });
   }
 
-  chooseCandidate(annotationId: string, targetId: string, nodeId: string): Annotation {
+  repoint(annotationId: string, targets: AnnotationTarget[]): Annotation {
+    if (targets.length === 0) {
+      throw new Error('An Annotation needs at least one target');
+    }
     return this.mutate(annotationId, (annotation) => {
-      const resolution = annotation.resolutions.find((entry) => entry.targetId === targetId);
-      if (!resolution || !resolution.candidates.some((entry) => entry.candidate.nodeId === nodeId)) {
-        throw new Error(`Unknown candidate ${nodeId} for target ${targetId}`);
-      }
-      annotation.chosenCandidates[targetId] = nodeId;
-      annotation.history.push({ type: 'candidate-chosen', at: now(), detail: `${targetId}=${nodeId}` });
+      annotation.targets = targets;
+      annotation.resolutions = [];
+      annotation.history.push({ type: 'repointed', at: now() });
       return annotation;
     });
   }
@@ -365,10 +367,13 @@ export class AnnotationStore {
     return touched;
   }
 
-  importEnvelope(envelope: Envelope, host: string): DeliveryBatch {
+  importEnvelope(envelope: Envelope, host: string): Pass {
     const existingId = this.state.byIdempotencyKey[envelope.delivery.idempotencyKey];
-    if (existingId && this.state.batches[existingId]) {
-      return this.state.batches[existingId]!;
+    if (existingId && this.state.passes[existingId]) {
+      return this.state.passes[existingId]!;
+    }
+    if (envelope.delivery.intent === 'draft') {
+      throw new Error('A draft intent stays on this machine: it creates no Pass and moves no Annotation out of draft or queued.');
     }
     const at = now();
     const ids: string[] = [];
@@ -387,7 +392,7 @@ export class AnnotationStore {
         references: incoming.references ?? [],
         attachments: incoming.attachments ?? [],
         resolutions: [],
-        chosenCandidates: {},
+        passId: envelope.envelopeId,
         history: [
           { type: 'created', at },
           { type: 'delivered', at, detail: host }
@@ -399,42 +404,103 @@ export class AnnotationStore {
       this.state.annotations[annotation.annotationId] = annotation;
       ids.push(annotation.annotationId);
     }
-    const batch: DeliveryBatch = {
+    const pass: Pass = {
+      passId: envelope.envelopeId,
+      artifactId: envelope.artifact.id,
+      fromRevision: envelope.artifact.revision,
+      annotationIds: ids,
+      state: 'in-flight',
+      outcome: { answered: 0, untouched: 0, gone: 0 },
+      openedAt: at,
       envelopeId: envelope.envelopeId,
       idempotencyKey: envelope.delivery.idempotencyKey,
       host,
       intent: envelope.delivery.intent,
-      annotationIds: ids,
       envelope,
       at
     };
-    this.state.batches[envelope.envelopeId] = batch;
-    this.state.byIdempotencyKey[envelope.delivery.idempotencyKey] = envelope.envelopeId;
+    this.state.passes[pass.passId] = pass;
+    this.state.byIdempotencyKey[envelope.delivery.idempotencyKey] = pass.passId;
     this.persist();
-    return batch;
+    return pass;
   }
 
-  getBatch(envelopeId: string): DeliveryBatch | undefined {
-    return this.state.batches[envelopeId];
+  getPass(passId: string): Pass | undefined {
+    return this.state.passes[passId];
   }
 
-  findBatchByIdempotencyKey(key: string): DeliveryBatch | undefined {
+  findPassByIdempotencyKey(key: string): Pass | undefined {
     const id = this.state.byIdempotencyKey[key];
-    return id ? this.state.batches[id] : undefined;
+    return id ? this.state.passes[id] : undefined;
   }
 
-  listBatches(): DeliveryBatch[] {
-    return Object.values(this.state.batches).sort((a, b) => (a.at < b.at ? -1 : 1));
+  listPasses(): Pass[] {
+    return Object.values(this.state.passes).sort((a, b) => (a.openedAt < b.openedAt ? -1 : a.openedAt > b.openedAt ? 1 : 0));
   }
 
-  annotationsOfBatch(envelopeId: string): Annotation[] {
-    const batch = this.state.batches[envelopeId];
-    if (!batch) {
+  listPassesOfArtifact(artifactId: string): Pass[] {
+    return this.listPasses().filter((pass) => pass.artifactId === artifactId);
+  }
+
+  annotationsOfPass(passId: string): Annotation[] {
+    const pass = this.state.passes[passId];
+    if (!pass) {
       return [];
     }
-    return batch.annotationIds
+    return pass.annotationIds
       .map((id) => this.state.annotations[id])
       .filter((annotation): annotation is Annotation => annotation !== undefined);
+  }
+
+  closePass(passId: string): Pass {
+    const pass = this.state.passes[passId];
+    if (!pass) {
+      throw new Error(`Unknown Pass ${passId}`);
+    }
+    pass.state = 'closed';
+    pass.closedAt = now();
+    this.persist();
+    return pass;
+  }
+
+  markPassesReady(artifactId: string, toRevision: string): Pass[] {
+    const touched: Pass[] = [];
+    for (const pass of this.listPassesOfArtifact(artifactId)) {
+      if (pass.state === 'open' || pass.state === 'in-flight') {
+        pass.state = 'ready';
+        pass.toRevision = toRevision;
+        touched.push(pass);
+      }
+    }
+    if (touched.length > 0) {
+      this.persist();
+    }
+    return touched;
+  }
+
+  private refreshPassOutcome(passId: string, revision?: string): void {
+    const pass = this.state.passes[passId];
+    if (!pass) {
+      return;
+    }
+    const outcome: PassOutcome = { answered: 0, untouched: 0, gone: 0 };
+    for (const annotation of this.annotationsOfPass(passId)) {
+      for (const resolution of annotation.resolutions) {
+        if (resolution.match === 'exact' || resolution.match === 'recovered') {
+          if (keptOriginalEvidence(annotation, resolution)) {
+            outcome.untouched += 1;
+          } else {
+            outcome.answered += 1;
+          }
+        } else {
+          outcome.gone += 1;
+        }
+      }
+    }
+    pass.outcome = outcome;
+    if (revision) {
+      pass.toRevision = revision;
+    }
   }
 
   private nextOrder(artifactId: string): number {
@@ -456,13 +522,13 @@ export class AnnotationStore {
 
   private load(): PersistedState {
     if (existsSync(this.file)) {
-      const parsed = readJsonFile<PersistedState | undefined>(this.file, undefined);
-      if (!parsed || parsed.version !== STORE_VERSION || typeof parsed.annotations !== 'object' || parsed.annotations === null) {
+      const parsed = readJsonFile<Record<string, unknown> | undefined>(this.file, undefined);
+      if (!parsed || parsed['version'] !== STORE_VERSION || typeof parsed['annotations'] !== 'object' || parsed['annotations'] === null) {
         throw new Error(
           `Annotation store at ${this.file} has an incompatible layout; refusing to start rather than lose intent. The original bytes are preserved.`
         );
       }
-      return parsed;
+      return normalizePersistedState(parsed);
     }
     return this.migrateFromLegacy();
   }
@@ -471,7 +537,7 @@ export class AnnotationStore {
     const fresh: PersistedState = {
       version: STORE_VERSION,
       annotations: {},
-      batches: {},
+      passes: {},
       byIdempotencyKey: {},
       migration: emptyMigrationReport()
     };
@@ -513,11 +579,86 @@ export function verdictState(verdict: VerificationVerdict): AnnotationState {
       return 'verified';
     case 'reject':
       return 'rejected';
-    case 'another-pass':
-      return 'another-pass';
+    case 'not-fixed':
+      return 'not-fixed';
     case 'obsolete':
       return 'obsolete';
   }
+}
+
+export function normalizeAnnotationState(value: unknown): AnnotationState {
+  if (value === 'superseded') {
+    return 'replaced';
+  }
+  if (value === 'another-pass') {
+    return 'not-fixed';
+  }
+  return typeof value === 'string' ? (value as AnnotationState) : 'draft';
+}
+
+function normalizeAnnotation(raw: Record<string, unknown>): Annotation {
+  const annotation = raw as unknown as Annotation & {
+    supersedes?: string;
+    supersededBy?: string;
+    chosenCandidates?: Record<string, string>;
+  };
+  const { supersedes, supersededBy, chosenCandidates, ...rest } = annotation;
+  void chosenCandidates;
+  return {
+    ...(rest as Annotation),
+    state: normalizeAnnotationState(annotation.state),
+    ...(supersedes ? { replaces: supersedes } : {}),
+    ...(supersededBy ? { replacedBy: supersededBy } : {}),
+    ...(annotation.verification
+      ? { verification: { ...annotation.verification, verdict: normalizeVerdictValue(annotation.verification.verdict) } }
+      : {})
+  };
+}
+
+function normalizeVerdictValue(value: unknown): VerificationVerdict {
+  return value === 'another-pass' ? 'not-fixed' : (value as VerificationVerdict);
+}
+
+function normalizePersistedState(raw: Record<string, unknown>): PersistedState {
+  const annotations: Record<string, Annotation> = {};
+  for (const [id, annotation] of Object.entries((raw['annotations'] as Record<string, unknown>) ?? {})) {
+    annotations[id] = normalizeAnnotation(annotation as Record<string, unknown>);
+  }
+  const storedPasses = (raw['passes'] ?? raw['batches'] ?? {}) as Record<string, Pass>;
+  const passes: Record<string, Pass> = {};
+  for (const [id, pass] of Object.entries(storedPasses)) {
+    passes[id] = {
+      ...pass,
+      passId: pass.passId ?? pass.envelopeId ?? id,
+      artifactId: pass.artifactId ?? pass.envelope?.artifact.id ?? '',
+      fromRevision: pass.fromRevision ?? pass.envelope?.artifact.revision ?? '',
+      annotationIds: pass.annotationIds ?? [],
+      state: pass.state ?? 'in-flight',
+      outcome: pass.outcome ?? { answered: 0, untouched: 0, gone: 0 },
+      openedAt: pass.openedAt ?? pass.at,
+      at: pass.at ?? pass.openedAt
+    };
+  }
+  return {
+    version: STORE_VERSION,
+    annotations,
+    passes,
+    byIdempotencyKey: (raw['byIdempotencyKey'] as Record<string, string>) ?? {},
+    migration: (raw['migration'] as MigrationReport) ?? emptyMigrationReport()
+  };
+}
+
+function keptOriginalEvidence(annotation: Annotation, resolution: TargetResolutionRecord): boolean {
+  const target = annotation.targets.find((entry) => entry.targetId === resolution.targetId);
+  const selected = resolution.candidates.find((entry) => entry.candidate.nodeId === resolution.selectedNodeId)?.candidate;
+  if (!target || !selected) {
+    return false;
+  }
+  const grounding = target.renderedGrounding;
+  const nameMatches = !grounding.accessibleName || grounding.accessibleName === selected.accessibleName;
+  const roleMatches = !grounding.semanticRole || grounding.semanticRole === selected.semanticRole;
+  const textMatches = !grounding.textEvidence?.exactText || grounding.textEvidence.exactText === selected.text;
+  return nameMatches && roleMatches && textMatches;
 }
 
 function now(): string {

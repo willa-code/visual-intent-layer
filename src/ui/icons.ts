@@ -1,6 +1,8 @@
 export type IconName =
   | 'point'
+  | 'point-filled'
   | 'box'
+  | 'box-filled'
   | 'operate'
   | 'more'
   | 'stop'
@@ -13,7 +15,7 @@ export type IconName =
   | 'close'
   | 'check'
   | 'reject'
-  | 'another-pass'
+  | 'redo'
   | 'obsolete'
   | 'recovered'
   | 'ambiguous'
@@ -29,7 +31,9 @@ export type IconName =
 const PATHS: Record<IconName, string> = {
   point:
     '<path d="M4 3h3M11 3h3M18 3h2v2M21 8v3M21 14v3M21 20v1h-2M16 21h-3M10 21H7M4 21h-1v-2M3 16v-3M3 10V7M3 4v-1h1"/><path d="M12 11.5 20 15l-3.4 1.3L15.3 20z"/>',
+  'point-filled': '<path d="M12 11.5 20 15l-3.4 1.3L15.3 20z" fill="currentColor" stroke="none"/>',
   box: '<rect x="4" y="5" width="16" height="14" rx="2" stroke-dasharray="3 3"/>',
+  'box-filled': '<rect x="4" y="5" width="16" height="14" rx="2" fill="currentColor" stroke="none"/>',
   operate: '<path d="M6 3.5 17 12l-5 .9L9.6 18z"/>',
   more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
   stop: '<rect x="7" y="7" width="10" height="10" rx="1.5"/>',
@@ -42,7 +46,7 @@ const PATHS: Record<IconName, string> = {
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
   check: '<path d="M5 12.5 10 17.5 19 7"/>',
   reject: '<circle cx="12" cy="12" r="8"/><path d="M8.5 8.5 15.5 15.5M15.5 8.5 8.5 15.5"/>',
-  'another-pass': '<path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/>',
+  redo: '<path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/>',
   obsolete: '<rect x="4" y="5" width="16" height="4" rx="1"/><path d="M6 9v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V9M10 13h4"/>',
   recovered: '<path d="M12 5a7 7 0 1 1-6.5 4.5"/><path d="M5 5v4h4"/>',
   ambiguous: '<circle cx="12" cy="12" r="8"/><path d="M9.8 9.5a2.3 2.3 0 1 1 3 2.2c-.8.3-.8 1-.8 1.6"/><circle cx="12" cy="16.4" r=".6"/>',

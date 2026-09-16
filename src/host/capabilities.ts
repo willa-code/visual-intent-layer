@@ -3,7 +3,7 @@ export type HostCapabilities = {
   subscriptions: boolean;
 };
 
-export type DeliveryIntent = 'draft' | 'steering' | 'next-pass' | 'review-interruption';
+export type DeliveryIntent = 'steering' | 'next-pass' | 'review-interruption';
 
 const BASELINE: HostCapabilities = { embeddedUI: false, subscriptions: false };
 

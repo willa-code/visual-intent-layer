@@ -49,6 +49,13 @@ export class SessionRecords {
     );
   }
 
+  findByArtifact(artifactId: string): SessionRecord | undefined {
+    this.records = this.load();
+    return Object.values(this.records)
+      .filter((record) => record.artifactId === artifactId)
+      .sort((a, b) => (a.sessionId < b.sessionId ? 1 : -1))[0];
+  }
+
   authorized(sessionId: string, capability: string | null): SessionRecord | undefined {
     const record = this.get(sessionId);
     if (!record || !capability) {

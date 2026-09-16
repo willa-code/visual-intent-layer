@@ -51,6 +51,13 @@ it. The artifact is what is being judged; letting it theme the surface that
 judges it makes review non-reproducible, invites contrast failures we do not
 control, and destroys the boundary between the tool and the work.
 
+**The rail is warm; the artifact is white.** The chrome's material is the warm
+`canvas` primitive, and the raised surfaces inside it are `surface`. The artifact
+is served on the artifact's own white. A white rail against a white artifact is
+one plane, and a surface that is one plane with the work has to be explained
+rather than seen; the product's own warm identity then survives only in the dark
+theme, which is where nobody checks.
+
 **Deliberate tightening relative to the reference palette.** The warm palette
 this direction is drawn from was authored for a spacious consumer application.
 Three changes make it a tool:
@@ -119,6 +126,11 @@ its own; a token pair is not licensed for a use it was not checked against.
 | `closed` | `#F0EEEC` / `#57535E` | `#252329` / `#A9A5B4` |
 | `destructive` | `#FFEDE6` / `#7E3A28` | `#3A231C` / `#F0B49F` |
 
+`canvas` and `surface` are roles as well as primitives, and no component may
+leave one of them without a consumer. The rail's material is `canvas`; a raised
+content surface inside the rail is `surface`; the stage behind the artifact is
+`surface.sunken`. The rail is never `surface`.
+
 ### Type
 
 | Token | Family | Size / leading | Use |
@@ -156,12 +168,14 @@ a shape, a border, or a position.
 | Target the artifact owns | hovered, selected, focused | `accent` | Mark with a distinct border weight; focus uses a ring separate from selection |
 | Target the Builder-Reviewer drew | drawing, drawn, focused | `attention` while drawing, `accent` once drawn | A dashed, static boundary. A drawn target is never marked with the solid outline that means the artifact owns it |
 | Mode | operating (unarmed), point, box | `accent` on the armed tile, and no accent while operating | The lit tile, the cursor over the artifact, and the pre-commit hover outline. Operating is the unarmed state and is never a tile. Never colour alone |
-| Annotation | draft, queued, delivered, acknowledged, resolved, verified, rejected, another-pass, superseded, obsolete | `progress` while in flight, `success` verified, `closed` rejected/another-pass/superseded/obsolete | Label text per state; delivery and implementation are never shown as one state |
-| Resolution | matched, recovered, ambiguous, deleted | `success`, `progress`, `attention`, `closed` | Glyph plus label. Ambiguous shows its candidates and never resolves itself; deleted states that approval is blocked |
+| Pass | open, in flight, ready, closed | `progress` open and in flight, `attention` ready, `closed` closed | One status line naming whose turn it is. A new revision moves a Pass to ready and never closes it; only the Builder-Reviewer closes a Pass |
+| Pass outcome | answered, untouched, gone | `success`, `attention`, `closed` | Anchor-level only. Never states that an agent fixed anything, because nothing reports it |
+| Annotation | draft, queued, delivered, acknowledged, resolved, verified, rejected, not-fixed, replaced, obsolete | `progress` while in flight, `success` verified, `closed` rejected/not-fixed/replaced/obsolete | Label text per state; delivery and implementation are never shown as one state |
+| Resolution | matched, recovered, ambiguous, deleted | `success`, `progress`, `attention`, `closed` | Glyph plus label. Ambiguous marks its candidates on the artifact and never resolves itself; deleted states that approval is blocked |
 | Revision | current, advanced | `closed`, `attention` | Annotation-level, never a target label. Phrased as "written before this revision", not as an error |
 | Provenance | source span, inferred, unavailable | `progress`, `closed`, `attention` | Always labelled. Never uses the word "exact", which belongs to resolution alone |
 | Agent position | awaiting you, working, acknowledged, stepped away | `progress`, `success`, `closed` | A sentence, not a dot, together with when the agent last checked. "Stepped away" must never read as "working"; a convention the agent is not honouring must be visible rather than assumed |
-| Attention | one or more items needing a decision | `attention` | Count badge on the drawer trigger, hidden at zero |
+| Attention | one or more Annotations needing a decision | `attention` | Count badge on the drawer trigger, hidden at zero. Never summed with Annotations written before the current revision, and never summed with a non-empty queue: one badge, one claim |
 
 ## 5. Surface composition
 
@@ -169,28 +183,33 @@ One rail, and one island over the artifact. No chrome spans the window.
 
 ```
 ┌──────────────────────────────────────────────┬────────────────────────────┐
-│                                              │  rail (380, full height)   │
+│ ┌──────────────────────────┐                 │  rail (380, full height)   │
+│ │ before/after (top edge)  │                 │                            │
+│ └──────────────────────────┘                 │  subject, whose turn it is │
 │  stage: artifact frame                       │                            │
-│  + artifact-document overlay                 │  subject, agent position,  │
-│    (hover, target marks, focus ring,         │  attention                 │
-│     drawn-target boundary,                   │                            │
-│     before/after)                            │  one list: unsent, sent    │
+│  + artifact-document overlay                 │  one ledger of Passes      │
+│    (hover, target marks, focus ring,         │                            │
+│     drawn-target boundary,                   │  verdicts on each row      │
+│     candidate marks, pass-outcome marks)     │                            │
 │                                              │                            │
-│         ┌─────────────────┐                  │  verdicts on each row      │
+│         ┌─────────────────┐                  │                            │
 │         │  mode island    │                  │                            │
-│         └─────────────────┘                  │  before/after on the stage │
-│                                              │  while something is due    │
+│         └─────────────────┘                  │                            │
 └──────────────────────────────────────────────┴────────────────────────────┘
         anchored annotation card sits over the stage, near its target
+        notice lane at the rail's top edge, never over the stage or island
         drawer (380) slides over the rail when the attention badge is used
 ```
 
-**The rail is the only chrome region.** It carries the artifact's identity
-because identity is what the rail's own content is qualified by: an Annotation
-marked "written before this revision" is only meaningful beside the revision on
-screen. Identity, agent position and the attention trigger are pinned at its
-head; the list scrolls beneath them. The Stop action sits beside the agent
-position, because it acts on the agent rather than on an Annotation.
+**The rail is the only chrome region, and it answers one question.** Its head
+carries the artifact's identity, then one status line of at most eight words
+saying whose turn it is — `Your turn · 3 notes to send`, `Agent's turn · Pass 2
+in flight`, `Your turn · Pass 2 ready` — then the attention trigger and the
+overflow. Identity is there because the rail's own content is qualified by it:
+an Annotation marked "written before this revision" is only meaningful beside
+the revision on screen. The Stop action sits beside the status line, because it
+acts on the agent rather than on an Annotation. When the agent last checked is
+one disclosure away, never a second paragraph.
 
 **The mode island is the only chrome over the artifact.** It holds two tiles —
 point and box — and sits at the stage's lower edge, nearest the pointer it
@@ -199,18 +218,34 @@ tile lit is the resting state, and arming an armed tile again returns to it. The
 island is never hidden and never covers the target of the current selection; the
 anchored card is positioned so the two cannot overlap.
 
-**One state, one list.** The rail holds every Annotation — unsent and sent — in
-the order the Builder-Reviewer set. The state pill carries the difference, so
-nothing leaves the list when it is sent and nothing has to be found again in a
-second state. Verdict controls appear on an Annotation's own row once it has
-been delivered, and a resolution that is ambiguous shows its candidates there.
-The stage carries the before/after revision toggle only while the selected row
-has a result from a different revision to compare.
+**One ledger, grouped by Pass.** The rail holds every Annotation — unsent and
+sent — in the order the Builder-Reviewer set, grouped by the Pass it belongs to.
+The state pill carries the difference, so nothing leaves the ledger when it is
+sent and nothing has to be found again in a second state. Verdict controls
+appear on an Annotation's own row once it has been delivered.
 
-**Reloading asks.** When the artifact's bytes change under review, the stage
-says so and offers one action. The surface never swaps the artifact out from
-under an open card, because which revision an Annotation was written against is
-part of what the Annotation means.
+**Uncertainty is marked on the artifact, never listed.** Where Target Resolution
+cannot match a target, its candidates are marked on the artifact itself and the
+row says so. The Builder-Reviewer points at the right target to re-point the
+Annotation, or declares it missing. The surface never presents a ranked list of
+candidates with a figure beside each: labels drawn from the same evidence that
+failed to discriminate cannot be read, and a number that cannot be checked is
+asserted rather than shown.
+
+**A notice never covers a tool.** A notice appears at the rail's top edge, one at
+a time, and never over the stage, the mode island or an open card. It carries
+only what a row cannot already show; a notice that repeats a row's own state
+does not exist.
+
+**Reloading asks, and a new revision makes a Pass ready.** When the artifact's
+bytes change under review the surface offers one action, and it never swaps the
+artifact out from under an open card or an open draft, because which revision an
+Annotation was written against is part of what the Annotation means. A new
+revision moves the open Pass to ready; it never closes one, and it never claims
+that anything was addressed. The control that switches the artifact between two
+revisions sits in the stage's own top-edge chrome, and the row states which
+revision its result came from, because that fact belongs to the row and the
+control belongs to the artifact.
 
 Anything that is not one of these core jobs lives in the overflow menu or the
 drawer. The overflow menu holds end session, reload artifact, copy artifact
@@ -224,45 +259,49 @@ gallery in §9 renders them.
 
 | Component | Variants and states |
 | --- | --- |
-| `RailHead` | pinned; artifact name and kind; revision chip `current` / `advanced`; agent position with the `StopAction` beside it; attention trigger; overflow trigger |
+| `RailHead` | pinned; artifact name and kind; revision chip `current` / `advanced`; status line with the `StopAction` beside it; attention trigger; overflow trigger |
+| `StatusLine` | awaiting you, working, acknowledged, stepped away; each also states whether a Pass is open, in flight or ready, and the one count that needs a decision; at most eight words. When the agent last checked is one disclosure away, never a second sentence |
 | `ModeIsland` | resting, with neither tile armed; point armed; box armed; per tile below |
 | `ModeTile` | default, hover, armed, focus, disabled; icon only, with an accessible name and a tooltip sentence |
 | `RevisionChip` | current, advanced; mono identity |
-| `AgentPosition` | awaiting, working, acknowledged, stepped away; each with its sentence and when the agent last checked |
 | `AttentionTrigger` | hidden at zero, badge with count |
 | `OverflowMenu` | closed, open, item focus |
 | `ArtifactFrame` | loading, ready, unreachable, policy-blocked, changed |
-| `OverlayMark` | hover, selected, focused, drawn-target boundary, ambiguous-candidate highlight |
+| `OverlayMark` | hover, selected, focused, drawn-target boundary, candidate mark, pass outcome (answered, untouched, gone) |
 | `DrawnTargetBoundary` | drawing; drawn; below the minimum-size threshold it produces nothing |
-| `RelationGuide` / `RelationHandle` / `RelationSentence` | not built in this iteration: Relational Intent is deferred, see §11 |
-| `BeforeAfterToggle` | before, after, off; present only while the selected row has a result from a different revision to compare |
+| `BeforeAfterToggle` | before, after, off; at the stage's top edge, never over the stage's content footprint; present only while the selected row has a result from a different revision to compare; the selected row states which revision it compares |
 | `AnchoredCard` | positioned left/right/flipped, clamped to viewport, dismissed |
-| `AnnotationCard` | drafting; with attachment. Its target line is a kind icon plus what was pointed at, never the bare kind word. `Queue` is the only worded action, with attach and delete as icons. No instruction copy: the placeholder carries the question |
+| `AnnotationCard` | drafting; with attachment. Its target line is a kind icon plus what was pointed at, never the bare kind word, and an Area carries the drawn-boundary glyph. `Queue` is the only worded action, with attach and delete as icons. No instruction copy anywhere in the card: the placeholder carries the question and the attach control explains itself through its accessible name |
 | `AttachmentChip` | uploading, ready, failed, removed |
-| `AnnotationList` | empty; unsent; sent; superseded with its successor linked. One list, where the state pill carries the difference so sending never moves an Annotation out of view; actionable Annotations first, and closed ones behind one toggle rather than deleted |
-| `AnnotationPill` | draft, queued, delivered, acknowledged, resolved, verified, rejected, another-pass, superseded, obsolete |
+| `PassLedger` | empty; one Pass open; several Passes. Rows grouped by Pass, where the state pill carries the difference so sending never moves an Annotation out of view; actionable Annotations first, and closed ones behind one toggle rather than deleted; a Pass header states its state and its outcome counts |
+| `AnnotationPill` | draft, queued, delivered, acknowledged, resolved, verified, rejected, not-fixed, replaced, obsolete |
 | `Composer` | empty, typing, over threshold, disabled |
 | `SendAction` | one verb, with no intent selector to choose from; disabled with the reason stated; the agent's position and whether it is holding the call are stated beside it |
-| `AmendAction` | offered on a sent Annotation that is not yet verified: supersedes it, links the successor, and delivers the amendment with the steering intent |
+| `ReplaceAction` | offered on a delivered Annotation that is not yet verified: Replaces it, links the Replacement, and delivers it with the steering intent |
 | `StopAction` | offered while the agent is working or has acknowledged an Annotation, and absent otherwise; states which delivery channel applies and when the agent last checked |
 | `ThemeControl` | auto, light, dark; the choice is remembered |
-| `AnnotationRow` | matched, recovered, ambiguous, deleted, advanced |
-| `CandidateChooser` | none, several, one chosen |
-| `VerdictControls` | enabled, blocked with reason, recorded |
+| `AnnotationRow` | matched, recovered, ambiguous, deleted, advanced; states which revision its result came from |
+| `CandidateMark` | none, several, one chosen; drawn on the artifact, never presented as a ranked list; carries no evidence figure |
+| `RepointAction` | offered on an Annotation whose target could not be matched: the next selection re-points that Annotation rather than composing a new one |
+| `VerdictControls` | enabled, blocked with reason, recorded; `Approve` and `Reject` are visible, and `Not Fixed` and obsolete sit behind one overflow on that row |
 | `Drawer` | open, closed, scrollable body |
 | `DisclosureList` | populated, empty |
 | `Button` | primary, secondary, ghost, destructive; hover, active, focus, disabled, busy |
 | `IconButton` | hover, active, focus, disabled; requires a text alternative |
-| `ToggleGroup`, `Pill`, `Badge`, `StatusDot`, `Tooltip`, `Toast`, `Textarea`, `Listbox`, `ScrollArea`, `Dialog` | default plus the states they can reach |
+| `Coachmark` | one at a time, two lines at most, anchored to the control it explains; triggered by the first real use of that control and never at launch; dismissed by one worded dismissal; remembered per device rather than per artifact; clearable from the overflow menu |
+| `Notice` | one at a time; at the rail's top edge; never over the stage, the mode island or an open card; no auto-dismiss while it carries an action |
+| `ToggleGroup`, `Pill`, `Badge`, `StatusDot`, `Tooltip`, `Textarea`, `Listbox`, `ScrollArea`, `Dialog` | default plus the states they can reach |
 
 Consequential actions use visible text. An icon-only control is permitted only
 where its meaning is unambiguous and it carries an accessible name. Selecting a
 mode is such a control: it is reversible and has no side effect, so it is
 icon-only, states itself through the lit tile, the cursor over the artifact and
 the pre-commit hover outline, and explains itself in a tooltip rather than in
-permanent copy. Deleting an unsent Annotation is also icon-only: nothing has left
-the machine, nothing in the artifact changed, and the Annotation can be composed
-again, so it is not consequential in the sense this section means.
+permanent copy. Because an armed tile must be distinguishable from an unarmed
+one by more than colour, the icon set ships a filled and an outlined variant of
+every tile glyph. Deleting an unsent Annotation is also icon-only: nothing has
+left the machine, nothing in the artifact changed, and the Annotation can be
+composed again, so it is not consequential in the sense this section means.
 
 ## 7. Interaction and keyboard
 
@@ -274,11 +313,17 @@ again, so it is not consequential in the sense this section means.
 - Pointing is one state with two outcomes the gesture already distinguishes:
   clicking targets a thing the artifact owns, and dragging across words targets
 exactly those words.
-- `Enter` in an anchored annotation card queues the annotation. `Cmd/Ctrl+Enter`
-  queues and sends the whole queue.
-- `Escape` unwinds exactly one level and no more: close the anchored card, then
-  clear the selection, then return to operating the artifact, then move focus to
-  the mode island. `Escape` never discards unsent text.
+- `Enter` in an anchored annotation card queues the annotation. In a replacement
+  editor `Enter` delivers the Replacement. `Cmd/Ctrl+Enter` queues and sends the
+  whole queue, and is never a shortcut inside a replacement editor. Keys are
+  scoped to the editor that holds focus rather than matched against any field.
+- `Escape` unwinds exactly one level and no more, in this order: dismiss a
+  coachmark, close the overflow menu, close the drawer, close the replacement
+  editor, leave the re-point state, close the anchored card, then clear the
+  selection, then return to operating the artifact, then move focus to the mode
+  island. `Escape` never discards unsent text.
+- Guidance is never the only route to a capability. A dismissed or never-seen
+  coachmark removes nothing, and the overflow menu can clear all guidance.
 - Native application controls stay operable in Review without a state change.
   Custom non-native controls opt out of targeting explicitly.
 - The artifact document never traps focus. Chrome layers do.
@@ -334,14 +379,16 @@ Recorded because each one has a plausible-sounding reason to exist:
 - Icon-only controls for consequential actions.
 - A status dot standing in for a sentence about the agent.
 - One control that carries two claims, in particular the word "exact" meaning
-  both that the target matched and that the source span is known.
+  both that the target matched and that the source span is known. The stored
+  vocabulary obeys this too: provenance never uses a word that resolution owns.
 - Perpetual animation.
 - Approximating a missing target rather than showing it as missing.
 - Shrinking the chrome below the 11px floor to fit more controls.
 - A theme sampled or derived from the artifact under review. The artifact is
   judged, not consulted.
 - A permanent sentence explaining a control that teaches itself through its
-  icon, its armed state and the cursor.
+  icon, its armed state and the cursor. A coachmark is not that: it is anchored
+  to the control, triggered by first use, two lines at most, and dismissed once.
 - A solid boundary for a target the Builder-Reviewer drew. A drawn target is
   dashed and static; motion is reserved for agent activity.
 - A mode control at the far edge of the window. The control that governs the
@@ -359,7 +406,19 @@ Recorded because each one has a plausible-sounding reason to exist:
 - A capability flag gating behaviour that does not exist. A host is never asked
   to declare something the product cannot honour.
 - Editing a delivered Annotation in place. What the agent was told is a record;
-  an amendment supersedes it and states what replaced it.
+  a Replacement closes it and states what replaced it.
+- A numeric confidence, percentage or score anywhere in chrome. Evidence about a
+  target is categorical: source span, inferred or unavailable.
+- A ranked list of resolution candidates. Uncertainty is marked on the artifact;
+  the Builder-Reviewer points at the right target or declares it missing.
+- A notice that covers the stage, the mode island or an open card, or more than
+  one notice at a time.
+- A count that sums unrelated claims. One badge, one claim.
+- A state chip present on every row that says the same thing on every row.
+- A first-run paragraph of instruction. Guidance is anchored, one feature at a
+  time, and triggered by first use.
+- A control whose meaning belongs to one row, positioned away from that row.
+- A notice that restates what a row already says.
 - Reloading the artifact without being asked.
 
 ## 11. Amendment process
@@ -497,3 +556,64 @@ Replaces:
 Consequence worth stating plainly: this iteration does not demonstrate Relational
 Intent, which the previous spec named as the product's non-parity differentiator.
 No relation will be built, and the contract no longer promises one.
+
+### 2026-09-16 — The surface stops explaining a lifecycle it does not have
+
+Reason: a second dogfood, an independent open-source design review, and a
+code-level lifecycle trace found that the surface's wordiness is not a
+vocabulary problem but a missing-object problem. **There is no Pass.**
+`DeliveryBatch` carries an identity, an idempotency key, a host, a delivery
+intent, a member list and a timestamp and no state at all, while the browser
+client's snapshot type declares a `status` the server has never sent. With no
+Pass the surface cannot say whose turn it is, so it restates the delivery
+convention in four places on one screen, prints a default state as news on every
+row, and sums three unrelated claims into one count. Four further defects were
+confirmed as contract violations rather than taste: the annotation card still
+carries an instruction sentence §6 had already removed; a notice is positioned
+directly over the mode island, which §5 forbids; the resolution chooser prints a
+numeric confidence the domain does not have, uncalibrated and identical on every
+candidate in the observed case; and the `Attention` count conflates unresolved
+targets, Annotations written before the current revision, and a non-empty queue.
+Two revision-accounting defects share the same root: an Annotation created after
+a reload is stamped with the pre-reload revision while being labelled "written
+against this revision", and only one artifact snapshot is ever stored, so the
+comparison control can only ever show the revision the session was opened at.
+
+Replaces:
+
+- §2's account of surface material, which named no material for the rail.
+- §3's token roles, which left `canvas` with no consumer while the rail took
+  `surface` and became indistinguishable from the artifact.
+- §4's Annotation vocabulary (`another-pass` is Not Fixed, `superseded` is
+  Replaced), its Resolution cue, its Attention count, and the new Pass and
+  Pass-outcome families.
+- §5's rail head, its one-list rule, its resolution rule, the comparison
+  control's place, and the new notice and coaching regions.
+- §6's `RailHead`, `AgentPosition`, `AnnotationList`, `AnnotationPill`,
+  `AmendAction`, `CandidateChooser`, `VerdictControls`, `BeforeAfterToggle`,
+  `AnnotationCard`, `OverlayMark` and `RelationGuide` entries; the `Toast`
+  renamed to `Notice`; and the new `StatusLine`, `PassLedger`, `CandidateMark`,
+  `RepointAction` and `Coachmark` components.
+- §7's card keys and `Escape`'s order, which the code had been unwinding in an
+  order the contract never listed.
+- §10's anti-pattern list.
+
+Unchanged: the two tiles and the mode keys, the one-ledger principle, the
+reloading rule, the theme's ownership, the accessibility floor, the 11px type
+floor, and every precedence rule in §1. ADR-0019 records the Pass decision.
+`CONTEXT.md` gains Pass, Replacement, Not Fixed and Another Pass, and retires
+Supersession. The Relational Integrity of §11's previous amendment stands: no
+relation is built and none is promised, and the code stops drawing the relation
+sentence that no surface path can create.
+
+Consequence worth stating plainly: this iteration does not build revision
+comparison, per-item accept and reopen, or the Declared Missing act. An
+Annotation whose target cannot be matched is repaired by `RepointAction` alone,
+which leaves no blocker behind and needs no new term. It removes what the
+contract already forbids, gives the surface the Pass object it needs to stop
+explaining itself, and makes a new revision arrive as a fact rather than a
+paragraph. What a new revision *answered* remains anchor-level and is settled
+separately. `design.md` deliberately lists no component this iteration does not
+build: the previous iteration's `RelationGuide` entry was a contract promising
+something no surface path could reach, and removing it was part of the
+correction.

@@ -561,10 +561,10 @@ describe('delivery intent the surface cannot produce', () => {
     expect(await draft.text()).toMatch(/Next-Pass Intent/);
     const afterDraft = (await (await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`)).json()) as {
       annotations: Array<{ state: string }>;
-      batches: unknown[];
+      passes: unknown[];
     };
     expect(afterDraft.annotations[0]?.state).toBe('draft');
-    expect(afterDraft.batches).toHaveLength(0);
+    expect(afterDraft.passes).toHaveLength(0);
 
     await fetch(`${baseUrl}/api/annotations/${created.annotation.annotationId}/queue?${auth}`, { method: 'POST' });
     await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/send?${auth}`, {

@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
 import type { Envelope } from '../envelope/validate.js';
+import type { DeliveryIntent } from '../host/capabilities.js';
 import type { Annotation } from './model.js';
 
 export type BatchEnvelopeInput = {
   artifact: { id: string; kind: 'saved-html' | 'react-vite-app'; revision: string; displayName?: string };
   annotations: Annotation[];
-  intent: 'draft' | 'steering' | 'next-pass' | 'review-interruption';
+  intent: Exclude<DeliveryIntent, 'draft'>;
   requestedAt?: string;
 };
 

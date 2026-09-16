@@ -1,5 +1,5 @@
 import type { Envelope } from '../envelope/validate.js';
-import type { ResolutionCandidate, TargetResolutionRecord } from '../resolution/resolve.js';
+import type { TargetResolutionRecord } from '../resolution/resolve.js';
 import { deriveResolutionLabel, type TargetMatch } from '../resolution/model.js';
 
 export type AnnotationTarget = Envelope['annotations'][number]['targets'][number];
@@ -15,11 +15,11 @@ export type AnnotationState =
   | 'acknowledged'
   | 'verified'
   | 'rejected'
-  | 'another-pass'
-  | 'superseded'
+  | 'not-fixed'
+  | 'replaced'
   | 'obsolete';
 
-export type VerificationVerdict = 'approve' | 'reject' | 'another-pass' | 'obsolete';
+export type VerificationVerdict = 'approve' | 'reject' | 'not-fixed' | 'obsolete';
 
 export type AnnotationEvent = {
   type:
@@ -29,15 +29,13 @@ export type AnnotationEvent = {
     | 'dequeued'
     | 'attachment-added'
     | 'attachment-removed'
-    | 'relation-added'
-    | 'relation-removed'
     | 'delivered'
     | 'resolved'
-    | 'candidate-chosen'
+    | 'repointed'
     | 'acknowledged'
     | 'verified'
     | 'amended'
-    | 'superseded';
+    | 'replaced';
   at: string;
   detail?: string;
 };
@@ -56,10 +54,10 @@ export type Annotation = {
   attachments: AnnotationAttachment[];
   resolutions: TargetResolutionRecord[];
   resolvedRevision?: string;
-  chosenCandidates: Record<string, string>;
+  passId?: string;
   verification?: { verdict: VerificationVerdict; at: string; successorId?: string };
-  supersedes?: string;
-  supersededBy?: string;
+  replaces?: string;
+  replacedBy?: string;
   history: AnnotationEvent[];
   createdAt: string;
   updatedAt: string;
@@ -75,10 +73,11 @@ export type AnnotationSummary = {
   targetCount: number;
   order: number;
   revisionRelation: 'current' | 'advanced';
-  resolutions: Array<{ targetId: string; match: TargetMatch; label: ReturnType<typeof deriveResolutionLabel>; candidates: number; chosenNodeId?: string }>;
+  resolutions: Array<{ targetId: string; match: TargetMatch; label: ReturnType<typeof deriveResolutionLabel>; candidates: number }>;
   blockers: string[];
-  supersedes?: string;
-  supersededBy?: string;
+  passId?: string;
+  replaces?: string;
+  replacedBy?: string;
   resolutionsRunAt?: string;
   resolvedRevision?: string;
 };
@@ -91,8 +90,8 @@ const STATE_LABELS: Record<AnnotationState, string> = {
   acknowledged: 'Acknowledged by agent',
   verified: 'Verified by you',
   rejected: 'Rejected',
-  'another-pass': 'Another pass requested',
-  superseded: 'Superseded',
+  'not-fixed': 'Not Fixed',
+  replaced: 'Replaced',
   obsolete: 'Obsolete'
 };
 
@@ -104,12 +103,8 @@ export function isInQueue(state: AnnotationState): boolean {
   return state === 'draft' || state === 'queued';
 }
 
-export function isSettled(state: AnnotationState): boolean {
-  return state === 'verified' || state === 'superseded' || state === 'obsolete';
-}
-
 export function isVerification(state: AnnotationState): boolean {
-  return state === 'verified' || state === 'rejected' || state === 'another-pass' || state === 'superseded' || state === 'obsolete';
+  return state === 'verified' || state === 'rejected' || state === 'not-fixed' || state === 'replaced' || state === 'obsolete';
 }
 
 export function approvalBlockers(annotation: Annotation): string[] {
@@ -120,12 +115,10 @@ export function approvalBlockers(annotation: Annotation): string[] {
     }
     const label = labelFor(annotation, resolution.targetId);
     if (resolution.candidates.length === 0) {
-      blockers.push(`${label} could not be found in this revision, so approval is blocked.`);
+      blockers.push(`${label} is deleted from this revision, so approval is blocked.`);
       continue;
     }
-    if (!annotation.chosenCandidates[resolution.targetId]) {
-      blockers.push(`${label} is ambiguous. Choose one of its candidates before deciding.`);
-    }
+    blockers.push(`${label} could not be matched in this revision, so approval is blocked.`);
   }
   return blockers;
 }
@@ -162,103 +155,13 @@ export function summarise(annotation: Annotation): AnnotationSummary {
       targetId: resolution.targetId,
       match: resolution.match,
       label: deriveResolutionLabel(resolution),
-      candidates: resolution.candidates.length,
-      ...(annotation.chosenCandidates[resolution.targetId]
-        ? { chosenNodeId: annotation.chosenCandidates[resolution.targetId] }
-        : {})
+      candidates: resolution.candidates.length
     })),
     blockers: approvalBlockers(annotation),
-    ...(annotation.supersedes ? { supersedes: annotation.supersedes } : {}),
-    ...(annotation.supersededBy ? { supersededBy: annotation.supersededBy } : {}),
+    ...(annotation.passId ? { passId: annotation.passId } : {}),
+    ...(annotation.replaces ? { replaces: annotation.replaces } : {}),
+    ...(annotation.replacedBy ? { replacedBy: annotation.replacedBy } : {}),
     ...(annotation.resolutions[0]?.resolvedAt ? { resolutionsRunAt: annotation.resolutions[0].resolvedAt } : {}),
     ...(annotation.resolvedRevision ? { resolvedRevision: annotation.resolvedRevision } : {})
   };
-}
-
-export function candidateLabel(candidate: ResolutionCandidate): string {
-  return candidate.accessibleName ?? candidate.text ?? candidate.semanticRole ?? candidate.tag ?? candidate.nodeId;
-}
-
-const RELATION_SENTENCES: Record<string, (names: string[]) => string> = {
-  before: (names) => `${joinNames(names)} should come in this order.`,
-  after: (names) => `${joinNames(names)} should come in this order.`,
-  'align-left': (names) => `${joinNames(names)} should align on the left.`,
-  'align-center': (names) => `${joinNames(names)} should align on the centre line.`,
-  'align-right': (names) => `${joinNames(names)} should align on the right.`,
-  'align-top': (names) => `${joinNames(names)} should align along the top.`,
-  'align-middle': (names) => `${joinNames(names)} should align along the middle.`,
-  'equal-gap': (names) => `${joinNames(names)} should be equally spaced.`,
-  'member-of': (names) => `${names[0] ?? 'the first target'} should be contained inside ${names[1] ?? 'the group'}.`,
-  'shared-property': (names) => `${joinNames(names)} should share the same visible property.`,
-  'same-width': (names) => `${names[0] ?? 'the first target'} should be the same width as ${names[1] ?? 'the other'}.`,
-  'same-height': (names) => `${names[0] ?? 'the first target'} should be the same height as ${names[1] ?? 'the other'}.`
-};
-
-export function relationSentence(annotation: Pick<Annotation, 'relationships' | 'targets'>): string {
-  return formatRelations(annotation.relationships, annotation.targets);
-}
-
-function formatRelations(relationships: AnnotationRelation[], targets: AnnotationTarget[]): string {
-  return relationships
-    .map((relation) => {
-      const names = relation.targetIds.map((targetId) => targetName(targets, targetId));
-      const build = RELATION_SENTENCES[relation.operator];
-      return build ? build(names) : `${joinNames(names)} should ${relation.operator}.`;
-    })
-    .join(' ');
-}
-
-function joinNames(names: string[]): string {
-  if (names.length === 0) {
-    return 'the targets';
-  }
-  if (names.length === 1) {
-    return names[0]!;
-  }
-  if (names.length === 2) {
-    return `${names[0]} and ${names[1]}`;
-  }
-  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-}
-
-export function relationTypeOf(operator: AnnotationRelation['operator']): AnnotationRelation['type'] {
-  switch (operator) {
-    case 'before':
-    case 'after':
-      return 'ordering';
-    case 'align-left':
-    case 'align-center':
-    case 'align-right':
-    case 'align-top':
-    case 'align-middle':
-      return 'alignment';
-    case 'equal-gap':
-      return 'spacing';
-    case 'member-of':
-      return 'containment';
-    case 'shared-property':
-      return 'equivalence';
-    case 'same-width':
-    case 'same-height':
-      return 'comparative-size';
-  }
-}
-
-export const RELATION_OPERATORS: Array<{ operator: AnnotationRelation['operator']; label: string }> = [
-  { operator: 'before', label: 'Comes before' },
-  { operator: 'after', label: 'Comes after' },
-  { operator: 'align-left', label: 'Align left' },
-  { operator: 'align-center', label: 'Align centre' },
-  { operator: 'align-right', label: 'Align right' },
-  { operator: 'align-top', label: 'Align top' },
-  { operator: 'align-middle', label: 'Align middle' },
-  { operator: 'equal-gap', label: 'Equal spacing' },
-  { operator: 'member-of', label: 'Contained in' },
-  { operator: 'shared-property', label: 'Share a property' },
-  { operator: 'same-width', label: 'Same width' },
-  { operator: 'same-height', label: 'Same height' }
-];
-
-export function operatorLabel(operator: AnnotationRelation['operator']): string {
-  return RELATION_OPERATORS.find((entry) => entry.operator === operator)?.label ?? operator;
 }
