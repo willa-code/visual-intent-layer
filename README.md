@@ -4,11 +4,11 @@ A local-first **Visual Direction Loop**: open a review surface on an
 agent-produced interface, point at visible targets, compose **Annotations**, and
 verify the result by hand. No prose location descriptions, no lost context.
 
-The **Annotation** is the unit of work. A Builder-Reviewer selects one or more
-visible targets, drafts a note in a card anchored to the target, attaches
-references, expresses a relationship by manipulating the targets, and queues the
-result. Sending delivers one **Visual Intent Envelope** carrying each Annotation
-with its own identity. Each Annotation is verified on its own.
+The **Annotation** is the unit of work. A Builder-Reviewer points at one or
+more visible targets, drafts a note in a card anchored to the target, attaches
+reference images, and queues the result. Sending delivers one **Visual Intent
+Envelope** carrying each Annotation with its own identity. Each Annotation is
+verified on its own.
 
 ## Install
 
@@ -114,7 +114,8 @@ writing.
 ### The Annotation model
 
 - An Annotation is durable and individually identified: targets, note,
-  references, optional Relational Intent, delivery state and resolution.
+  references, delivery state and resolution. The envelope keeps its support for
+  relationships, but this iteration's surface expresses no relation.
 - Unsent text survives a surface reload, a service restart and a browser
   restart. Nothing discards a note silently.
 - Several targets can be gathered into one Annotation; a drawn Area records the
@@ -122,7 +123,7 @@ writing.
   encloses.
 - Reference images are added by picker, paste or drop, are content-addressed by
   their own bytes, and are refused visibly (and unread) when disallowed or
-  oversized.
+  larger than 5MB. Only image types are accepted.
 - Relational Intent stays in the domain model and the envelope keeps its support
   for relationships, but this iteration's surface expresses no relation. The
   capability is deferred deliberately, not removed.
@@ -170,8 +171,39 @@ pattern the specification sanctions. Both are recorded in the shipped skill.
 A single drawer, hidden while it has nothing to report and badge-counted when it
 does, carries what needs a decision: everything that will leave the machine, any
 unresolved or ambiguous Annotation, and the fact that the artifact has moved on.
-Rare actions — end session, reload artifact, copy artifact path, copy evidence —
-live in the overflow menu.
+The overflow menu holds the rare actions — reload artifact, copy artifact path,
+copy evidence for the queue, open the disclosure, end session, and choose the
+chrome theme — and never a frequent one.
+
+### Agent tools (MCP)
+
+The model-visible tool surface is deliberately small:
+
+| Tool                  | What it does                                                                                                                                              |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `open_visual_review`  | Opens the loop for a saved HTML file or a running localhost app, may declare `capabilities: { embeddedUI, subscriptions }`, and holds the call for the human. |
+| `check_in`            | Reads new direction between the agent's own steps, without an `envelopeId`: deliveries with their intent, amendments, a pending stop request, and current state. |
+| `get_intent_status`   | Reads one delivered batch by `envelopeId`, including each target's resolution.                                                                             |
+| `acknowledge_intent`  | Confirms receipt of a batch or one Annotation. Never implementation and never verification.                                                                |
+
+`embeddedUI` and `subscriptions` are the only host capabilities the product
+negotiates; there is no steering flag. A host declares them through the
+`capabilities` argument on `open_visual_review`, not through a side channel.
+The tool descriptions ship the Check-In convention, so an agent following them
+knows to call `check_in` between its own steps.
+
+### Environment and data
+
+| Variable                  | Meaning                                                                 |
+| ------------------------- | ----------------------------------------------------------------------- |
+| `VISUAL_INTENT_DATA_DIR`  | Lifecycle data directory (default `~/.visual-intent-layer/data`).        |
+| `VISUAL_INTENT_PORT`      | Default service port (default `3742`).                                  |
+| `VISUAL_INTENT_NO_OPEN`   | Set to `1` to suppress automatic browser opening.                        |
+| `VISUAL_INTENT_WAIT_MS`   | How long the agent-facing entry tool holds the call, in milliseconds.    |
+
+Annotations, sessions, attachments, snapshot bytes and Check-In contact all live
+under the data directory, so a service restart loses nothing. The packaged
+`mcp.json` pins the current release version for the `npx` transport form.
 
 ## Envelope schema
 
@@ -179,6 +211,11 @@ The portable contract is `schema/envelope-v0.2.schema.json` (experimental,
 versioned). One envelope carries one or more Annotations, each with its own
 identity, targets, note, relationships, references and attachments. TypeScript
 types are generated from it (`npm run build:types`).
+
+The `0.1` schema is kept only for reading state written by older releases; new
+envelopes are `0.2`. `review-interruption` remains a reserved value in the
+`delivery.intent` enum and is never emitted, because an interruption names no
+target and so cannot be an envelope.
 
 ## Security and privacy
 
@@ -203,36 +240,52 @@ npm run typecheck
 npm run build       # compile the service and bundle the shell + artifact layer
 npm run benchmark   # target-resolution mutation benchmark
 npm run instrument  # latency / reliability / token-efficiency signals
-npm run eval:invocation
+npm run eval:invocation   # documented routing policy, not live agent judgment
 ```
 
 The primary test seam is `tests/browser-loop.test.ts`: the Visual Direction
 Loop is driven end to end in a real browser engine against the locally running
 service — the served asset graph must load, the artifact must render with its
-styles, and a human path (select, annotate, queue, send, re-resolve, verify,
-restart) is performed through the DOM the product actually serves. A surface
-that cannot load its own scripts fails CI rather than shipping.
+styles, and a human path (point, annotate, queue, send, reload, compare, amend,
+stop, verify, restart) is performed through the DOM the product actually serves.
+A surface that cannot load its own scripts fails CI rather than shipping.
 
 The design gallery is at `/gallery` on a running service. It is not part of the
 product's navigation. `tests/gallery-snapshot.test.ts` pins every design token
-exactly and fails on a screenshot difference, so a drifting token or an
-undocumented new state fails loudly.
+exactly, fails on a screenshot difference, checks every semantic surface/ink
+pair against the contrast floor in both themes, and fails when a baseline is
+missing rather than silently writing one. Regenerate baselines with
+`UPDATE_GALLERY=1` once the change is intended.
 
 ## Layout
 
 - `design.md` — normative Review Surface design contract (tokens, roles, states)
-- `schema/` — versioned Visual Intent Envelope contracts
+- `CONTEXT.md` — the domain language, including the words to avoid
+- `schema/` — versioned Visual Intent Envelope contracts (0.2 current, 0.1 legacy)
 - `src/annotation/` — the Annotation model, durable store, attachments, migration
 - `src/artifact/` — identity, content-addressed revisions, fidelity rewriting, snapshots
 - `src/resolution/` — target resolution and its reduced vocabulary
-- `src/mcp/` — MCP server, entry tool, stdio transport
-- `src/service/` — loopback HTTP service, sessions, security boundary, browser opening
-- `src/ui/` — product-owned shell, artifact interaction layer, design gallery
+- `src/mcp/` — MCP server, the four tools, stdio transport
+- `src/service/` — loopback HTTP service, sessions, Check-In records, security boundary, browser opening
+- `src/ui/` — product-owned shell, artifact interaction layer, icon set, design gallery
 - `src/adapters/` — React/Vite Source Provenance adapter
 - `src/host/` — the surviving host-capability declaration (embedded UI, subscriptions)
 - `src/benchmark/` — mutation benchmark matrix
 - `src/instrumentation/` — product-boundary measurements
+- `src/eval/` — documented invocation-routing eval
+- `fixtures/` — the gallery artifact the Lever and tests drive
+- `tests/` — the browser loop, the Lever contract, and the gallery baselines
+- `scripts/` — UI bundling and envelope type generation
 - `skills/` — thin optional Skill for agents
+
+## Documentation
+
+- `docs/adr/` — architecture decisions, including ADR-0018 on Check-In replacing
+  a steering capability
+- `docs/background/` — research and the product strategy brief
+- `docs/pi-validation.md` — the live-pi checklist
+- `docs/agents/` — the issue tracker, triage labels and domain-doc conventions
+- `SECURITY.md` — the threat model, supported versions and disclosure process
 
 ## Maintaining this package
 

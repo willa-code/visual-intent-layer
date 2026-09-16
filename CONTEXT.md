@@ -17,15 +17,15 @@ The independent browser surface in which a Builder-Reviewer inspects an Artifact
 _Avoid_: Review UI, viewer, inspector, design mode
 
 **Review**:
-The Review Surface state in which Annotations are composed, queued, and sent. The artifact is operated normally or pointed at inside this state; those are modes within Review, not separate states.
+The Review Surface's single state, in which Annotations are composed, queued, and sent. The artifact is operated normally or pointed at within it; pointing and boxing are modes, not separate states.
 _Avoid_: Annotate mode, edit mode, direct mode, design mode
 
 **Verify**:
-The act, on one Annotation, of comparing a resulting artifact revision against what that Annotation asked for and accepting it, rejecting it, requesting another pass, superseding it, or marking it obsolete. It is a state of an Annotation, not a place in the Review Surface: an Annotation is verified where it sits.
+The act, on one Annotation, of comparing a resulting artifact revision against what that Annotation asked for and accepting it, rejecting it, requesting another pass, or marking it obsolete. It is a state of an Annotation, not a place in the Review Surface: an Annotation is verified where it sits. An amendment, not a verdict, is what supersedes a delivered Annotation.
 _Avoid_: Approval screen, review mode, diff view, verify mode
 
 **Visual Intent Layer**:
-A product layer that converts what a Builder-Reviewer points to, selects, arranges, or demonstrates on a visible artifact into contextual instructions an agent can act on. It exists to preserve intent that would be lossy or slow to express using words alone.
+A product layer that converts what a Builder-Reviewer points to or selects on a visible artifact into contextual instructions an agent can act on. It exists to preserve intent that would be lossy or slow to express using words alone. The envelope retains support for relations among targets, but the surface currently expresses none.
 _Avoid_: HTML annotator, visual editor, MCP transport
 
 **Visual Intent Envelope**:
@@ -57,7 +57,7 @@ A Visual Direction Loop over a running browser application whose visible output 
 _Avoid_: HTML mode, website mode, arbitrary app support
 
 **Intent Preview**:
-A reversible visual proposal showing the transformation a Builder-Reviewer means before it is delivered to an agent. An Intent Preview is how Relational Intent is expressed in the Review state — by manipulating targets directly — rather than a separate mode, and it never mutates authoritative source.
+A reversible visual proposal showing the transformation a Builder-Reviewer means before it is delivered to an agent. It never mutates authoritative source. Relational Intent was to be expressed this way by manipulating targets directly; that surface is deferred, so no Intent Preview is built in this iteration.
 _Avoid_: Direct edit, WYSIWYG change, canvas object
 
 **Baseline Compatibility**:
@@ -121,7 +121,7 @@ The act of locating the same intended target in another artifact revision. A res
 _Avoid_: Selector match, reattachment, best guess
 
 **Relational Intent**:
-Intent expressed through a relationship among targets, such as alignment, ordering, spacing, containment, or equivalence.
+Intent expressed through a relationship among targets, such as alignment, ordering, spacing, containment, or equivalence. The envelope carries it; the current surface does not express it.
 _Avoid_: Multiple annotations, grouped feedback
 
 **Verified Intent**:
