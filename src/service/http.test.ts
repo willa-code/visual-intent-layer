@@ -432,6 +432,22 @@ describe('application mode proxy', () => {
   });
 });
 
+describe('port selection', () => {
+  it('names the port and the next action when a requested port is already in use', async () => {
+    const first = await setup();
+    const dataDir = mkdtempSync(join(tmpdir(), 'vil-http-conflict-'));
+    await expect(
+      startLocalService({ dataDir, reviewService: createReviewService({ dataDir }), port: first.service.port })
+    ).rejects.toThrow(new RegExp(`Port ${first.service.port} is already in use.*--port`, 's'));
+  });
+
+  it('binds an operating-system-chosen port when asked for port 0', async () => {
+    const { service } = await setup();
+    expect(service.port).toBeGreaterThan(0);
+    expect(service.baseUrl).toBe(`http://127.0.0.1:${service.port}`);
+  });
+});
+
 describe('oversized artifacts', () => {
   it('refuses an artifact larger than the bounded size', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'vil-big-'));

@@ -116,6 +116,14 @@ _Avoid_: Multiple annotations, grouped feedback
 A delivered intention whose resulting artifact revision has been reviewed and accepted by a Builder-Reviewer.
 _Avoid_: Resolved comment, completed task
 
+**Verification Run**:
+One execution that launches the real product, drives a mapped behaviour the way a Builder-Reviewer would, captures evidence, and cleans up. It reports the behaviour it drove, the behaviour it could not reach and its outcome honestly rather than passing or failing.
+_Avoid_: Test run, automated review, CI job
+
+**Mechanical Verification**:
+The evidence a Verification Run produces that the mechanism behaved as specified: a recording of the action and its resulting state, screenshots, accessibility snapshots and read-backs of what the product stored. It is never Verified Intent — a driven approval proves the verdict path works, and only a Builder-Reviewer completes an Annotation.
+_Avoid_: Verification, approval, passing test
+
 **Proof Product**:
 A usable public product whose first purpose is to demonstrate strong product judgment and engineering execution, whose second purpose is to earn open-source adoption, and whose later possibilities include monetization and original research.
 _Avoid_: Demo, portfolio piece, breakthrough product

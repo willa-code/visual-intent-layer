@@ -109,8 +109,20 @@ export async function startLocalService(options: LocalServiceOptions): Promise<L
 
 function listen(server: Server, port: number): Promise<number> {
   return new Promise((resolvePromise, rejectPromise) => {
-    server.once('error', rejectPromise);
+    const onError = (error: NodeJS.ErrnoException): void => {
+      if (error.code === 'EADDRINUSE') {
+        rejectPromise(
+          new Error(
+            `Port ${port} is already in use. Start the service on another port with --port <n>, or stop the process holding port ${port}.`
+          )
+        );
+        return;
+      }
+      rejectPromise(error);
+    };
+    server.once('error', onError);
     server.listen(port, '127.0.0.1', () => {
+      server.off('error', onError);
       const address = server.address();
       if (address && typeof address === 'object') {
         resolvePromise(address.port);

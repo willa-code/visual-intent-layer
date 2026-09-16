@@ -7,3 +7,6 @@ coverage/
 .scratch/**/baseline-local/
 .visual-intent-data/
 .DS_Store
+
+# Verification Run evidence
+.visual-intent-verify/
