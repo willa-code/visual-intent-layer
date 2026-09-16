@@ -16,7 +16,7 @@ _Not yet driven. Recipes are mapped; no live drive has confirmed them._
 ## How to get to it (user POV)
 
 - Run `visual-intent open --app http://localhost:<port>` against a local dev server.
-- Use the same Review Surface tools, cards and Verify state as Artifact Mode.
+- Use the same Review Surface rail, annotation card and mode island as Artifact Mode.
 
 ## Driving it with the Lever
 

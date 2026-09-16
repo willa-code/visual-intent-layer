@@ -1,6 +1,6 @@
 # Session and overflow actions
 
-The More actions menu reloads the Artifact, copies the Artifact path, copies evidence for the queue, opens the disclosure, and ends the session. Ending the session closes the surface while leaving unsent Annotations stored.
+The More actions menu reloads the Artifact, copies the Artifact path, copies evidence for the queue, opens the disclosure, ends the session, and chooses the chrome theme. Ending the session closes the surface while leaving unsent Annotations stored.
 
 _Not yet driven. Recipes are mapped; no live drive has confirmed them._
 
@@ -10,12 +10,13 @@ _Not yet driven. Recipes are mapped; no live drive has confirmed them._
 - `overflow-copy-path` copies the Artifact's source path.
 - `overflow-copy-evidence` copies the evidence for the queued Annotations.
 - `overflow-disclosure` opens the decision drawer.
+- `overflow-theme` chooses auto, light or dark and remembers it.
 - `overflow-end-session` ends the session and closes the surface.
 - `session-end-keeps-writing` keeps unsent Annotations stored after the session ends.
 
 ## How to get to it (user POV)
 
-- Open `More actions` in the topbar and choose an item.
+- Open `More actions` in the rail head and choose an item.
 - Clipboard items show a `Copied.` status when they succeed.
 
 ## Driving it with the Lever
@@ -29,6 +30,7 @@ Preconditions:
 - **Copy the Artifact path.** Choose `Copy artifact path`. Run `… lever.mjs overflow --item "Copy artifact path"` and `… lever.mjs screenshot --name copied-path`. The surface reports `Copied.`; the value is the Artifact's `file://` source.
 - **Copy the evidence.** Queue an Annotation, then choose `Copy evidence for the queue`. Run `… lever.mjs overflow --item "Copy evidence for the queue"` and `… lever.mjs screenshot --name copied-evidence`. The surface reports `Copied.` and the copied text names each target's evidence.
 - **Open the disclosure.** Run `… lever.mjs overflow --item "Open the disclosure"`. The drawer opens with the same content as `attention`.
+- **Choose the theme.** Choose auto, light or dark. The choice survives a surface reload; no chrome colour is read from the Artifact.
 - **End the session.** Run `… lever.mjs overflow --item "End session"`. The page closes; `… lever.mjs state` still reports the unsent Annotations.
 - **Proof.** Run `… lever.mjs state` before and after ending the session. The unsent writing persists; the screenshot shows the menu item and the status.
 

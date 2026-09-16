@@ -2,7 +2,7 @@
 
 The surface is operable by keyboard: `P` and `B` arm the two mode tiles, `V` returns to operating the artifact, Escape unwinds the card, the selection and the mode in order, focus is visibly distinct from selection, and reduced motion is honoured.
 
-_Not yet driven. Recipes are mapped; no live drive has confirmed them._
+_Partly driven live: rail legibility, island pointer events, the mode-tile minimum size and `V` were confirmed in the surface-refinement Verification Run. The remaining key recipes are mapped, not yet driven._
 
 ## Sub-features
 

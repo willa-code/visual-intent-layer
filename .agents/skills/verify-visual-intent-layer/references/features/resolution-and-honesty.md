@@ -16,7 +16,7 @@ When the Artifact moves on, the product locates each Annotation's target again i
 ## How to get to it (user POV)
 
 - Change the Artifact file, notice the change banner, and choose `Reload artifact`.
-- Enter `Verify` to see each Annotation's resolution and its candidates.
+- Read each Annotation's resolution and its candidates on its own row; there is no separate Verify state.
 - Read the `Written before this revision` label where it applies.
 - Choose a candidate for an ambiguous target before approving.
 
@@ -34,14 +34,14 @@ Preconditions:
 - **Choose a candidate.** Run `… lever.mjs choose --node <nodeId>` with a node id from `state`. `state` then records `chosenCandidates` for that target and approval is no longer blocked by it.
 - **Deleted target.** An `unresolved` target with no candidates is reported as deleted. No candidate chooser appears and approval stays blocked with the reason named.
 - **Provenance stays separate.** `state` reports `provenanceConfidence` per target independently of `resolutions[].match`; neither shares the word "exact" in the surface.
+- **Compare one row's revisions.** Select the row and run `… lever.mjs compare --mode before --row 0` then `--mode after --row 0`. Each exits `0` while the row has a result from a different revision; the comparison is per row, not one session-wide pair, and switching to Before does not overwrite the revision the result came from.
 - **Proof.** Run `… lever.mjs state`, `… lever.mjs screenshot --name resolution` and `… lever.mjs snapshot --name resolution`. The state carries the resolution records and candidates; the screenshot shows the resolution list and the revision label.
 
 ## Gotchas
 
 - Reloading the Artifact is a different act from reloading the Review Surface. `reload` reloads the Artifact; `reload-surface` reloads the page.
 - The change banner only appears while the file differs from the opened revision. Reload clears it for the new revision.
-- Ambiguous selection needs candidates from the layer. If the layer has not reported candidates yet, enter Verify and wait for the resolution list before choosing.
+- Ambiguous selection needs candidates from the layer. If the layer has not reported candidates yet, wait for the resolution list on the row before choosing.
 - Approval is refused, not silently ignored, while any target is ambiguous or deleted; the refusal states which target and why.
 - Restore the Artifact file after the drive. A leftover appended paragraph changes the revision for the next run.
 - A `recovered` match is weaker evidence, not a failure. Assert the reported outcome, not a preference for `exact`.
-- **Compare one row's revisions.** Select the row and run `… lever.mjs compare --mode before --row 0` then `--mode after --row 0`. Each exits `0` while the row has a result from a different revision; the comparison is per row, not one session-wide pair, and switching to Before does not overwrite the revision the result came from.

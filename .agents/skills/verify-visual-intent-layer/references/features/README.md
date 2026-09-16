@@ -61,32 +61,39 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 3. `Driving it with the Lever` starts with `Preconditions:` and uses labeled bullets that pair each user action with an exact command and an observable result.
 4. `Gotchas` lists traps that can waste or invalidate a run.
 
-Keep implementation detail out of the map. Name user paths, stable handles, required state, commands and observable proof only. A file whose behaviours have not been driven live yet carries a `Not yet driven.` marker near the top; remove the marker only after a live drive.
+Keep implementation detail out of the map. Name user paths, stable handles, required state, commands and observable proof only. A file whose behaviours have not been driven live yet carries a `Not yet driven.` marker near the top; once a live drive confirms some of them, the marker becomes `Partly driven live` and names which; remove the marker only when the whole file has been driven.
 
 ## Features
 
-First tier (driven live; see each file's coverage in the run record):
+First tier (driven live in the surface-refinement Verification Run; see each file for its coverage):
 
 - [Open an Artifact](./open-artifact.md) covers launching a saved-HTML Artifact, health-checking the instance, rendering it faithfully, and capturing the resulting state.
-- [Compose, queue and send an Annotation](./annotate-and-send.md) covers selecting a target, writing a note, reordering, and each delivery timing.
-- [Relational Intent by direct manipulation](./relational-intent.md) covers expressing a relation by manipulating targets.
+- [Compose, queue and send an Annotation](./annotate-and-send.md) covers pointing at a target, writing a note, reordering, and the one send action (with amend and stop as separate acts).
 - [Resolution and honest outcomes](./resolution-and-honesty.md) covers re-resolving a target after the Artifact moves on, including ambiguity and deletion.
-- [Verify each Annotation](./verify-each-annotation.md) covers the per-Annotation verdicts and the before/after comparison.
+- [Verify each Annotation](./verify-each-annotation.md) covers the per-Annotation verdicts and the per-row before/after comparison.
 - [Never discard writing](./never-discard-writing.md) covers a draft surviving a reload, a service restart and a browser restart.
+
+Partly driven live (some sub-features confirmed; the rest are mapped):
+
+- [The decision drawer](./decision-drawer.md) — the closed-rows toggle was driven; the attention drawer and origin gate are mapped.
+- [Agent position](./agent-position.md) — the stop request and Check-In channel were driven; the other positions are mapped.
+- [Check-In](./check-in.md) — the call, contact, amendment and interruption were driven; the never-checked-in state is mapped.
+- [Accessibility and keyboard](./accessibility-and-keyboard.md) — rail legibility, island pointer events, tile minimum size and `V` were driven; the remaining keys are mapped.
 
 Second tier (mapped, not yet driven):
 
 - [Attachments](./attachments.md)
-- [The decision drawer](./decision-drawer.md)
-- [Agent position](./agent-position.md)
 - [Session and overflow actions](./session-and-overflow.md)
 - [Running-application mode](./running-application-mode.md)
-- [Accessibility and keyboard](./accessibility-and-keyboard.md)
 
 Third tier (mapped, not yet driven):
 
 - [Setup and Harness Detection](./setup-and-detection.md)
 - [The MCP agent loop](./mcp-agent-loop.md)
+
+Deferred out of this iteration:
+
+- [Relational Intent by direct manipulation](./relational-intent.md) — no surface expresses a relation; its recipes must not be run against this build.
 
 Cross-surface:
 

@@ -6,13 +6,13 @@ These behaviours span several areas, so they live in one file. They are the last
 
 - `journey-concurrent` runs two sessions at once without either corrupting the other's Annotations or scroll position.
 - `journey-loop` walks opening, composing, sending, an agent implementing, verifying, and approving.
-- `journey-timings` compares two delivery timings for the same direction.
+- `journey-amend-and-stop` amends an already-sent Annotation and asks the agent to stop, in one session.
 
 ## How to get to it (user POV)
 
 - Open two Artifacts at once, in two terminals or two runs.
 - Complete a Visual Direction Loop from opening to approval.
-- Send the same direction twice with different delivery timings.
+- Amend an Annotation already sent, then ask the agent to stop.
 
 ## Driving it with the Lever
 
@@ -25,7 +25,7 @@ Preconditions:
 - **Annotate each.** In run A, `… lever.mjs select --run session-a --tool point --target ".gallery-note"`, `… lever.mjs annotate --run session-a --note "Only in A"`. In run B, `… lever.mjs select --run session-b --tool point --target ".checkout-submit"`, `… lever.mjs annotate --run session-b --note "Only in B"`. `… lever.mjs state --run session-a` shows only `Only in A`; `… lever.mjs state --run session-b` shows only `Only in B`. Clean up both runs.
 - **Scroll position is per session.** Scroll run A's artifact, reload run B's artifact, and return to run A. Run A's scroll offset is unchanged; run B never moved A.
 - **The full loop.** Open: `… lever.mjs launch --html <path> --name loop`. Compose: `… lever.mjs select --tool point --target ".checkout-submit"`, `… lever.mjs annotate --note "Make it impossible to miss."`, `… lever.mjs queue`. Send: `… lever.mjs send --intent next-pass`. The agent implements: change the Artifact file (the agent's act, outside the Lever) and `… lever.mjs reload`. Verify: `… lever.mjs verify`, `… lever.mjs state` shows a resolution and the revision relation, `… lever.mjs compare --mode before --row 0` and `--mode after --row 0`. Approve: `… lever.mjs decide --verdict approve`; `state` shows the Annotation verified. Clean up.
-- **Two delivery timings.** Run A: queue once and `… lever.mjs send --run session-a --intent draft`; read the batch delivery from `… lever.mjs state --run session-a`. Run B: queue the same direction and `… lever.mjs send --run session-b --intent next-pass`; read its delivery. The two batches report different delivery plans for the same written direction.
+- **Amend and stop.** Send a batch, then run `… lever.mjs amend --note "Clearer wording." --match "<part of the note>"`. Exit `0`; `state` shows the original `superseded` with a `supersededBy`, the successor carrying `supersedes`, and a batch with intent `steering`. Then run `… lever.mjs stop`; `state` shows a pending interruption and the surface says it is uncollected. A `check_in` returns both.
 - **Proof.** Run `… lever.mjs state` at each step, `… lever.mjs record --name loop`, and `… lever.mjs snapshot --name loop`. The state carries identities, resolutions and verdicts; the recording shows the action and the resulting state.
 
 ## Gotchas
@@ -34,5 +34,5 @@ Preconditions:
 - A session's scroll position is page-local, not stored by the product. Prove it by not disturbing the other session, not by reading a stored value.
 - The agent's implementation happens outside the Lever. Change the file yourself, then `reload` under review.
 - The one send action always delivers Next-Pass Intent. Steering Intent and Review Interruption are different acts: `amend` and `stop`.
-- Run the timings in two runs. Sending consumes the queue, so one run cannot send the same Annotation twice without re-composing it.
+- Amending supersedes the original; it never rewrites it. A second amendment supersedes the successor, so the chain collapses into the effective row.
 - Clean up both runs at the end of the concurrency journey; a stranded run holds its data directory.

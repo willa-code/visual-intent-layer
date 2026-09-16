@@ -2,6 +2,8 @@
 
 An agent that is not holding a call can read what the Builder-Reviewer sent by checking in between its own steps. The Check-In is a published convention, not a host capability: there is no push channel and no wake mechanism. Contact is durable, so the surface can state when the agent last checked, and a request that has not been collected says so rather than implying it is being worked on.
 
+_Partly driven live: the call, durable contact, an amendment and an interruption were confirmed in the surface-refinement Verification Run. The never-checked-in state remains mapped, not yet driven._
+
 ## Sub-features
 
 - `check-in-call` returns new direction since a cursor without an `envelopeId`.

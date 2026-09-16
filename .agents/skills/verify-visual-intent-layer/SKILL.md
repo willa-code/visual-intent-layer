@@ -101,7 +101,15 @@ Keyboard and surface navigation:
 $LEVER press --key p                      # p, b and v arm and disarm the two tiles
 $LEVER attention                          # open the "Needs you" drawer
 $LEVER overflow --item "Copy artifact path"
+$LEVER measure                            # rail width, head overflow, tile size, island pointer events
+$LEVER unreachable --command "…" --precondition "…"   # record a path you could not reach, honestly
 ```
+
+`measure` writes a measurement under `evidence/` and fails when the rail head
+overflows its fixed width, a tile falls below the 24px floor, or the island does
+not receive the pointer over the live iframe. `unreachable` records a gap with
+its exact command and unmet precondition and exits `4`, so a sweep never has to
+claim a path it did not reach.
 
 `mcp --run <name>` shares the run's lifecycle data directory, so a batch the browser drive delivered is visible to the MCP loop. `amend` and `stop` deliver **Steering Intent** and **Review Interruption** through the same named delivery path; `check_in` is how an agent reads them without holding a call. Acknowledgement is not implementation and not verification.
 

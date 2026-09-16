@@ -28,8 +28,8 @@ Preconditions:
 
 - **Launch the saved-HTML Artifact.** Run `node .agents/skills/verify-visual-intent-layer/bin/lever.mjs launch --html fixtures/gallery.html --name open-artifact`. Exit code `0` and JSON naming `baseUrl`, `reviewUrl`, `sessionId`, `artifact.revision`, `productPid`, `hostPid` and `dataDir`. The review URL carries the capability only inside `?cap=`.
 - **Health-check before driving.** Run `… lever.mjs health`. Exit code `0`, `alive`, `owned`, `capabilityAuthorised` and `buildFreshness` all true, `stale` false. The report is read-only: `… lever.mjs state` returns the same annotations before and after.
-- **See the artifact render.** Run `… lever.mjs screenshot --name opened`. Exit code `0` and a PNG under the run's `evidence/`. The PNG shows the topbar, the artifact, and the heading `Summer gallery`.
-- **Read the surface structure.** Run `… lever.mjs snapshot --name opened`. Exit code `0` and an ARIA snapshot file under `evidence/` naming the `Review` and `Verify` tabs and the selection tools.
+- **See the artifact render.** Run `… lever.mjs screenshot --name opened`. Exit code `0` and a PNG under the run's `evidence/`. The PNG shows the rail, the artifact, and the heading `Summer gallery`.
+- **Read the surface structure.** Run `… lever.mjs snapshot --name opened`. Exit code `0` and an ARIA snapshot file under `evidence/` naming the rail, the two mode tiles, and the artifact frame.
 - **Prove only one browser exists.** The launch suppresses the product's automatic browser; the only browser is the host's. `… lever.mjs health` reports the same product pid and the host endpoint while no extra browser window appears.
 - **Check the artifact is faithful, not just present.** Run `… lever.mjs state` for the artifact identity, then `wait --target ".gallery figure" --frame artifact` and `snapshot --frame artifact`. The wait resolves and the snapshot names the three figures and `Place order`.
 - **Clean up.** Run `… lever.mjs cleanup`. Exit code `0`, `evidenceIntact` true, the product and host pids gone, `dataDir` removed. The PNG and ARIA snapshot still exist under `evidence/`, and `run.json` reports `evidenceIntact: true`.

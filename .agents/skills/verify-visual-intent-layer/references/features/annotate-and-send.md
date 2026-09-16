@@ -52,4 +52,4 @@ Preconditions:
 - `Queue` needs at least one target. Selecting then immediately queueing without a note still creates a durable Annotation with `No note yet`.
 - `Send the queue` is disabled while the queue is empty. Send in that state is a precondition failure, not a silent no-op.
 - A `draft` intent is not a delivery the surface can produce: the tool description and the driver reject it rather than creating a batch.
-- Sending does not clear the Annotation from the list; it changes the state pill. The selection used by the card is cleared.
+- Sending does not clear the Annotation from the list; it changes the state pill and closes the active card. The selected targets stay marked until a new selection or `Escape`.

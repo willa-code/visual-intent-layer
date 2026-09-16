@@ -369,5 +369,5 @@ Do not wait for proof of a universal platform or technical breakthrough. Do not 
 - [MCP integration and implementation research](mcp-integration-research.md)
 - [Competitive MCP landscape](similar-mcp-landscape.md)
 - [tldraw and canvas fit](tldraw-fit-research.md)
-- [Domain glossary](CONTEXT.md)
-- [Architecture decisions](docs/adr/)
+- [Domain glossary](../../CONTEXT.md)
+- [Architecture decisions](../adr/)

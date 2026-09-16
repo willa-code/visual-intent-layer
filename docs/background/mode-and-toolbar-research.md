@@ -98,3 +98,20 @@ The candidate placements, with their cost:
   than a bar at the top.
 - Whether the agent sentence can be shortened in the bar without becoming the
   "status dot" that design.md §10 forbids.
+
+## Outcome
+
+Adopted in the surface-refinement iteration: one full-height rail, and a floating
+island at the stage's lower edge holding two icon-only tiles — point and box —
+with operating the artifact as the unarmed state rather than a third tile. The
+top bar is gone; identity, revision, agent position and the attention trigger
+moved into the rail head.
+
+The island is **never hidden**, including while an anchored card is open; the
+card is positioned so the two cannot overlap. Pointing is one mode with two
+outcomes decided by a movement threshold: a click targets a thing the artifact
+owns, and a drag across words takes the artifact's own selection. A drawn Area
+is dashed and static, and reports the elements it encloses so it stays
+resolvable after a reflow. The two open uncertainties above — the drag threshold
+on artifacts with their own drag interactions, and whether an island obscures
+too much — remain unmeasured and are deferred in the spec.

@@ -156,7 +156,7 @@ a shape, a border, or a position.
 | Target the artifact owns | hovered, selected, focused | `accent` | Mark with a distinct border weight; focus uses a ring separate from selection |
 | Target the Builder-Reviewer drew | drawing, drawn, focused | `attention` while drawing, `accent` once drawn | A dashed, static boundary. A drawn target is never marked with the solid outline that means the artifact owns it |
 | Mode | operating (unarmed), point, box | `accent` on the armed tile, and no accent while operating | The lit tile, the cursor over the artifact, and the pre-commit hover outline. Operating is the unarmed state and is never a tile. Never colour alone |
-| Annotation | draft, queued, delivered, acknowledged, resolved, verified, rejected, superseded, obsolete | `progress` while in flight, `success` verified, `closed` rejected/superseded/obsolete | Label text per state; delivery and implementation are never shown as one state |
+| Annotation | draft, queued, delivered, acknowledged, resolved, verified, rejected, another-pass, superseded, obsolete | `progress` while in flight, `success` verified, `closed` rejected/another-pass/superseded/obsolete | Label text per state; delivery and implementation are never shown as one state |
 | Resolution | matched, recovered, ambiguous, deleted | `success`, `progress`, `attention`, `closed` | Glyph plus label. Ambiguous shows its candidates and never resolves itself; deleted states that approval is blocked |
 | Revision | current, advanced | `closed`, `attention` | Annotation-level, never a target label. Phrased as "written before this revision", not as an error |
 | Provenance | source span, inferred, unavailable | `progress`, `closed`, `attention` | Always labelled. Never uses the word "exact", which belongs to resolution alone |
@@ -204,8 +204,8 @@ the order the Builder-Reviewer set. The state pill carries the difference, so
 nothing leaves the list when it is sent and nothing has to be found again in a
 second state. Verdict controls appear on an Annotation's own row once it has
 been delivered, and a resolution that is ambiguous shows its candidates there.
-The stage carries the before/after revision toggle only while something is
-deliverable.
+The stage carries the before/after revision toggle only while the selected row
+has a result from a different revision to compare.
 
 **Reloading asks.** When the artifact's bytes change under review, the stage
 says so and offers one action. The surface never swaps the artifact out from
@@ -224,7 +224,7 @@ gallery in §9 renders them.
 
 | Component | Variants and states |
 | --- | --- |
-| `RailHead` | pinned; artifact name and kind; revision chip `current` / `advanced`; agent position; attention trigger |
+| `RailHead` | pinned; artifact name and kind; revision chip `current` / `advanced`; agent position with the `StopAction` beside it; attention trigger; overflow trigger |
 | `ModeIsland` | resting, with neither tile armed; point armed; box armed; per tile below |
 | `ModeTile` | default, hover, armed, focus, disabled; icon only, with an accessible name and a tooltip sentence |
 | `RevisionChip` | current, advanced; mono identity |
@@ -235,12 +235,12 @@ gallery in §9 renders them.
 | `OverlayMark` | hover, selected, focused, drawn-target boundary, ambiguous-candidate highlight |
 | `DrawnTargetBoundary` | drawing; drawn; below the minimum-size threshold it produces nothing |
 | `RelationGuide` / `RelationHandle` / `RelationSentence` | not built in this iteration: Relational Intent is deferred, see §11 |
-| `BeforeAfterToggle` | before, after, off; present only while something is deliverable |
+| `BeforeAfterToggle` | before, after, off; present only while the selected row has a result from a different revision to compare |
 | `AnchoredCard` | positioned left/right/flipped, clamped to viewport, dismissed |
 | `AnnotationCard` | drafting; with attachment. Its target line is a kind icon plus what was pointed at, never the bare kind word. `Queue` is the only worded action, with attach and delete as icons. No instruction copy: the placeholder carries the question |
 | `AttachmentChip` | uploading, ready, failed, removed |
-| `AnnotationList` | empty; unsent; sent; superseded with its successor linked. One list, where the state pill carries the difference so sending never moves an Annotation out of view; actionable Annotations first, and closed ones behind a filter rather than deleted |
-| `AnnotationPill` | draft, queued, delivered, acknowledged, resolved, verified, rejected, superseded, obsolete |
+| `AnnotationList` | empty; unsent; sent; superseded with its successor linked. One list, where the state pill carries the difference so sending never moves an Annotation out of view; actionable Annotations first, and closed ones behind one toggle rather than deleted |
+| `AnnotationPill` | draft, queued, delivered, acknowledged, resolved, verified, rejected, another-pass, superseded, obsolete |
 | `Composer` | empty, typing, over threshold, disabled |
 | `SendAction` | one verb, with no intent selector to choose from; disabled with the reason stated; the agent's position and whether it is holding the call are stated beside it |
 | `AmendAction` | offered on a sent Annotation that is not yet verified: supersedes it, links the successor, and delivers the amendment with the steering intent |
