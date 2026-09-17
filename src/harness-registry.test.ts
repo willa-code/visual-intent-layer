@@ -11,6 +11,7 @@ import {
   opencodeConfigDir,
   piAgentDir,
   resolveCommand,
+  type DetectionRequest,
   type Harness,
   type HarnessPresence
 } from './harness-registry.js';
@@ -37,11 +38,12 @@ function presenceOf(presence: HarnessPresence[], harness: Harness): HarnessPrese
   return found;
 }
 
-function machine(overrides: { pathEnv?: string } = {}) {
+function machine(overrides: Partial<DetectionRequest> = {}): DetectionRequest {
   return {
     homeDir: tempDir('vil-home-'),
     projectDir: tempDir('vil-proj-'),
     pathEnv: '',
+    env: {},
     ...overrides
   };
 }
