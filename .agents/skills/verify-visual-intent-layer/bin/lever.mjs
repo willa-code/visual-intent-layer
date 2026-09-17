@@ -93,6 +93,7 @@ Usage:
   lever press --key <key> [--target <css>] [--frame artifact]
   lever attention
   lever overflow --item <label>
+  lever theme --to auto|light|dark
 
 Flags:
   --run <name>     Operate on a named run; defaults to the newest run.
@@ -146,6 +147,21 @@ function nowStamp() {
 
 function slug(value) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'run';
+}
+
+function sameColour(hex, rgb) {
+  if (typeof hex !== 'string' || typeof rgb !== 'string') {
+    return false;
+  }
+  const parsed = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  const channels = /^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(rgb.trim());
+  if (!parsed || !channels) {
+    return false;
+  }
+  const value = parsed[1].toLowerCase();
+  const expected = [value.slice(0, 2), value.slice(2, 4), value.slice(4, 6)].map((part) => parseInt(part, 16));
+  const actual = [Number(channels[1]), Number(channels[2]), Number(channels[3])];
+  return expected.every((channel, index) => channel === actual[index]);
 }
 
 function output(value) {
@@ -1252,6 +1268,38 @@ async function commandOverflow(flags) {
   output({ ok: true, command: 'overflow', item: flags.item, screenshot: shot.path });
 }
 
+async function commandTheme(flags) {
+  const runDir = resolveRun(flags.run);
+  const secret = await assertHealthy(runDir);
+  const to = typeof flags.to === 'string' ? flags.to : undefined;
+  const label = { auto: 'Match the platform', light: 'Light', dark: 'Dark' }[to];
+  if (!label) {
+    fail(EXIT.usage, 'theme needs --to auto|light|dark.', 'Run `lever help` for the surface.');
+  }
+  if (flags['dry-run']) {
+    output({ dryRun: true, would: { theme: to } });
+    return;
+  }
+  const host = hostCall(secret);
+  await host('/click', { target: { role: 'button', name: 'More actions' } });
+  await host('/click', { target: { role: 'radio', name: label } });
+  await host('/press', { key: 'Escape' });
+  await sleep(300);
+  const measured = await host('/measure');
+  const applied = measured.material?.theme ?? 'auto';
+  if (applied !== to) {
+    fail(
+      EXIT.unreachable,
+      `The theme control did not take effect: asked for ${to}, the surface reports ${applied}.`,
+      'Run `lever measure` and inspect the theme control.'
+    );
+  }
+  const shot = await host('/screenshot', { name: `theme-${to}-${Date.now()}` });
+  recordEvidence(runDir, { kind: 'screenshot', name: `theme-${to}`, path: shot.path });
+  recordCoverage(runDir, 'session-and-overflow', 'driven', `chose the ${to} theme`, ['overflow-theme']);
+  output({ ok: true, command: 'theme', theme: to, applied, material: measured.material, screenshot: shot.path });
+}
+
 async function commandReorder(flags) {
   const runDir = resolveRun(flags.run);
   const secret = await assertHealthy(runDir);
@@ -1413,8 +1461,11 @@ async function commandRepoint(flags) {
   await host('/click', { target: { selector: target }, frame: 'artifact' });
   await waitForAnnotations(
     secret,
-    (annotation) => Array.isArray(annotation.resolutions) && annotation.resolutions.length === 0,
-    'the re-pointed Annotation to lose its old resolution'
+    (annotation) =>
+      (annotation.targets ?? []).some((entry) =>
+        (entry.renderedGrounding?.selectors ?? []).some((selector) => selector.includes(target.replace(/^[.#]/, '')))
+      ),
+    `the re-pointed Annotation to carry ${target}`
   );
   const shot = await host('/screenshot', { name: `repoint-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: 'repoint', path: shot.path });
@@ -1444,6 +1495,24 @@ async function commandMeasure(flags) {
   if (measured.railHorizontalOverflow) problems.push('the rail list scrolls horizontally');
   if (measured.smallestTile < 24) problems.push(`a mode tile is ${measured.smallestTile}px, below the 24px floor`);
   if (!measured.islandReceivesPointerEvents) problems.push('the island did not receive the pointer over the live iframe');
+  const material = measured.material ?? {};
+  const tokens = material.tokens ?? {};
+  if (!sameColour(tokens.canvas, material.railBackground)) {
+    problems.push(`the rail is ${material.railBackground} rather than the canvas primitive ${tokens.canvas}`);
+  }
+  if (!sameColour(tokens.surfaceSunken, material.stageBackground)) {
+    problems.push(`the stage is ${material.stageBackground} rather than the sunken surface ${tokens.surfaceSunken}`);
+  }
+  if (!sameColour('#ffffff', material.artifactBackground)) {
+    problems.push(`the artifact is served on ${material.artifactBackground} rather than its own white`);
+  }
+  if (sameColour(tokens.canvas, tokens.surface)) {
+    problems.push('canvas and surface resolve to the same colour, so the tool and the work are one plane');
+  }
+  const armedTiles = (measured.tiles ?? []).filter((tile) => tile.armed);
+  const unarmedTiles = (measured.tiles ?? []).filter((tile) => !tile.armed);
+  if (armedTiles.some((tile) => !tile.filledGlyph)) problems.push('an armed tile does not render the filled glyph');
+  if (unarmedTiles.some((tile) => tile.filledGlyph)) problems.push('an unarmed tile renders the filled glyph');
   output({ ok: problems.length === 0, command: 'measure', measured, problems, path });
 }
 
@@ -1451,19 +1520,25 @@ async function commandCompare(flags) {
   const runDir = resolveRun(flags.run);
   const secret = await assertHealthy(runDir);
   const mode = flags.mode === 'before' ? 'before' : 'after';
-  const rowIndex = typeof flags.row === 'string' ? Number(flags.row) : 0;
+  const requestedRow = typeof flags.row === 'string' ? Number(flags.row) : undefined;
   if (flags['dry-run']) {
-    output({ dryRun: true, would: { compare: mode, row: rowIndex } });
+    output({ dryRun: true, would: { compare: mode, row: requestedRow ?? 'first row with a result' } });
     return;
   }
   const host = hostCall(secret);
-  await host('/click', { target: { selector: '.annotation-row__note', nth: rowIndex } });
+  if (requestedRow === undefined) {
+    await host('/click', {
+      target: { selector: '.annotation-row:has(.annotation-row__result-revision) .annotation-row__note' }
+    });
+  } else {
+    await host('/click', { target: { selector: '.annotation-row__note', nth: requestedRow } });
+  }
   const comparison = await host('/count', { target: { selector: '.before-after' } });
   if (comparison.count === 0) {
     fail(
       EXIT.unreachable,
       'The selected row has nothing to compare: it has no result, or its result came from the revision it was written against.',
-      'Change the artifact under review, reload it, and select a row whose target re-resolved against the new revision.'
+      'Change the artifact under review, reload it, then select a row whose target re-resolved against the new revision, or omit --row to let the Lever pick the first row with a result.'
     );
   }
   const label = mode === 'before' ? 'Before (' : 'After (';
@@ -1471,8 +1546,8 @@ async function commandCompare(flags) {
   await sleep(500);
   const shot = await host('/screenshot', { name: `compare-${mode}-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: `compare-${mode}`, path: shot.path });
-  recordCoverage(runDir, 'resolution-and-honesty', 'driven', `compared row ${rowIndex} ${mode}`, [`compare-${mode}-row`]);
-  output({ ok: true, command: 'compare', mode, row: rowIndex, screenshot: shot.path });
+  recordCoverage(runDir, 'resolution-and-honesty', 'driven', `compared a row ${mode}`, [`compare-${mode}-row`]);
+  output({ ok: true, command: 'compare', mode, row: requestedRow ?? 'first-with-result', screenshot: shot.path });
 }
 
 async function commandClosedRows(flags) {
@@ -1517,6 +1592,7 @@ function safeAnnotation(annotation) {
     state: annotation.state,
     note: annotation.note,
     order: annotation.order,
+    writtenRevision: annotation.writtenRevision ?? null,
     revisionRelation: annotation.revisionRelation,
     relationships: annotation.relationships,
     attachments: annotation.attachments,
@@ -1728,6 +1804,7 @@ async function main() {
     press: commandPress,
     attention: commandAttention,
     overflow: commandOverflow,
+    theme: commandTheme,
     review: commandReview,
     verify: commandVerify,
     decide: commandDecide,

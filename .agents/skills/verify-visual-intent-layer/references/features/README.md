@@ -75,6 +75,7 @@ First tier (driven live in the surface-refinement Verification Run; see each fil
 
 Partly driven live (some sub-features confirmed; the rest are mapped):
 
+- [Material and theme](./material-and-theme.md) — the rail/stage/artifact material, canvas versus surface, the two tile glyph forms and the light/dark theme choice were driven; the auto theme and the reload-persistence recipe are mapped.
 - [The decision drawer](./decision-drawer.md) — the closed-rows toggle was driven; the attention drawer and origin gate are mapped.
 - [Agent position](./agent-position.md) — the stop request and Check-In channel were driven; the other positions are mapped.
 - [Check-In](./check-in.md) — the call, contact, amendment and interruption were driven; the never-checked-in state is mapped.

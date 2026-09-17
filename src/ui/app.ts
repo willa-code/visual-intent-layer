@@ -1428,6 +1428,10 @@ class App {
         }
       } else if (event.key === 'Escape') {
         event.preventDefault();
+        if (this.coachmarkId) {
+          this.dismissCoachmark();
+          return;
+        }
         if (this.amendFor) {
           this.closeAmend();
           return;

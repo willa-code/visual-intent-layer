@@ -101,13 +101,18 @@ Keyboard and surface navigation:
 $LEVER press --key p                      # p, b and v arm and disarm the two tiles
 $LEVER attention                          # open the "Needs you" drawer
 $LEVER overflow --item "Copy artifact path"
-$LEVER measure                            # rail width, head overflow, tile size, island pointer events
+$LEVER theme --to light                   # auto, light or dark; remembered
+$LEVER measure                            # rail width, head overflow, tile size, island pointer events, and the material each region resolves to
 $LEVER unreachable --command "…" --precondition "…"   # record a path you could not reach, honestly
 ```
 
 `measure` writes a measurement under `evidence/` and fails when the rail head
-overflows its fixed width, a tile falls below the 24px floor, or the island does
-not receive the pointer over the live iframe. `unreachable` records a gap with
+overflows its fixed width, a tile falls below the 24px floor, the island does
+not receive the pointer over the live iframe, or the material roles break: the
+rail must resolve to `--canvas`, the stage to `--surface-sunken` and the
+artifact frame to `--surface`, and an armed tile must render the filled glyph
+while an unarmed tile renders the outlined one. `theme --to auto|light|dark`
+drives the overflow menu's theme control and reads the applied theme back. `unreachable` records a gap with
 its exact command and unmet precondition and exits `4`, so a sweep never has to
 claim a path it did not reach.
 

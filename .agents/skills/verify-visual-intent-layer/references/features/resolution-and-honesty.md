@@ -34,7 +34,7 @@ Preconditions:
 - **Re-point the lost target.** Run `… lever.mjs repoint --row 0 --target "h1"`. The next selection becomes that Annotation's target; `state` clears its old resolution and approval is no longer blocked by it, with no candidate ever chosen.
 - **Deleted target.** An `unresolved` target with no candidates is reported as deleted. No candidate list appears, the candidates are not marked, and approval stays blocked with the reason named.
 - **Provenance stays separate.** `state` reports `provenanceConfidence` per target independently of `resolutions[].match`; neither shares the word "exact" in the surface.
-- **Compare one row's revisions.** Select the row and run `… lever.mjs compare --mode before --row 0` then `--mode after --row 0`. Each exits `0` while the row has a result from a different revision; the comparison is per row, not one session-wide pair, and switching to Before does not overwrite the revision the result came from.
+- **Compare one row's revisions.** Select the row and run `… lever.mjs compare --mode before` then `--mode after`. Each exits `0` while the row has a result from a different revision; the comparison is per row, not one session-wide pair, and switching to Before does not overwrite the revision the result came from.
 - **Proof.** Run `… lever.mjs state`, `… lever.mjs screenshot --name resolution` and `… lever.mjs snapshot --name resolution`. The state carries the resolution records and candidates; the screenshot shows the resolution list and the revision label.
 
 ## Gotchas

@@ -30,7 +30,7 @@ Preconditions:
 - **Copy the Artifact path.** Choose `Copy artifact path`. Run `… lever.mjs overflow --item "Copy artifact path"` and `… lever.mjs screenshot --name copied-path`. The surface reports `Copied.`; the value is the Artifact's `file://` source.
 - **Copy the evidence.** Queue an Annotation, then choose `Copy evidence for the queue`. Run `… lever.mjs overflow --item "Copy evidence for the queue"` and `… lever.mjs screenshot --name copied-evidence`. The surface reports `Copied.` and the copied text names each target's evidence.
 - **Open the disclosure.** Run `… lever.mjs overflow --item "Open the disclosure"`. The drawer opens with the same content as `attention`.
-- **Choose the theme.** Choose auto, light or dark. The choice survives a surface reload; no chrome colour is read from the Artifact.
+- **Choose the theme.** Run `… lever.mjs theme --to light` (or `dark`, or `auto`). Exit `0`; `measure` reports the applied theme and the light or dark primitives. The choice survives a surface reload; see [Material and theme](./material-and-theme.md) for the colour read-back, because no chrome colour is read from the Artifact.
 - **End the session.** Run `… lever.mjs overflow --item "End session"`. The page closes; `… lever.mjs state` still reports the unsent Annotations.
 - **Proof.** Run `… lever.mjs state` before and after ending the session. The unsent writing persists; the screenshot shows the menu item and the status.
 

@@ -218,6 +218,11 @@ describe('Review Surface (primary seam: a real browser engine)', () => {
     expect(noticeBox!.x).toBeGreaterThanOrEqual(railBox!.x);
     expect(noticeBox!.y + noticeBox!.height).toBeLessThanOrEqual(islandBox!.y);
 
+    expect(await page.locator('.coachmark').count()).toBe(1);
+    await page.getByRole('button', { name: /Point at things/ }).focus();
+    await page.keyboard.press('Escape');
+    await expectLater(() => page.locator('.coachmark').count(), (count) => count === 0, 'Escape dismisses the coachmark first');
+
     await page.getByRole('button', { name: 'Re-point this target' }).first().click();
     await expectLater(
       () => page.getByRole('button', { name: 'Point at the right target, then click it' }).count(),

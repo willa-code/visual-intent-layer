@@ -142,6 +142,9 @@ const handlers = {
       const stagePoint = stageBox
         ? document.elementFromPoint(stageBox.x + stageBox.width / 2, stageBox.y + stageBox.height / 2)
         : null;
+      const rootStyle = getComputedStyle(document.documentElement);
+      const frame = document.querySelector('.artifact-frame');
+      const background = (element) => (element ? getComputedStyle(element).backgroundColor : null);
       return {
         rail: rect(rail),
         railHead: rect(head),
@@ -150,12 +153,27 @@ const handlers = {
         tiles: tiles.map((tile) => ({
           ...rect(tile),
           armed: tile.getAttribute('aria-pressed') === 'true',
-          name: tile.getAttribute('aria-label')
+          name: tile.getAttribute('aria-label'),
+          filledGlyph: !!tile.querySelector('svg path[fill="currentColor"], svg rect[fill="currentColor"]')
         })),
         smallestTile: tiles.reduce((min, tile) => Math.min(min, tile.getBoundingClientRect().width, tile.getBoundingClientRect().height), Infinity),
         islandReceivesPointerEvents: islandPoint ? islandPoint.closest('.mode-island') !== null : false,
         artifactsUnderPointer: stagePoint ? stagePoint.tagName.toLowerCase() : null,
-        artifactIsIframe: stagePoint ? stagePoint.closest('iframe.artifact-frame') !== null : false
+        artifactIsIframe: stagePoint ? stagePoint.closest('iframe.artifact-frame') !== null : false,
+        material: {
+          theme: document.documentElement.dataset.theme ?? 'auto',
+          prefersDark: window.matchMedia('(prefers-color-scheme: dark)').matches,
+          reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+          tokens: {
+            canvas: rootStyle.getPropertyValue('--canvas').trim(),
+            surface: rootStyle.getPropertyValue('--surface').trim(),
+            surfaceSunken: rootStyle.getPropertyValue('--surface-sunken').trim()
+          },
+          bodyBackground: background(document.body),
+          railBackground: background(rail),
+          stageBackground: background(stage),
+          artifactBackground: background(frame)
+        }
       };
     });
   },

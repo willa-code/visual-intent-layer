@@ -29,7 +29,7 @@ Preconditions:
 - The verdict under test is not blocked (except for the blocked recipe).
 
 - **Judge in place.** Run `… lever.mjs verify`. Exit `0` and a screenshot showing the annotation rows with their verdict controls; there is no state switch to enter.
-- **Compare one row.** Select a row whose target re-resolved against a new revision, then run `… lever.mjs compare --mode before --row 0` then `… lever.mjs compare --mode after --row 0`. Each exits `0` with a screenshot; the stage switches between the written revision and the revision the result came from. If the row has nothing to compare the command exits `4` and states the precondition.
+- **Compare one row.** Select a row whose target re-resolved against a new revision, then run `… lever.mjs compare --mode before` then `… lever.mjs compare --mode after`. Each exits `0` with a screenshot; the stage switches between the written revision and the revision the result came from. If the row has nothing to compare the command exits `4` and states the precondition.
 - **Approve one Annotation.** Run `… lever.mjs decide --verdict approve --match "Make it impossible to miss."`. Exit `0` and `state` showing that Annotation `verified` with `verification.verdict` `approve`.
 - **Reject one Annotation.** With another delivered Annotation, run `… lever.mjs decide --verdict reject --match "…"`. `state` shows `rejected` on that Annotation only; the first stays as it was.
 - **Mark Not Fixed.** Run `… lever.mjs decide --verdict not-fixed --match "…"`. `state` shows `not-fixed` for that Annotation. The verdict sits behind that row's overflow; the lever opens it.
