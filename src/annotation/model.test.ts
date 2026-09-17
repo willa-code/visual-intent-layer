@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   approvalBlockers,
   missingRelationTargets,
+  relationsAmong,
   stateLabel,
   verificationRefusedReason,
   type Annotation,
+  type AnnotationRelation,
   type AnnotationTarget
 } from './model.js';
 import type { TargetResolutionRecord } from '../resolution/resolve.js';
@@ -106,6 +108,16 @@ describe('Annotation model', () => {
       relationships: [{ relationshipId: 'rel-1', type: 'alignment', operator: 'align-left', targetIds: ['t-1', 't-2'] }]
     });
     expect(missingRelationTargets(intact)).toEqual([]);
+  });
+
+  it('keeps only relations whose targets are all still present', () => {
+    const relationships = [
+      { relationshipId: 'rel-1', type: 'alignment', operator: 'align-left', targetIds: ['t-1', 't-2'] },
+      { relationshipId: 'rel-2', type: 'ordering', operator: 'before', targetIds: ['t-1', 't-gone'] }
+    ] as unknown as AnnotationRelation[];
+    const result = relationsAmong(relationships, [target('t-1', 'Buy button'), target('t-2', 'Cancel button')]);
+    expect(result.relationships.map((relation) => relation.relationshipId)).toEqual(['rel-1']);
+    expect(result.removed).toBe(1);
   });
 
   it('labels every annotation state without relying on colour alone', () => {

@@ -531,22 +531,11 @@ describe('Review Surface (primary seam: a real browser engine)', () => {
     await relationPage.waitForTimeout(400);
     expect((await stored()).annotations[0]?.relationships?.length, 'a drag released outside the artifact records nothing').toBe(1);
 
-    const storedAnnotation = (await stored()).annotations[0]!;
-    await fetch(`${service.baseUrl}/api/annotations/${storedAnnotation.annotationId}?${auth}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ targets: [storedAnnotation.targets[0]] })
-    });
     await relationPage.reload({ waitUntil: 'domcontentloaded' });
     await expectLater(
       () => relationPage.locator('.annotation-row .relation-sentence').innerText(),
       (text) => /align on the left/.test(text),
-      'the row sentence survives a reload and a target change'
-    );
-    await expectLater(
-      () => relationPage.locator('.annotation-row .hint').innerText(),
-      (text) => /no longer in this Annotation/.test(text),
-      'the row says in words that a target the relation names is gone'
+      'the row sentence survives a reload'
     );
 
     await relationPage.close();
@@ -758,6 +747,63 @@ describe('Review Surface (primary seam: a real browser engine)', () => {
     expect((await stored()).annotations[0]?.relationships?.[0]?.operator).toBe('after');
 
     await orderingPage.close();
+  }, 120000);
+
+  it('removes a relation whose target leaves the set, and states it in words', async () => {
+    const setArtifact = `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Pruning artifact</title>
+    <style>body { margin: 0; } button.member { display: block; width: 120px; margin: 8px; }</style>
+  </head>
+  <body>
+    <button class="member" type="button">Member 1</button>
+    <button class="member" type="button">Member 2</button>
+  </body>
+</html>`;
+    const setPath = join(artifactDir, 'pruning.html');
+    writeFileSync(setPath, setArtifact, 'utf8');
+
+    const opened = await service.openSession({ kind: 'saved-html', path: setPath });
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const pruningPage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await pruningPage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+    const frame = pruningPage.frameLocator('iframe.artifact-frame');
+    await expectLater(() => frame.locator('button.member').count(), (count) => count === 2, 'the artifact renders two members');
+
+    const relationships = async (): Promise<unknown[]> => {
+      const body = (await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`).then((response) =>
+        response.json()
+      )) as { annotations: Array<{ relationships: unknown[] }> };
+      return body.annotations[0]?.relationships ?? [];
+    };
+
+    await pruningPage.getByRole('button', { name: /Point at things/ }).click();
+    if (await pruningPage.locator('.coachmark').count()) {
+      await pruningPage.getByRole('button', { name: 'Got it' }).click();
+    }
+    await frame.locator('button.member').nth(0).click();
+    await frame.locator('button.member').nth(1).click({ modifiers: ['Shift'] });
+
+    const member = await frame.locator('button.member').nth(1).boundingBox();
+    await pruningPage.mouse.move(member!.x + member!.width / 2, member!.y + member!.height / 2);
+    await pruningPage.mouse.down();
+    await pruningPage.mouse.move(member!.x + member!.width / 2 + 7, member!.y + member!.height / 2 + 1, { steps: 5 });
+    await pruningPage.mouse.up();
+    await expectLater(async () => (await relationships()).length, (count) => count === 1, 'the relation is recorded');
+
+    await frame.locator('button.member').nth(0).click({ modifiers: ['Shift'] });
+    await expectLater(
+      async () => (await relationships()).length,
+      (count) => count === 0,
+      'a relation whose target leaves the set is removed rather than left dangling'
+    );
+    await expectLater(
+      () => pruningPage.locator('.notice').innerText(),
+      (text) => /relation was removed because a target it named is no longer/.test(text),
+      'the removal is stated in words rather than silent'
+    );
+
+    await pruningPage.close();
   }, 120000);
 
   it('ends the session from the overflow menu and refuses the stored review URL afterwards', async () => {

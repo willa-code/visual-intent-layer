@@ -173,10 +173,10 @@ export class Api {
     return result.resolutions;
   }
 
-  async repoint(annotationId: string, targets: LayerTarget[]): Promise<Annotation> {
+  async repoint(annotationId: string, targets: LayerTarget[], relationships?: Annotation['relationships']): Promise<Annotation> {
     const result = await this.json<{ annotation: Annotation }>(this.url(`/api/annotations/${annotationId}/repoint`), {
       method: 'POST',
-      body: JSON.stringify({ targets })
+      body: JSON.stringify({ targets, ...(relationships ? { relationships } : {}) })
     });
     return result.annotation;
   }

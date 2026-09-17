@@ -1,5 +1,5 @@
 import type { Annotation } from '../annotation/model.js';
-import { approvalBlockers, isInQueue, isVerification, missingRelationTargets, stateLabel, targetName } from '../annotation/model.js';
+import { approvalBlockers, isInQueue, isVerification, missingRelationTargets, relationsAmong, stateLabel, targetName } from '../annotation/model.js';
 import { relationSentence } from '../annotation/relations.js';
 import { deriveResolutionLabel, type RuntimeStateContext } from '../resolution/model.js';
 import type { ResolutionCandidate, TargetResolutionRecord } from '../resolution/resolve.js';
@@ -1002,8 +1002,12 @@ class App {
     const active = this.activeAnnotation();
     if (active && isInQueue(active.state)) {
       try {
-        await this.api.patchAnnotation(active.annotationId, { targets });
+        const { relationships, removed } = relationsAmong(active.relationships, targets);
+        await this.api.patchAnnotation(active.annotationId, { targets, relationships });
         await this.refresh();
+        if (removed > 0) {
+          this.showNotice(removedRelationsNotice(removed));
+        }
       } catch (error) {
         this.showNotice(messageOf(error));
       }
@@ -1204,11 +1208,15 @@ class App {
 
   private async submitRepoint(annotation: Annotation, targets: LayerTarget[]): Promise<void> {
     try {
-      await this.api.repoint(annotation.annotationId, targets);
+      const { relationships, removed } = relationsAmong(annotation.relationships, targets);
+      await this.api.repoint(annotation.annotationId, targets, relationships);
       this.repointFor = undefined;
       this.resolvedRevision = undefined;
       await this.refresh();
       this.postToLayer({ source: 'vil-shell', type: 'request-candidates' });
+      if (removed > 0) {
+        this.showNotice(removedRelationsNotice(removed));
+      }
     } catch (error) {
       this.showNotice(messageOf(error));
     }
@@ -1891,6 +1899,12 @@ function positionCard(
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function removedRelationsNotice(count: number): string {
+  return count === 1
+    ? 'The relation was removed because a target it named is no longer in this Annotation.'
+    : `${count} relations were removed because they named targets no longer in this Annotation.`;
 }
 
 function unresolvedSentence(label: string, resolution: TargetResolutionRecord, state: RuntimeStateContext): string {

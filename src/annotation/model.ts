@@ -162,6 +162,15 @@ export function missingRelationTargets(annotation: Annotation): string[] {
   return [...missing];
 }
 
+export function relationsAmong(
+  relationships: AnnotationRelation[],
+  targets: Array<{ targetId: string }>
+): { relationships: AnnotationRelation[]; removed: number } {
+  const present = new Set(targets.map((target) => target.targetId));
+  const kept = relationships.filter((relation) => relation.targetIds.every((targetId) => present.has(targetId)));
+  return { relationships: kept, removed: relationships.length - kept.length };
+}
+
 export function targetName(targets: AnnotationTarget[], targetId: string): string {
   const target = targets.find((entry) => entry.targetId === targetId);
   if (!target) {

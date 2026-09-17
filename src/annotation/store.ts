@@ -15,6 +15,7 @@ import type { DeliveryIntent } from '../host/capabilities.js';
 import {
   isInQueue,
   isVerification,
+  relationsAmong,
   verificationRefusedReason,
   type Annotation,
   type AnnotationAttachment,
@@ -144,6 +145,8 @@ export class AnnotationStore {
       }
       if (patch.relationships !== undefined) {
         annotation.relationships = patch.relationships;
+      } else if (patch.targets !== undefined) {
+        annotation.relationships = relationsAmong(annotation.relationships, annotation.targets).relationships;
       }
       if (patch.revisionRelation !== undefined) {
         annotation.revisionRelation = patch.revisionRelation;
@@ -323,12 +326,13 @@ export class AnnotationStore {
     });
   }
 
-  repoint(annotationId: string, targets: AnnotationTarget[]): Annotation {
+  repoint(annotationId: string, targets: AnnotationTarget[], relationships?: AnnotationRelation[]): Annotation {
     if (targets.length === 0) {
       throw new Error('An Annotation needs at least one target');
     }
     return this.mutate(annotationId, (annotation) => {
       annotation.targets = targets;
+      annotation.relationships = relationships ?? relationsAmong(annotation.relationships, targets).relationships;
       annotation.resolutions = [];
       annotation.history.push({ type: 'repointed', at: now() });
       return annotation;

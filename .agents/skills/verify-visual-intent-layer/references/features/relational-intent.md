@@ -51,5 +51,5 @@ exists.
 - Only containment, ordering and alignment are inferred. Spacing, shared property and comparative size need the held key named above; a drag that infers nothing records nothing and says so.
 - `Shift` is the set modifier on click and box, and the comparative-size key during a relation drag. A `Shift`-click toggles a member of the set; a `Shift`-drag on an already-selected target declares a size.
 - The envelope still accepts `relationships`, so a hand-built or legacy envelope can carry a relation the surface would not infer. That is not coverage.
-- A relation whose target is no longer in the Annotation is stated in words on the row, never silently dropped.
+- A relation is kept only while every target it names is still in the Annotation. Removing a member from the set, or re-pointing an Annotation, removes any relation that named it, and the surface says so in words rather than dropping it silently. Should a relation describe a target that is gone by any other route, the row states that too.
 - The stored relation never carries a pixel field. A drive that finds one has found a defect.

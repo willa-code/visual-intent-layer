@@ -104,6 +104,36 @@ describe('Annotation store', () => {
     expect(JSON.stringify(delivered)).not.toMatch(/"(x|y|width|height|left|top|dx|dy|px)"/);
   });
 
+  it('removes a relation whose target leaves the set when the targets are patched', () => {
+    const store = new AnnotationStore(dataDir());
+    const second = { ...target(), targetId: 't-2', label: 'Logo' } as AnnotationTarget;
+    const annotation = store.createDraft({
+      artifactId: 'a',
+      writtenRevision: 'rev-1',
+      targets: [target(), second],
+      relationships: [
+        { relationshipId: 'rel-1', type: 'alignment', operator: 'align-left', targetIds: ['t-1', 't-2'] as [string, string] }
+      ]
+    });
+    store.update(annotation.annotationId, { targets: [target()] });
+    expect(store.get(annotation.annotationId)?.relationships).toEqual([]);
+  });
+
+  it('removes a relation whose target is re-pointed away', () => {
+    const store = new AnnotationStore(dataDir());
+    const second = { ...target(), targetId: 't-2', label: 'Logo' } as AnnotationTarget;
+    const annotation = store.createDraft({
+      artifactId: 'a',
+      writtenRevision: 'rev-1',
+      targets: [target(), second],
+      relationships: [
+        { relationshipId: 'rel-1', type: 'ordering', operator: 'before', targetIds: ['t-1', 't-2'] as [string, string] }
+      ]
+    });
+    store.repoint(annotation.annotationId, [second]);
+    expect(store.get(annotation.annotationId)?.relationships).toEqual([]);
+  });
+
   it('lists only unsent Annotations in the queue and reorders them', () => {
     const store = new AnnotationStore(dataDir());
     const first = store.createDraft({ artifactId: 'a', writtenRevision: 'r', targets: [target()] });

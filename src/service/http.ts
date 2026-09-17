@@ -17,7 +17,7 @@ import {
 import { assertLocalAppUrl, fetchAppRevision, type ReviewService } from '../mcp/service.js';
 import { resolveTarget, type ResolutionCandidate } from '../resolution/resolve.js';
 import { summarise } from '../annotation/model.js';
-import type { AnnotationTarget } from '../annotation/model.js';
+import type { AnnotationRelation, AnnotationTarget } from '../annotation/model.js';
 import { SessionRecords, type SessionRecord } from './sessions.js';
 
 export type LocalServiceOptions = {
@@ -533,8 +533,13 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
       sendText(response, 400, 'Expected { targets: AnnotationTarget[] }');
       return;
     }
+    const relationships = (body as { relationships?: unknown }).relationships;
     try {
-      const updated = review.annotations.repoint(annotationId, normalizeTargets(targets));
+      const updated = review.annotations.repoint(
+        annotationId,
+        normalizeTargets(targets),
+        Array.isArray(relationships) ? (relationships as AnnotationRelation[]) : undefined
+      );
       sendJson(response, 200, { annotation: updated });
     } catch (error) {
       sendText(response, 409, error instanceof Error ? error.message : 're-point refused');
