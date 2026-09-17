@@ -1,7 +1,7 @@
 import type { Annotation } from '../annotation/model.js';
 import { approvalBlockers, isInQueue, isVerification, stateLabel } from '../annotation/model.js';
-import { deriveResolutionLabel } from '../resolution/model.js';
-import type { ResolutionCandidate } from '../resolution/resolve.js';
+import { deriveResolutionLabel, type RuntimeStateContext } from '../resolution/model.js';
+import type { ResolutionCandidate, TargetResolutionRecord } from '../resolution/resolve.js';
 import { Api, type Policy, type SessionPass, type SessionSnapshot, type SessionStatus } from './api.js';
 import {
   agentDisclosure,
@@ -27,6 +27,7 @@ import {
   type ThemeChoice
 } from './components.js';
 import { button, clear, h, iconButton, qs } from './dom.js';
+import { CAPTURE_SUPPORT_STATEMENT, captureArtifactView, captureAvailable, captureUnavailableReason } from './capture.js';
 import { icon, type IconName } from './icons.js';
 import type { LayerMessage, LayerTarget, LayerTool, ShellMarkTargets, ShellMessage } from './protocol.js';
 import { debounce, readConfig, type ShellConfig } from './runtime.js';
@@ -46,9 +47,11 @@ class App {
   private amendFor?: string;
   private repointFor?: string;
   private candidates?: ResolutionCandidate[];
+  private viewedAddress?: string;
   private resolvedRevision?: string;
   private currentRevision = this.config.revision;
   private adoptedRevision = this.config.revision;
+  private revisionBasis: 'document' | 'files' = 'document';
   private reading = false;
   private artifactLoaded = false;
   private drawerOpen = false;
@@ -390,10 +393,11 @@ class App {
     }
 
     const targets = h('ul', { class: 'resolution-list' });
+    const stateFor = this.stateContextFor(annotation);
     for (const resolution of annotation.resolutions) {
       const target = annotation.targets.find((entry) => entry.targetId === resolution.targetId);
       const label = target?.label ?? target?.renderedGrounding.accessibleName ?? target?.kind ?? resolution.targetId;
-      targets.appendChild(resolutionItem(resolution, label));
+      targets.appendChild(resolutionItem(resolution, label, stateFor(resolution)));
     }
     if (annotation.resolutions.length > 0) {
       row.appendChild(targets);
@@ -404,15 +408,7 @@ class App {
       }
       const target = annotation.targets.find((entry) => entry.targetId === resolution.targetId);
       const label = target?.label ?? resolution.targetId;
-      row.appendChild(
-        h('p', {
-          class: 'hint',
-          text:
-            resolution.candidates.length === 0
-              ? `${label} is not in this revision, so approval is blocked.`
-              : `${label} could not be matched in this revision, so approval is blocked.`
-        })
-      );
+      row.appendChild(h('p', { class: 'hint', text: unresolvedSentence(label, resolution, stateFor(resolution)) }));
       row.appendChild(
         repointAction(annotation, {
           active: this.repointFor === annotation.annotationId,
@@ -497,8 +493,20 @@ class App {
     return this.snapshot.annotations.find((entry) => entry.annotationId === annotationId)?.note ?? '';
   }
 
+  private stateContextFor(annotation: Annotation): (resolution: TargetResolutionRecord) => RuntimeStateContext {
+    const revisionUnchanged = annotation.writtenRevision === this.adoptedRevision;
+    return (resolution) => {
+      const target = annotation.targets.find((entry) => entry.targetId === resolution.targetId);
+      return {
+        revisionUnchanged,
+        targetAddress: target?.runtimeState?.address,
+        viewedAddress: resolution.viewedAddress
+      };
+    };
+  }
+
   private verdictBlock(annotation: Annotation): HTMLElement {
-    const blocked = approvalBlockers(annotation);
+    const blocked = approvalBlockers(annotation, this.stateContextFor(annotation));
     return verdictControls(annotation, {
       blocked,
       ...(annotation.verification ? { recorded: `Recorded: ${annotation.verification.verdict}` } : {}),
@@ -580,6 +588,13 @@ class App {
       button('Queue', { variant: 'primary', onClick: () => void this.queueActive() })
     );
     const iconRow = h('div', { class: 'chips' });
+    const capture = iconButton(
+      `Capture a view of the artifact — ${CAPTURE_SUPPORT_STATEMENT}`,
+      'show',
+      () => void this.captureView()
+    );
+    capture.dataset['action'] = 'capture-view';
+    iconRow.appendChild(capture);
     iconRow.appendChild(iconButton('Attach a reference image', 'attach', () => this.pickAttachment()));
     iconRow.appendChild(
       iconButton(`Delete Annotation ${annotation.annotationId}`, 'delete', () => void this.deleteAnnotation(annotation.annotationId))
@@ -633,6 +648,17 @@ class App {
     );
   }
 
+  private policyDisclosure(): string {
+    const policy = this.policy;
+    if (!policy) {
+      return 'The artifact policy has not been read yet.';
+    }
+    if (policy.kind === 'proxied-application') {
+      return `${policy.application?.permits.join('; ') ?? 'This application through the review origin'}. ${policy.application?.note ?? ''}`.trim();
+    }
+    return policy.remoteOrigins.length > 0 ? policy.remoteOrigins.join(', ') : 'None declared by this artifact.';
+  }
+
   private renderDrawer(): void {
     clear(this.drawerHost);
     if (!this.drawerOpen) {
@@ -641,6 +667,9 @@ class App {
     const body = h('div', { class: 'section' });
     body.appendChild(h('p', { class: 'section__title', text: 'What leaves this machine' }));
     const leaving = this.queue();
+    const capturedViews = leaving
+      .flatMap((annotation) => annotation.attachments)
+      .filter((attachment) => isCapturedView(attachment));
     body.appendChild(
       disclosureList(
         leaving.length === 0
@@ -650,9 +679,17 @@ class App {
                 title: `${leaving.length} Annotation${leaving.length === 1 ? '' : 's'} would leave on send`,
                 body: leaving.flatMap((annotation) => describeEvidence(annotation)).map((item) => `${item.title}: ${item.body}`).join(' | ')
               },
+              ...(capturedViews.length > 0
+                ? [
+                    {
+                      title: `${capturedViews.length} Captured View${capturedViews.length === 1 ? '' : 's'} would leave on send`,
+                      body: 'A Captured View is a browser-composited image of the artifact as you saw it, stored as bytes. It leaves this machine with the queue. It is never a re-render, and nothing moves the artifact out of this tab to take it.'
+                    }
+                  ]
+                : []),
               {
                 title: 'Remote origin contact',
-                body: (this.policy?.remoteOrigins ?? []).length > 0 ? (this.policy?.remoteOrigins ?? []).join(', ') : 'None declared by this artifact.'
+                body: this.policyDisclosure()
               }
             ]
       )
@@ -689,6 +726,21 @@ class App {
             : 'Every Annotation was written against the revision now on screen.'
       })
     );
+    if (this.revisionBasis === 'files') {
+      body.appendChild(
+        h('p', {
+          class: 'hint',
+          text: `This revision is derived from the application's files, not from the running document: it can report a change the page has not applied, and it can miss a change outside the watched set. The artifact reports the revision it actually holds, and that report is what an Annotation is stamped with.`
+        })
+      );
+    } else if (this.config.kind === 'react-vite-app') {
+      body.appendChild(
+        h('p', {
+          class: 'hint',
+          text: `This revision comes from the document the application serves, not from the running page. The artifact reports the revision it holds, and an Annotation is stamped with that report; a change is adopted only when the artifact reports it, and an application whose page reports no update event stays at the revision it was served.`
+        })
+      );
+    }
     if (this.snapshot.migration.migrated.length > 0 || this.snapshot.migration.skipped.length > 0 || this.snapshot.migration.unreadable.length > 0) {
       body.appendChild(h('p', { class: 'section__title', text: 'Migration' }));
       body.appendChild(
@@ -841,19 +893,29 @@ class App {
     }
     switch (message.type) {
       case 'ready':
+        void this.adoptReportedRevision(message.revision);
         this.configureLayer();
         if (this.beforeAfter === 'after') {
           this.postToLayer({ source: 'vil-shell', type: 'request-candidates' });
         }
+        break;
+      case 'applied':
+        void this.onApplied(message.revision);
         break;
       case 'selection':
         void this.onSelection(message.targets);
         break;
       case 'candidates':
         this.candidates = message.candidates;
+        this.viewedAddress = message.address;
         void this.resolveAll(message.revision);
         break;      case 'notice':
-        this.showNotice(message.message);
+        this.showNotice(
+          message.message,
+          message.action === 'back-to-artifact'
+            ? { label: 'Back to the reviewed document', onSelect: () => void this.reloadArtifact() }
+            : undefined
+        );
         break;
       case 'hover':
         break;
@@ -1082,6 +1144,31 @@ class App {
     }
   }
 
+  private async captureView(): Promise<void> {
+    const annotation = this.activeAnnotation();
+    if (!annotation) {
+      return;
+    }
+    if (!captureAvailable()) {
+      this.showNotice(captureUnavailableReason());
+      return;
+    }
+    const result = await captureArtifactView(this.iframe);
+    if (!result.ok) {
+      this.showNotice(result.reason);
+      return;
+    }
+    const file = new File([result.blob], 'Captured View.png', { type: 'image/png' });
+    try {
+      await this.api.uploadAttachment(annotation.annotationId, file);
+      await this.refresh();
+      this.renderCard();
+      this.showNotice('Captured View attached: a browser-composited image of the artifact, cropped to it.');
+    } catch (error) {
+      this.showNotice(`The Captured View could not be stored: ${messageOf(error)}`);
+    }
+  }
+
   private pickAttachment(): void {
     const input = h('input', { type: 'file', attrs: { accept: 'image/*' }, style: { display: 'none' } });
     input.addEventListener('change', () => {
@@ -1238,7 +1325,7 @@ class App {
         (annotation) => !isInQueue(annotation.state) && !isVerification(annotation.state)
       );
       for (const annotation of eligible) {
-        await this.api.resolve(annotation.annotationId, revision, this.candidates);
+        await this.api.resolve(annotation.annotationId, revision, this.candidates, this.viewedAddress);
       }
       this.resolvedRevision = revision;
       await this.refresh();
@@ -1282,6 +1369,37 @@ class App {
     this.postToLayer({ source: 'vil-shell', type: 'mark-candidates', candidates: marks });
   }
 
+  private async onApplied(revision?: string): Promise<void> {
+    if (revision && revision.length > 0) {
+      await this.adoptReportedRevision(revision);
+      return;
+    }
+    try {
+      const status = await this.api.status();
+      await this.adoptReportedRevision(status.currentRevision);
+    } catch {
+      return;
+    }
+  }
+
+  private async adoptReportedRevision(revision: string): Promise<void> {
+    if (revision.length === 0) {
+      return;
+    }
+    const changed = revision !== this.adoptedRevision;
+    this.adoptedRevision = revision;
+    try {
+      const status = await this.api.reportAdopted(revision);
+      this.currentRevision = status.currentRevision;
+    } catch {
+      return;
+    }
+    if (changed) {
+      this.configureLayer();
+      this.renderRailHead();
+    }
+  }
+
   private async pollStatus(): Promise<void> {
     try {
       const status = await this.api.status();
@@ -1290,6 +1408,9 @@ class App {
       }
       if (status.adoptedRevision) {
         this.adoptedRevision = status.adoptedRevision;
+      }
+      if (status.revisionBasis) {
+        this.revisionBasis = status.revisionBasis;
       }
       if (status.changed) {
         this.renderBanner(status);
@@ -1308,8 +1429,13 @@ class App {
   private renderBanner(status: SessionStatus): void {
     this.banner.hidden = false;
     clear(this.banner);
+    const showing = shortRevisionOf(this.adoptedRevision);
+    const offering = shortRevisionOf(status.currentRevision);
+    const basis = status.revisionBasis === 'files' ? ' read from files' : '';
     this.banner.append(
-      h('span', { text: 'The artifact changed under review.' }),
+      h('span', {
+        text: `The artifact is showing ${showing}; the source now offers ${offering}${basis}. Reload to review the new revision.`
+      }),
       button('Reload artifact', { variant: 'secondary', onClick: () => void this.reloadArtifact() })
     );
     void status;
@@ -1537,6 +1663,10 @@ function isClosed(state: Annotation['state']): boolean {
   return state === 'verified' || state === 'replaced' || state === 'obsolete';
 }
 
+function isCapturedView(attachment: Annotation['attachments'][number]): boolean {
+  return (attachment.name ?? '').startsWith('Captured View');
+}
+
 function isDelivered(state: Annotation['state']): boolean {
   return state === 'delivered' || state === 'resolved' || state === 'acknowledged';
 }
@@ -1655,6 +1785,16 @@ function positionCard(
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function unresolvedSentence(label: string, resolution: TargetResolutionRecord, state: RuntimeStateContext): string {
+  if (deriveResolutionLabel(resolution, state) === 'state-only') {
+    return `${label} may exist only in a state no longer on screen, so approval is blocked.`;
+  }
+  if (resolution.candidates.length === 0) {
+    return `${label} is not in this revision, so approval is blocked.`;
+  }
+  return `${label} could not be matched in this revision, so approval is blocked.`;
 }
 
 const app = new App();

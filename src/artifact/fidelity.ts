@@ -225,3 +225,22 @@ export function contentSecurityPolicyFor(remote: RemoteOrigins): string {
     "object-src 'none'"
   ].join('; ');
 }
+
+export function applicationContentSecurityPolicy(): string {
+  return [
+    'sandbox allow-scripts allow-same-origin allow-forms allow-popups',
+    "default-src 'none'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "media-src 'self' blob:",
+    "connect-src 'self'",
+    "manifest-src 'self'",
+    "worker-src 'self' blob:",
+    "form-action 'self'",
+    "base-uri 'self'",
+    "frame-src 'self'",
+    "object-src 'none'"
+  ].join('; ');
+}

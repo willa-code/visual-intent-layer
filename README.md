@@ -121,6 +121,15 @@ writing.
 - Several targets can be gathered into one Annotation; a drawn Area records the
   revision and scroll position it was drawn at and reports the elements it
   encloses.
+- Every Target carries Runtime State Evidence: the address the artifact was
+  showing when it was pointed at, recorded relative to the artifact's own base
+  so it means the same thing whether the artifact is served directly or through
+  the review proxy.
+- A Target may carry a Captured View: a browser-composited image of the artifact
+  as it was seen, taken by an explicit permissioned capture in the tab that
+  shows it and never substituted by a re-render. It is content-addressed like a
+  reference image and left undisclosed to no one: the drawer says it will leave
+  the machine before the queue is sent.
 - Reference images are added by picker, paste or drop, are content-addressed by
   their own bytes, and are refused visibly (and unread) when disallowed or
   larger than 5MB. Only image types are accepted.
@@ -133,10 +142,20 @@ writing.
 
 When the artifact changes, each target is located again and reported as
 **Matched**, **Recovered**, **Ambiguous** (with its candidates, never
-auto-selected) or **Deleted**. Whether an Annotation was written before the
-revision now on screen is a separate, Annotation-level fact shown as such.
-Provenance Confidence — exact source span, inferred, or unavailable — is a
-separate axis and never shares the word "exact" with target resolution.
+auto-selected) or **Deleted**. A target that cannot be found while the
+annotation's revision is still the one on screen, and that was pointed at a
+different address than the one now showing, is reported as possibly existing
+only in a state no longer on screen — the product states that possibility and
+never asserts it. Whether an Annotation was written before the revision now on
+screen is a separate, Annotation-level fact shown as such. Provenance
+Confidence — exact source span, inferred, or unavailable — is a separate axis
+and never shares the word "exact" with target resolution; `exact` is claimed
+only where an instrumented artifact stamped a source location, per Target.
+
+Every Annotation is stamped with the **Adopted Revision**: the revision the
+artifact reported it was holding, not the revision a source currently offers.
+Where the artifact's report and the source's offer disagree, the surface states
+the disagreement and the Annotation keeps the artifact's report.
 
 The surface states the agent's position in a sentence, whether a tool call is
 currently held or direction will be read at the agent's next Check-In, and when
@@ -207,15 +226,18 @@ under the data directory, so a service restart loses nothing. The packaged
 
 ## Envelope schema
 
-The portable contract is `schema/envelope-v0.2.schema.json` (experimental,
+The portable contract is `schema/envelope-v0.3.schema.json` (experimental,
 versioned). One envelope carries one or more Annotations, each with its own
-identity, targets, note, relationships, references and attachments. TypeScript
-types are generated from it (`npm run build:types`).
+identity, targets, note, relationships, references and attachments. Every target
+may carry Runtime State Evidence, including the address the artifact was showing.
+TypeScript types are generated from it (`npm run build:types`).
 
-The `0.1` schema is kept only for reading state written by older releases; new
-envelopes are `0.2`. `review-interruption` remains a reserved value in the
-`delivery.intent` enum and is never emitted, because an interruption names no
-target and so cannot be an envelope.
+The `0.1` schema is kept only for reading state written by older releases. `0.2`
+envelopes are still readable: a `0.2` envelope without Runtime State Evidence
+loads unchanged and is read as the current version. New envelopes are `0.3`.
+`review-interruption` remains a reserved value in the `delivery.intent` enum and
+is never emitted, because an interruption names no target and so cannot be an
+envelope.
 
 ## Security and privacy
 
@@ -224,10 +246,15 @@ unguessable per-session capability, and confines file access to the artifact
 directory. A saved HTML artifact keeps its own relative and root-relative assets
 and may load the remote stylesheet, font and image origins it declares — and
 those origins are disclosed in the surface *before* the artifact contacts them.
-Runtime data requests stay blocked by the artifact's content policy. A running
-local development server may be reverse-proxied through the review service's own
-origin so its DOM is selectable; only loopback development origins are proxied
-and authenticated production applications are refused.
+Runtime data requests stay blocked by a saved artifact's content policy. A
+running local development server may be reverse-proxied through the review
+service's own origin so its DOM is selectable; only loopback development origins
+are proxied, a client's method, body, headers and redirects arrive intact, its
+update channel is proxied, and authenticated production applications are
+refused. A proxied application gets its own content policy that permits its own
+proxied origin and nothing else, and the disclosure states what is permitted. A
+Captured View is taken only by an explicit permissioned capture in the
+reviewing tab; the permission cannot be persisted.
 
 See `SECURITY.md` for the full policy.
 
@@ -272,7 +299,7 @@ with `UPDATE_GALLERY=1` once the change is intended.
 - `src/mcp/` — MCP server, the four tools, stdio transport
 - `src/service/` — loopback HTTP service, sessions, Check-In records, security boundary, browser opening
 - `src/ui/` — product-owned shell, artifact interaction layer, icon set, design gallery
-- `src/adapters/` — React/Vite Source Provenance adapter
+- `src/adapters/` — the build-time source-location stamp reader (product and third-party attributes)
 - `src/host/` — the surviving host-capability declaration (embedded UI, subscriptions)
 - `src/benchmark/` — mutation benchmark matrix
 - `src/instrumentation/` — product-boundary measurements

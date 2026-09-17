@@ -57,16 +57,8 @@ The act of asking the agent to attempt the open Annotations of the current Pass 
 _Avoid_: Regenerate, rerun, retry, request changes, continue
 
 **Artifact**:
-Visible work that a Builder-Reviewer can direct and verify. Different artifact types may provide different levels of targeting fidelity while participating in the same Visual Direction Loop.
-_Avoid_: HTML file, canvas, document
-
-**Artifact Mode**:
-A Visual Direction Loop in which the visible artifact is itself, or maps directly to, the editable source of truth. Generated or saved HTML is the initial example.
-_Avoid_: Simple mode, static page mode
-
-**Application Mode**:
-A Visual Direction Loop over a running browser application whose visible output is produced by components, data, state, routing, and build tooling. Application Mode requires evidence connecting rendered targets to their editable source.
-_Avoid_: HTML mode, website mode, arbitrary app support
+Visible work that a Builder-Reviewer can direct and verify, whatever produces it. Every Artifact participates in the same Visual Direction Loop; artifact types differ only in how much evidence their targets can carry and in how their revision is identified, never in the loop they participate in.
+_Avoid_: HTML file, canvas, document, mode, artifact mode, application mode
 
 **Intent Preview**:
 A reversible visual proposal showing the transformation a Builder-Reviewer means before it is delivered to an agent. It never mutates authoritative source. Relational Intent was to be expressed this way by manipulating targets directly; that surface is deferred, so no Intent Preview is built in this iteration.
@@ -112,6 +104,10 @@ _Avoid_: Steering, deferred annotation
 A deliberate request to stop active work and return control to the Builder-Reviewer before beginning another direction cycle. Like Steering Intent it is seen at the agent's next Check-In, so it asks for a stop rather than performing one. It names no target and is therefore not an Annotation, and it is not carried by a Visual Intent Envelope.
 _Avoid_: Cancel, pause, kill
 
+**Target**:
+The visible thing an Annotation is about: an element the artifact owns, an exact word range, or an Area the Builder-Reviewer bounded. A Target carries Rendered Grounding and Runtime State Evidence, may carry a Captured View, and carries Source Provenance only when an instrumented artifact supplied it.
+_Avoid_: Selection, node, element, item
+
 **Area**:
 A visible target the Builder-Reviewer bounded themselves rather than one the artifact owns. An Area carries Rendered Grounding and can never carry Source Provenance; every other kind of target may.
 _Avoid_: Region, marquee, lasso, box, zone, drawn target
@@ -124,8 +120,20 @@ _Avoid_: CSS selector, DOM path, source guess
 Evidence identifying a target within the visible artifact without claiming knowledge of the editable source that produced it.
 _Avoid_: Source provenance, exact source, weak provenance
 
+**Runtime State Evidence**:
+Evidence recording the state the artifact was in when a Target was pointed at: its address relative to the artifact's own base, plus the viewport and scroll position Rendered Grounding already carries. It records what the Builder-Reviewer was looking at, and never claims anything about the editable source. An unresolved Target whose recorded address differs from the address now on screen while its revision has not changed is reported with the derived words **May exist only in a state no longer on screen**; that label is derived at read time and never stored.
+_Avoid_: Snapshot, session state, page state, context
+
+**Captured View**:
+A browser-composited image of the artifact as the Builder-Reviewer actually saw it. It records the visual fact itself; an image assembled by re-rendering DOM and style data is not a Captured View and must never be named as one.
+_Avoid_: Render, reconstruction, thumbnail, snapshot
+
+**Adopted Revision**:
+The artifact revision the Review Surface is actually showing, as reported by the artifact itself rather than derived from what a source currently offers. An Annotation is stamped with the Adopted Revision it was written against, and a source's current revision is never substituted for it.
+_Avoid_: Current revision, latest revision, server revision, head
+
 **Provenance Confidence**:
-The product's explicit assessment of source evidence as an exact source span, inferred, or unavailable. This axis is separate from Target Resolution and never shares the word "exact" with it. Uncertainty must remain visible to both the Builder-Reviewer and the agent.
+The product's explicit assessment of source evidence as exact, inferred, or unavailable. Exact is claimed only where an instrumented artifact supplied a source location; it is never inferred from framework internals, and an artifact with no instrumentation reads as unavailable rather than as a weaker kind of exact. This axis is separate from Target Resolution and never shares the word "exact" with it. Uncertainty must remain visible to both the Builder-Reviewer and the agent.
 _Avoid_: Best guess, likely file
 
 **Target Resolution**:

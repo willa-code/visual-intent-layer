@@ -12,6 +12,7 @@ export type SessionRecord = {
   artifactId: string;
   revision: string;
   adoptedRevision?: string;
+  sourceRoot?: string;
   displayName: string;
   capabilities?: HostCapabilities;
 };

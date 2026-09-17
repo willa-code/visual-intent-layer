@@ -1,3 +1,4 @@
+import { provenanceForElement } from '../../adapters/source-stamp.js';
 import type { ResolutionCandidate } from '../../resolution/resolve.js';
 import type { Box, Grounding } from '../protocol.js';
 
@@ -36,10 +37,6 @@ export function describeElement(element: HTMLElement): Grounding {
     },
     geometry: { centerX: rect.x + rect.width / 2, centerY: rect.y + rect.height / 2 }
   };
-  const runtimeId = element.getAttribute('data-visual-intent-id');
-  if (runtimeId) {
-    grounding.stableRuntimeId = runtimeId;
-  }
   return grounding;
 }
 
@@ -206,6 +203,7 @@ export function extractCandidates(doc: Document, options: { limit?: number } = {
   for (let index = 0; index < total; index += 1) {
     const element = elements[index] as HTMLElement;
     const grounding = describeElement(element);
+    const stamp = provenanceForElement(element);
     candidates.push({
       nodeId: `node-${index}`,
       selectors: grounding.selectors ?? [],
@@ -222,7 +220,7 @@ export function extractCandidates(doc: Document, options: { limit?: number } = {
         width: grounding.boundingBox.width,
         height: grounding.boundingBox.height
       },
-      stableRuntimeId: grounding.stableRuntimeId
+      ...(stamp ? { sourceFile: stamp.file, sourceLine: stamp.line, sourceColumn: stamp.column } : {})
     });
   }
   return candidates;

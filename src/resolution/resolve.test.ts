@@ -109,14 +109,21 @@ describe('target resolution vocabulary', () => {
     expect(result.selectedNodeId).toBe('n-1');
   });
 
-  it('prefers stable runtime identity when the DOM is otherwise similar', () => {
+  it('disambiguates otherwise-similar siblings with a source stamp', () => {
     const target = elementTarget();
-    target.renderedGrounding.stableRuntimeId = 'react-fiber-42';
-    const same = candidate({ nodeId: 'n-1', stableRuntimeId: 'react-fiber-42' });
-    const twin = candidate({ nodeId: 'n-2', stableRuntimeId: 'react-fiber-43' });
-    const result = resolveTarget(target, [twin, same]);
+    target.provenanceConfidence = 'exact';
+    target.sourceProvenance = { file: 'src/Checkout.tsx', line: 42, column: 8, adapter: 'visual-intent-stamp@0.1' };
+    const stale = candidate({ nodeId: 'n-2', sourceFile: 'src/Checkout.tsx', sourceLine: 99, sourceColumn: 8 });
+    const stamped = candidate({ nodeId: 'n-1', sourceFile: 'src/Checkout.tsx', sourceLine: 42, sourceColumn: 8 });
+    const result = resolveTarget(target, [stale, stamped]);
     expect(result.selectedNodeId).toBe('n-1');
     expect(['exact', 'recovered']).toContain(result.match);
+  });
+
+  it('keeps every reachable outcome when no runtime-identity anchor is supplied', () => {
+    const result = resolveTarget(elementTarget(), [candidate()]);
+    expect(result.match).toBe('exact');
+    expect(result.selectedNodeId).toBe('n-1');
   });
 
   it('resolves a text-range target on its exact words', () => {
@@ -139,5 +146,58 @@ describe('target resolution vocabulary', () => {
     ]);
     expect(result.match).toBe('exact');
     expect(result.selectedNodeId).toBe('n-text');
+  });
+
+  it('derives a state-only label when an unresolved target was pointed at a different address and the revision held', () => {
+    const unrelated = candidate({
+      nodeId: 'n-9',
+      selectors: ['footer a.help'],
+      semanticRole: 'link',
+      accessibleName: 'Help',
+      text: 'Help center',
+      ancestorChain: ['body', 'footer'],
+      siblingIndex: 0,
+      siblingCount: 2,
+      boundingBox: { x: 8, y: 760, width: 60, height: 20 }
+    });
+    const result = resolveTarget(elementTarget(), [unrelated], { viewedAddress: undefined });
+    expect(deriveResolutionLabel(result)).toBe('deleted');
+    expect(
+      deriveResolutionLabel(result, {
+        revisionUnchanged: true,
+        targetAddress: 'checkout.html#dialog',
+        viewedAddress: result.viewedAddress
+      })
+    ).toBe('state-only');
+  });
+
+  it('keeps Deleted when the address matches, the revision moved, or no address was recorded', () => {
+    const unrelated = candidate({
+      nodeId: 'n-9',
+      selectors: ['footer a.help'],
+      semanticRole: 'link',
+      accessibleName: 'Help',
+      text: 'Help center',
+      ancestorChain: ['body', 'footer'],
+      siblingIndex: 0,
+      siblingCount: 2,
+      boundingBox: { x: 8, y: 760, width: 60, height: 20 }
+    });
+    const result = resolveTarget(elementTarget(), [unrelated], { viewedAddress: 'checkout.html#dialog' });
+    expect(
+      deriveResolutionLabel(result, {
+        revisionUnchanged: true,
+        targetAddress: 'checkout.html#dialog',
+        viewedAddress: result.viewedAddress
+      })
+    ).toBe('deleted');
+    expect(
+      deriveResolutionLabel(result, {
+        revisionUnchanged: false,
+        targetAddress: 'elsewhere.html',
+        viewedAddress: result.viewedAddress
+      })
+    ).toBe('deleted');
+    expect(deriveResolutionLabel(result, { revisionUnchanged: true, viewedAddress: result.viewedAddress })).toBe('deleted');
   });
 });

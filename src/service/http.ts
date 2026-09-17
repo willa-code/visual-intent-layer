@@ -1,9 +1,12 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { connect, type Socket } from 'node:net';
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { computeRevision } from '../artifact/revision.js';
+import { computeSourceRootRevision } from '../artifact/source-root.js';
 import {
+  applicationContentSecurityPolicy,
   contentSecurityPolicyFor,
   emptyRemoteOrigins,
   injectArtifactLayerScript,
@@ -82,6 +85,9 @@ export async function startLocalService(options: LocalServiceOptions): Promise<L
         sendText(response, 500, error instanceof Error ? error.message : 'internal error');
       }
     );
+  });
+  server.on('upgrade', (request, socket, head) => {
+    handleUpgrade({ request, socket: socket as Socket, head, sessions });
   });
   const port = await listen(server, options.port ?? 3742);
   const baseUrl = `http://127.0.0.1:${port}`;
@@ -205,7 +211,7 @@ async function handleRequest(context: RequestContext): Promise<void> {
     return;
   }
   const appMatch = /^\/app\/([^/]+)(\/.*)?$/.exec(path);
-  if ((method === 'GET' || method === 'POST') && appMatch) {
+  if (appMatch) {
     const session = authorizedOrRefuse(context, appMatch[1]!, url);
     if (!session) {
       return;
@@ -233,6 +239,29 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
       return;
     }
     sendJson(response, 200, await policyFor(session, policies));
+    return;
+  }
+
+  const adoptedMatch = /^\/api\/sessions\/([^/]+)\/adopted$/.exec(path);
+  if (method === 'POST' && adoptedMatch) {
+    const session = authorizedOrRefuse(context, adoptedMatch[1]!, url);
+    if (!session) {
+      return;
+    }
+    const body = await readJsonBody(request, response);
+    if (body === undefined) {
+      return;
+    }
+    const revision = (body as { revision?: unknown }).revision;
+    if (typeof revision !== 'string' || revision.length === 0) {
+      sendText(response, 400, 'Expected { revision: string }');
+      return;
+    }
+    sessions.put({ ...session, adoptedRevision: revision });
+    if ((session.adoptedRevision ?? session.revision) !== revision) {
+      review.annotations.markPassesReady(session.artifactId, revision);
+    }
+    sendJson(response, 200, await sessionStatus(sessions.get(session.sessionId)!));
     return;
   }
 
@@ -450,12 +479,17 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     }
     const revision = (body as { revision?: unknown }).revision;
     const candidates = (body as { candidates?: unknown }).candidates;
+    const viewedAddress = (body as { address?: unknown }).address;
     if (typeof revision !== 'string' || !Array.isArray(candidates)) {
       sendText(response, 400, 'Expected { revision: string, candidates: ResolutionCandidate[] }');
       return;
     }
     const resolutions = annotation.targets.map((target) =>
-      resolveTarget(target, candidates as ResolutionCandidate[])
+      resolveTarget(
+        target,
+        candidates as ResolutionCandidate[],
+        typeof viewedAddress === 'string' ? { viewedAddress } : {}
+      )
     );
     review.annotations.noteRevisionAdvance(annotation.artifactId, revision);
     const updated = review.annotations.recordResolutions(annotationId, resolutions, revision);
@@ -745,6 +779,19 @@ function annotationSnapshot(review: ReviewService, session: SessionRecord): Reco
 }
 
 async function policyFor(session: SessionRecord, policies: Map<string, RemoteOrigins>): Promise<Record<string, unknown>> {
+  if (session.kind !== 'saved-html') {
+    return {
+      kind: 'proxied-application',
+      remoteOrigins: [],
+      byKind: emptyRemoteOrigins(),
+      contactsRemote: false,
+      application: {
+        proxiedBase: `/app/${session.sessionId}/`,
+        permits: ['This application through the review origin', 'Form submissions and the update channel as this application sends them'],
+        note: 'The policy permits this application\'s own requests through the proxied origin and refuses every other origin. Its update channel is proxied, so the artifact can report its own revision.'
+      }
+    };
+  }
   const cached = policies.get(session.sessionId);
   if (cached) {
     return policyPayload(cached);
@@ -757,6 +804,7 @@ async function policyFor(session: SessionRecord, policies: Map<string, RemoteOri
 function policyPayload(remote: RemoteOrigins): Record<string, unknown> {
   const allowed = [...new Set([...remote.stylesheet, ...remote.font, ...remote.image])];
   return {
+    kind: 'saved-html',
     remoteOrigins: allowed,
     byKind: remote,
     contactsRemote: allowed.length > 0
@@ -904,12 +952,14 @@ async function sessionStatus(session: SessionRecord): Promise<Record<string, unk
       const revision = computeRevision(bytes, []);
       return {
         ...base,
+        revisionBasis: 'document',
         currentRevision: revision,
         changed: revision !== adoptedRevision
       };
     } catch {
       return {
         ...base,
+        revisionBasis: 'document',
         currentRevision: adoptedRevision,
         changed: false,
         unreadable: true
@@ -918,15 +968,19 @@ async function sessionStatus(session: SessionRecord): Promise<Record<string, unk
   }
   if (session.kind === 'react-vite-app') {
     try {
-      const revision = await fetchAppRevision(session.source);
+      const revision = session.sourceRoot
+        ? computeSourceRootRevision(session.sourceRoot)
+        : await fetchAppRevision(session.source);
       return {
         ...base,
+        revisionBasis: session.sourceRoot ? 'files' : 'document',
         currentRevision: revision,
         changed: revision !== adoptedRevision
       };
     } catch {
       return {
         ...base,
+        revisionBasis: session.sourceRoot ? 'files' : 'document',
         currentRevision: adoptedRevision,
         changed: false,
         unreadable: true
@@ -935,6 +989,7 @@ async function sessionStatus(session: SessionRecord): Promise<Record<string, unk
   }
   return {
     ...base,
+    revisionBasis: 'document',
     currentRevision: adoptedRevision,
     changed: false
   };
@@ -947,7 +1002,7 @@ function serveReviewShell(response: ServerResponse, session: SessionRecord): voi
     .replaceAll('__CAPABILITY__', encodeHtml(session.capability))
     .replaceAll('__ARTIFACT_ID__', encodeHtml(session.artifactId))
     .replaceAll('__ARTIFACT_NAME__', encodeHtml(session.displayName))
-    .replaceAll('__ARTIFACT_REVISION__', encodeHtml(session.revision))
+    .replaceAll('__ARTIFACT_REVISION__', encodeHtml(session.adoptedRevision ?? session.revision))
     .replaceAll('__ARTIFACT_KIND__', encodeHtml(session.kind))
     .replaceAll('__ARTIFACT_SRC__', encodeHtml(`/artifact/${session.sessionId}`));
   response.writeHead(200, {
@@ -1005,7 +1060,8 @@ function serveArtifactDocument(
   }
   const html = injectArtifactLayerScript(analysis.html, session.sessionId, {
     'data-revision': currentRevision,
-    'data-mode': 'after'
+    'data-mode': 'after',
+    'data-address-base': base
   });
   response.writeHead(200, {
     'content-type': 'text/html; charset=utf-8',
@@ -1032,7 +1088,8 @@ function serveArtifactBefore(
   const analysis = rewriteHtml(snapshot.toString('utf8'), base);
   const html = injectArtifactLayerScript(analysis.html, session.sessionId, {
     'data-revision': revision,
-    'data-mode': 'before'
+    'data-mode': 'before',
+    'data-address-base': base
   });
   response.writeHead(200, {
     'content-type': 'text/html; charset=utf-8',
@@ -1048,7 +1105,7 @@ async function serveAppProxy(
   upstreamPath: string,
   search: string
 ): Promise<void> {
-  const { response } = context;
+  const { request, response } = context;
   if (session.kind !== 'react-vite-app') {
     sendText(response, 404, 'Not an application session');
     return;
@@ -1062,23 +1119,58 @@ async function serveAppProxy(
     sendText(response, 403, error instanceof Error ? error.message : 'refused upstream');
     return;
   }
+  const method = request.method ?? 'GET';
+  const carriesBody = method !== 'GET' && method !== 'HEAD';
+  let body: Buffer | undefined;
+  if (carriesBody) {
+    body = await readBoundedBinary(request, response, MAX_API_BODY_BYTES);
+    if (body === undefined) {
+      return;
+    }
+  }
   try {
-    const upstreamResponse = await fetch(upstream, { redirect: 'manual' });
+    const upstreamResponse = await fetch(upstream, {
+      method,
+      headers: forwardedHeaders(request),
+      redirect: 'manual',
+      ...(body && body.byteLength > 0 ? { body: body as unknown as BodyInit } : {})
+    });
+    const location = upstreamResponse.headers.get('location');
+    if (location) {
+      const rewritten = rewriteRedirectLocation(location, upstream, session);
+      if (!rewritten) {
+        sendText(response, 502, `Upstream redirected off the review origin: ${location}`);
+        return;
+      }
+      response.writeHead(upstreamResponse.status, { location: rewritten, 'x-content-type-options': 'nosniff' });
+      response.end();
+      return;
+    }
     const bytes = Buffer.from(await upstreamResponse.arrayBuffer());
     if (bytes.byteLength > MAX_ASSET_BYTES) {
       sendText(response, 413, 'Upstream asset exceeds the bounded size for local review');
       return;
     }
     const contentType = upstreamResponse.headers.get('content-type') ?? '';
+    if (method === 'HEAD') {
+      response.writeHead(upstreamResponse.status, {
+        'content-type': contentType || 'application/octet-stream',
+        'x-content-type-options': 'nosniff'
+      });
+      response.end();
+      return;
+    }
     if (contentType.includes('text/html')) {
       const base = `/app/${session.sessionId}`;
       const analysis = rewriteHtml(bytes.toString('utf8'), base);
       const html = injectArtifactLayerScript(analysis.html, session.sessionId, {
-        'data-revision': session.revision,
-        'data-mode': 'after'
+        'data-revision': session.adoptedRevision ?? session.revision,
+        'data-mode': 'after',
+        'data-address-base': base
       });
       response.writeHead(upstreamResponse.status, {
         'content-type': contentType,
+        'content-security-policy': applicationContentSecurityPolicy(),
         'x-content-type-options': 'nosniff'
       });
       response.end(html);
@@ -1103,6 +1195,145 @@ async function serveAppProxy(
   }
 }
 
+const HOP_BY_HOP_HEADERS = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+  'host',
+  'content-length'
+]);
+
+function forwardedHeaders(request: IncomingMessage): Record<string, string> {
+  const forwarded: Record<string, string> = {};
+  for (const [name, value] of Object.entries(request.headers)) {
+    if (value === undefined) {
+      continue;
+    }
+    const lower = name.toLowerCase();
+    if (HOP_BY_HOP_HEADERS.has(lower) || lower === 'x-session-cap') {
+      continue;
+    }
+    if (lower === 'cookie') {
+      const cookies = stripReviewCookies(Array.isArray(value) ? value.join('; ') : value);
+      if (cookies.length > 0) {
+        forwarded['cookie'] = cookies;
+      }
+      continue;
+    }
+    forwarded[lower] = Array.isArray(value) ? value.join(', ') : value;
+  }
+  return forwarded;
+}
+
+function stripReviewCookies(header: string): string {
+  return header
+    .split(';')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0 && !/^vil_(cap|session)=/.test(part))
+    .join('; ');
+}
+
+function rewriteRedirectLocation(location: string, upstream: URL, session: SessionRecord): string | undefined {
+  let target: URL;
+  try {
+    target = new URL(location, upstream);
+  } catch {
+    return undefined;
+  }
+  if (target.origin !== upstream.origin) {
+    try {
+      assertLocalAppUrl(target.toString());
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  }
+  const relative = `${target.pathname}${target.search}${target.hash}`.replace(/^\/+/, '');
+  return `/app/${session.sessionId}/${relative}`;
+}
+
+function handleUpgrade(input: {
+  request: IncomingMessage;
+  socket: Socket;
+  head: Buffer;
+  sessions: SessionRecords;
+}): void {
+  const { request, socket, head, sessions } = input;
+  const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+  const match = /^\/app\/([^/]+)(\/.*)?$/.exec(url.pathname);
+  if (!match) {
+    socket.destroy();
+    return;
+  }
+  const session = sessions.authorized(match[1]!, capabilityFrom(request, url) ?? null);
+  if (!session || session.kind !== 'react-vite-app') {
+    socket.destroy();
+    return;
+  }
+  let upstream: URL;
+  try {
+    assertLocalAppUrl(session.source);
+    upstream = new URL(`${match[2] ?? '/'}${url.search}`, session.source);
+    assertLocalAppUrl(upstream.toString());
+  } catch {
+    socket.destroy();
+    return;
+  }
+  const port = Number(upstream.port || (upstream.protocol === 'https:' ? 443 : 80));
+  const upstreamSocket = connect(port, upstream.hostname, () => {
+    try {
+      upstreamSocket.write(
+        `${request.method ?? 'GET'} ${upstream.pathname}${upstream.search} HTTP/1.1\r\n${forwardedUpgradeHeaders(request, upstream)}\r\n\r\n`
+      );
+      if (head.length > 0) {
+        upstreamSocket.write(head);
+      }
+      upstreamSocket.pipe(socket);
+      socket.pipe(upstreamSocket);
+    } catch {
+      socket.destroy();
+      upstreamSocket.destroy();
+    }
+  });
+  const closeBoth = (): void => {
+    upstreamSocket.destroy();
+    socket.destroy();
+  };
+  upstreamSocket.on('error', closeBoth);
+  upstreamSocket.on('close', closeBoth);
+  socket.on('error', closeBoth);
+  socket.on('end', closeBoth);
+  socket.on('close', closeBoth);
+}
+
+function forwardedUpgradeHeaders(request: IncomingMessage, upstream: URL): string {
+  const lines: string[] = [];
+  for (const [name, value] of Object.entries(request.headers)) {
+    if (value === undefined) {
+      continue;
+    }
+    const lower = name.toLowerCase();
+    if (lower === 'host' || lower === 'x-session-cap') {
+      continue;
+    }
+    if (lower === 'cookie') {
+      const cookies = stripReviewCookies(Array.isArray(value) ? value.join('; ') : value);
+      if (cookies.length > 0) {
+        lines.push(`cookie: ${cookies}`);
+      }
+      continue;
+    }
+    lines.push(`${name}: ${Array.isArray(value) ? value.join(', ') : value}`);
+  }
+  lines.push(`host: ${upstream.host}`);
+  return lines.join('\r\n');
+}
+
 function serveArtifactAsset(response: ServerResponse, session: SessionRecord, requested: string): void {
   const absolute = artifactFile(session);
   if (!absolute) {
@@ -1121,6 +1352,10 @@ function serveArtifactAsset(response: ServerResponse, session: SessionRecord, re
     return;
   }
   const type = MIME[extname(confined).toLowerCase()] ?? 'application/octet-stream';
+  if (type.startsWith('text/html')) {
+    serveOutsideDocumentNotice(response, session, requested);
+    return;
+  }
   if (type.startsWith('text/css')) {
     const rewritten = rewriteCss(readFileSync(confined, 'utf8'), `/artifact/${session.sessionId}`);
     response.writeHead(200, { 'content-type': type, 'x-content-type-options': 'nosniff' });
@@ -1150,6 +1385,38 @@ export function confinePath(baseDir: string, requestedPath: string): string | un
   } catch {
     return undefined;
   }
+}
+
+function serveOutsideDocumentNotice(response: ServerResponse, session: SessionRecord, requested: string): void {
+  const reviewed = `/artifact/${session.sessionId}`;
+  const name = requested.split('/').filter(Boolean).pop() ?? requested;
+  const message = `${name} is another document. This artifact is reviewed as one document, so it is not served with pointing.`;
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Outside the reviewed document</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; background: rgb(250, 250, 250); color: rgb(20, 20, 20); }
+      main { max-width: 34rem; margin: 12vh auto; padding: 0 1.5rem; }
+      a { color: rgb(43, 95, 215); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>This link leaves the reviewed document</h1>
+      <p>${encodeHtml(message)}</p>
+      <p><a href="${reviewed}">Back to the reviewed document</a></p>
+    </main>
+    <script>window.parent.postMessage({ source: 'vil-layer', type: 'notice', message: ${JSON.stringify(message)}, action: 'back-to-artifact' }, '*');</script>
+  </body>
+</html>`;
+  response.writeHead(200, {
+    'content-type': 'text/html; charset=utf-8',
+    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'",
+    'x-content-type-options': 'nosniff'
+  });
+  response.end(html);
 }
 
 function serveUiAsset(response: ServerResponse, name: string): void {
@@ -1288,6 +1555,7 @@ function normalizeTargets(raw: unknown[]): AnnotationTarget[] {
     const provenance = candidate['sourceProvenance'] as AnnotationTarget['sourceProvenance'] | undefined;
     const confidence = candidate['provenanceConfidence'];
     const regionEvidence = candidate['regionEvidence'] as AnnotationTarget['regionEvidence'] | undefined;
+    const runtimeState = candidate['runtimeState'] as AnnotationTarget['runtimeState'] | undefined;
     return {
       targetId: typeof candidate['targetId'] === 'string' && candidate['targetId'].length > 0 ? candidate['targetId'] : `t-${index + 1}`,
       kind: candidate['kind'] === 'text-range' || candidate['kind'] === 'region' ? candidate['kind'] : 'element',
@@ -1296,7 +1564,8 @@ function normalizeTargets(raw: unknown[]): AnnotationTarget[] {
         confidence === 'exact' || confidence === 'inferred' ? confidence : provenance ? 'exact' : 'unavailable',
       ...(provenance ? { sourceProvenance: provenance } : {}),
       ...(typeof candidate['label'] === 'string' && candidate['label'].length > 0 ? { label: candidate['label'] } : {}),
-      ...(regionEvidence ? { regionEvidence } : {})
+      ...(regionEvidence ? { regionEvidence } : {}),
+      ...(runtimeState && typeof runtimeState === 'object' ? { runtimeState } : {})
     } satisfies AnnotationTarget;
   });
 }

@@ -35,21 +35,93 @@ async function openGallery(service: LocalService): Promise<{ sessionId: string; 
   };
 }
 
-function startStubApp(initialBody: string): Promise<{ url: string; setBody: (next: string) => void; stop: () => Promise<void> }> {
+type CapturedRequest = {
+  method: string;
+  url: string;
+  headers: Record<string, string | string[] | undefined>;
+  body: string;
+};
+
+function startStubApp(initialBody: string): Promise<{
+  url: string;
+  setBody: (next: string) => void;
+  stop: () => Promise<void>;
+  requests: CapturedRequest[];
+  wsMessages: string[];
+}> {
   let body = initialBody;
-  const server = createServer((_request, response) => {
-    response.writeHead(200, { 'content-type': 'text/html' });
-    response.end(body);
+  let origin = '';
+  const requests: CapturedRequest[] = [];
+  const wsMessages: string[] = [];
+  const upgradeSockets = new Set<import('node:stream').Duplex>();
+  const server = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on('data', (chunk) => chunks.push(chunk as Buffer));
+    request.on('end', () => {
+      const captured: CapturedRequest = {
+        method: request.method ?? 'GET',
+        url: request.url ?? '/',
+        headers: request.headers,
+        body: Buffer.concat(chunks).toString('utf8')
+      };
+      requests.push(captured);
+      if (captured.url.startsWith('/echo')) {
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(
+          JSON.stringify({
+            method: captured.method,
+            body: captured.body,
+            custom: request.headers['x-custom'] ?? null,
+            cookie: request.headers['cookie'] ?? null,
+            host: request.headers['host'] ?? null
+          })
+        );
+        return;
+      }
+      if (captured.url.startsWith('/redirect')) {
+        response.writeHead(302, { location: `${origin}redirected/here?x=1` });
+        response.end();
+        return;
+      }
+      if (captured.url.startsWith('/offsite')) {
+        response.writeHead(302, { location: 'https://example.com/away' });
+        response.end();
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'text/html' });
+      response.end(body);
+    });
+  });
+  server.on('upgrade', (_request, socket) => {
+    upgradeSockets.add(socket);
+    socket.on('close', () => upgradeSockets.delete(socket));
+    socket.write(
+      'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: stub\r\n\r\n'
+    );
+    socket.on('data', (chunk) => {
+      wsMessages.push(chunk.toString('utf8'));
+      socket.write(chunk);
+    });
   });
   return new Promise((resolvePromise) => {
     server.listen(0, '127.0.0.1', () => {
       const address = server.address() as AddressInfo;
+      origin = `http://127.0.0.1:${address.port}/`;
       resolvePromise({
-        url: `http://127.0.0.1:${address.port}/`,
+        url: origin,
         setBody: (next) => {
           body = next;
         },
-        stop: () => new Promise<void>((done) => server.close(() => done()))
+        stop: () =>
+          new Promise<void>((done) => {
+            for (const socket of upgradeSockets) {
+              socket.destroy();
+            }
+            server.close(() => done());
+            server.closeAllConnections?.();
+          }),
+        requests,
+        wsMessages
       });
     });
   });
@@ -71,6 +143,46 @@ function rawStatus(payload: string, port: number): Promise<number> {
       }
     });
     socket.on('error', rejectPromise);
+  });
+}
+
+function upgradeThroughProxy(
+  port: number,
+  path: string,
+  cookie: string
+): Promise<{ status: number; echoed: boolean }> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const socket = connect(port, '127.0.0.1');
+    const probe = 'ping-through-proxy';
+    let text = '';
+    let probeSent = false;
+    const timer = setTimeout(() => {
+      socket.destroy();
+      rejectPromise(new Error(`Upgrade timed out: ${text.slice(0, 200)}`));
+    }, 5000);
+    socket.on('connect', () => {
+      socket.write(
+        `GET ${path} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nCookie: ${cookie}\r\n\r\n`
+      );
+    });
+    socket.on('data', (chunk) => {
+      text += chunk.toString('utf8');
+      if (!probeSent && text.includes('\r\n\r\n')) {
+        probeSent = true;
+        socket.write(probe);
+        return;
+      }
+      if (probeSent && text.includes(probe)) {
+        clearTimeout(timer);
+        socket.destroy();
+        const match = /^HTTP\/1\.1 (\d+)/.exec(text);
+        resolvePromise({ status: match ? Number(match[1]) : 0, echoed: true });
+      }
+    });
+    socket.on('error', (error) => {
+      clearTimeout(timer);
+      rejectPromise(error);
+    });
   });
 }
 
@@ -138,6 +250,30 @@ describe('review shell and asset graph', () => {
       expect(response.status, `${asset} should load`).toBe(200);
       expect((await response.text()).length).toBeGreaterThan(100);
     }
+  });
+
+  it('names a navigation off the reviewed document instead of serving an un-instrumented page', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vil-one-doc-'));
+    writeFileSync(join(dir, 'page.html'), '<!doctype html><html><body><a href="second.html">Second</a></body></html>', 'utf8');
+    writeFileSync(join(dir, 'second.html'), '<!doctype html><html><body><h1>Second document</h1></body></html>', 'utf8');
+    const { service } = await setup();
+    const opened = await service.openSession({ kind: 'saved-html', path: join(dir, 'page.html') });
+    const reviewed = await fetch(`${service.baseUrl}/artifact/${opened.sessionId}`, {
+      headers: { 'x-session-cap': opened.capability }
+    });
+    const reviewedHtml = await reviewed.text();
+    expect(reviewedHtml).toContain('/ui/artifact-layer.js');
+    expect(reviewedHtml).toContain(`data-address-base="/artifact/${opened.sessionId}"`);
+
+    const offDocument = await fetch(`${service.baseUrl}/artifact/${opened.sessionId}/second.html`, {
+      headers: { 'x-session-cap': opened.capability }
+    });
+    expect(offDocument.status).toBe(200);
+    const body = await offDocument.text();
+    expect(body).toContain('leaves the reviewed document');
+    expect(body).toContain(`/artifact/${opened.sessionId}`);
+    expect(body).not.toContain('/ui/artifact-layer.js');
+    expect(body).not.toContain('Second document');
   });
 
   it('serves the dev-only gallery route without linking it from product navigation', async () => {
@@ -379,9 +515,11 @@ describe('Annotation API', () => {
   });
 });
 
-describe('application mode proxy', () => {
-  it('proxies a running local app through the review service origin and makes its DOM selectable', async () => {
-    const app = await startStubApp('<!doctype html><html><head><link rel="stylesheet" href="/style.css"></head><body><button id="cta">Ship it</button></body></html>');
+describe('proxied application', () => {
+  it('serves the application through the review origin with a policy that lets it work', async () => {
+    const app = await startStubApp(
+      '<!doctype html><html><head><link rel="stylesheet" href="/style.css"></head><body><button id="cta">Ship it</button></body></html>'
+    );
     try {
       const { service } = await setup();
       const opened = await service.openSession({ kind: 'react-vite-app', url: app.url });
@@ -400,6 +538,110 @@ describe('application mode proxy', () => {
       expect(html).toContain('Ship it');
       expect(html).toContain(`/app/${opened.sessionId}/style.css`);
       expect(html).toContain('/ui/artifact-layer.js');
+      const policy = proxied.headers.get('content-security-policy') ?? '';
+      expect(policy).toContain("connect-src 'self'");
+      expect(policy).toContain("form-action 'self'");
+      expect(policy).not.toContain("connect-src 'none'");
+
+      const disclosure = (await (
+        await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/policy?cap=${opened.capability}`)
+      ).json()) as { kind: string; application?: { permits: string[]; note: string } };
+      expect(disclosure.kind).toBe('proxied-application');
+      expect(disclosure.application?.permits.join(' ')).toMatch(/review origin/i);
+    } finally {
+      await app.stop();
+    }
+  });
+
+  it('forwards method, body and headers, and removes the review capability', async () => {
+    const app = await startStubApp('<h1>app</h1>');
+    try {
+      const { service } = await setup();
+      const opened = await service.openSession({ kind: 'react-vite-app', url: app.url });
+      const response = await fetch(`${service.baseUrl}/app/${opened.sessionId}/echo`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+          'x-custom': 'kept',
+          'x-session-cap': opened.capability,
+          cookie: `vil_cap=${opened.capability}; theme=dark`
+        },
+        body: 'name=Ada&note=hello'
+      });
+      expect(response.status).toBe(200);
+      const captured = (await response.json()) as { method: string; body: string; custom: string; cookie: string; host: string };
+      expect(captured.method).toBe('POST');
+      expect(captured.body).toBe('name=Ada&note=hello');
+      expect(captured.custom).toBe('kept');
+      expect(captured.cookie).toBe('theme=dark');
+      expect(captured.host).not.toBe(`127.0.0.1:${service.port}`);
+    } finally {
+      await app.stop();
+    }
+  });
+
+  it('forwards other browser methods instead of coercing them to GET', async () => {
+    const app = await startStubApp('<h1>app</h1>');
+    try {
+      const { service } = await setup();
+      const opened = await service.openSession({ kind: 'react-vite-app', url: app.url });
+      const response = await fetch(`${service.baseUrl}/app/${opened.sessionId}/echo`, {
+        method: 'PUT',
+        headers: { 'content-type': 'text/plain', 'x-session-cap': opened.capability },
+        body: 'replace-me'
+      });
+      const captured = (await response.json()) as { method: string; body: string };
+      expect(captured.method).toBe('PUT');
+      expect(captured.body).toBe('replace-me');
+    } finally {
+      await app.stop();
+    }
+  });
+
+  it('rewrites an upstream-origin redirect back to the proxy origin', async () => {
+    const app = await startStubApp('<h1>app</h1>');
+    try {
+      const { service } = await setup();
+      const opened = await service.openSession({ kind: 'react-vite-app', url: app.url });
+      const response = await fetch(`${service.baseUrl}/app/${opened.sessionId}/redirect`, {
+        headers: { 'x-session-cap': opened.capability },
+        redirect: 'manual'
+      });
+      expect(response.status).toBe(302);
+      expect(response.headers.get('location')).toBe(`/app/${opened.sessionId}/redirected/here?x=1`);
+    } finally {
+      await app.stop();
+    }
+  });
+
+  it('refuses a redirect that leaves the review origin', async () => {
+    const app = await startStubApp('<h1>app</h1>');
+    try {
+      const { service } = await setup();
+      const opened = await service.openSession({ kind: 'react-vite-app', url: app.url });
+      const response = await fetch(`${service.baseUrl}/app/${opened.sessionId}/offsite`, {
+        headers: { 'x-session-cap': opened.capability },
+        redirect: 'manual'
+      });
+      expect(response.status).toBe(502);
+    } finally {
+      await app.stop();
+    }
+  });
+
+  it('proxies the application update channel through the review origin', async () => {
+    const app = await startStubApp('<h1>app</h1>');
+    try {
+      const { service } = await setup();
+      const opened = await service.openSession({ kind: 'react-vite-app', url: app.url });
+      const { status, echoed } = await upgradeThroughProxy(
+        service.port,
+        `/app/${opened.sessionId}/hmr`,
+        `vil_cap=${opened.capability}`
+      );
+      expect(status).toBe(101);
+      expect(echoed).toBe(true);
+      expect(app.wsMessages.join('')).toContain('ping-through-proxy');
     } finally {
       await app.stop();
     }
@@ -412,20 +654,89 @@ describe('application mode proxy', () => {
     );
   });
 
-  it('observes revision changes in a running local app', async () => {
+  it('derives a file-level revision from a supplied source root, and says it is file-level', async () => {
+    const app = await startStubApp('<h1>app</h1>');
+    const root = mkdtempSync(join(tmpdir(), 'vil-app-src-'));
+    writeFileSync(join(root, 'App.tsx'), 'export const App = () => null;\n', 'utf8');
+    mkdirSync(join(root, 'node_modules'), { recursive: true });
+    writeFileSync(join(root, 'node_modules', 'dep.js'), 'dependency\n', 'utf8');
+    try {
+      const { service } = await setup();
+      const opened = await service.openSession({ kind: 'react-vite-app', url: app.url, sourceRoot: root });
+      const before = (await (
+        await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}?cap=${opened.capability}`)
+      ).json()) as { revisionBasis: string; changed: boolean; currentRevision: string };
+      expect(before.revisionBasis).toBe('files');
+      writeFileSync(join(root, 'App.tsx'), 'export const App = () => null; // edited\n', 'utf8');
+      const after = (await (
+        await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}?cap=${opened.capability}`)
+      ).json()) as { changed: boolean; currentRevision: string };
+      expect(after.changed).toBe(true);
+      expect(after.currentRevision).not.toBe(before.currentRevision);
+      writeFileSync(join(root, 'node_modules', 'dep.js'), 'dependency changed\n', 'utf8');
+      const ignored = (await (
+        await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}?cap=${opened.capability}`)
+      ).json()) as { currentRevision: string };
+      expect(ignored.currentRevision).toBe(after.currentRevision);
+    } finally {
+      await app.stop();
+    }
+  });
+
+  it('observes revision changes in a running local app with no source root', async () => {
     const app = await startStubApp('<h1>version one</h1>');
     try {
       const { service } = await setup();
       const opened = await service.openSession({ kind: 'react-vite-app', url: app.url });
       const before = (await (
         await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}?cap=${opened.capability}`)
-      ).json()) as { changed: boolean };
+      ).json()) as { changed: boolean, revisionBasis: string };
       expect(before.changed).toBe(false);
+      expect(before.revisionBasis).toBe('document');
       app.setBody('<h1>version two longer body</h1>');
       const after = (await (
         await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}?cap=${opened.capability}`)
       ).json()) as { changed: boolean };
       expect(after.changed).toBe(true);
+    } finally {
+      await app.stop();
+    }
+  });
+
+  it('records the revision the artifact reports as the Adopted Revision, and stamps a new Annotation with it', async () => {
+    const app = await startStubApp('<h1>app</h1>');
+    try {
+      const { service, baseUrl } = await setup();
+      const opened = await service.openSession({ kind: 'react-vite-app', url: app.url });
+      const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+      const reported = (await (
+        await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/adopted?${auth}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ revision: 'blake3:' + 'a'.repeat(64) })
+        })
+      ).json()) as { adoptedRevision: string };
+      expect(reported.adoptedRevision).toBe('blake3:' + 'a'.repeat(64));
+
+      const created = (await (
+        await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            targets: [
+              {
+                targetId: 't-1',
+                kind: 'element',
+                renderedGrounding: { selectors: ['h1'], boundingBox: { x: 0, y: 0, width: 10, height: 10 } },
+                provenanceConfidence: 'unavailable',
+                runtimeState: { address: 'settings?tab=2' }
+              }
+            ]
+          })
+        })
+      ).json()) as { annotation: { writtenRevision: string; targets: Array<{ runtimeState?: { address?: string } }> } };
+      expect(created.annotation.writtenRevision).toBe('blake3:' + 'a'.repeat(64));
+      expect(created.annotation.targets[0]?.runtimeState?.address).toBe('settings?tab=2');
     } finally {
       await app.stop();
     }

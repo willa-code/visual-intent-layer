@@ -52,7 +52,7 @@ Blank-canvas planning, diagrams, documents, slides, images, and video may later 
 
 The user or agent invokes one MCP entry tool against saved HTML or a local React/Vite application. A capable host embeds the review interface; every other host receives a local-browser fallback.
 
-The application opens in **Explore** mode and behaves normally. Entering **Select** or **Direct** mode is obvious and reversible.
+The artifact opens in its ordinary operating state and behaves normally. Pointing at things and boxing an area are obvious and reversible.
 
 ### Express intent
 
@@ -89,22 +89,18 @@ Agent acknowledgement is not completion. Human verification is.
 
 ## Support boundary
 
-V0 supports browser-rendered surfaces through two explicit modes.
+V0 supports browser-rendered surfaces through one loop. An artifact type differs only in how much evidence its targets can carry and in how its revision is identified, never in the loop itself.
 
-### Artifact Mode
+**Saved or generated HTML** is close to the editable source of truth. The product serves local assets safely, watches revisions, and grounds feedback directly in the artifact.
 
-Saved or generated HTML is close to the editable source of truth. The product serves local assets safely, watches revisions, and grounds feedback directly in the artifact.
-
-### Application Mode
-
-A local running application produces visible DOM from components, state, data, routing, and build tooling. V0 deeply supports one stack—React with Vite is the recommended starting point—and offers generic Rendered Grounding elsewhere.
+**A local running application** produces visible DOM from components, state, data, routing and build tooling. V0 deeply supports one stack—React with Vite is the recommended starting point—and offers generic Rendered Grounding elsewhere. The application is served faithfully through the review proxy: its requests arrive as a client would send them, its update channel is proxied, and it gets a content policy that admits its own traffic and nothing else.
 
 The evidence contract is tiered:
 
-1. **Rendered Grounding:** DOM identity, accessible semantics, text evidence, structure, geometry, screenshot evidence, and content-addressed artifact revision (BLAKE3 over canonical bytes plus asset manifest).
-2. **Source Provenance:** instrumented evidence (Vite plugin plus source map plus stable runtime identity) identifying the editable component and source span as file, line, column, and component.
+1. **Rendered Grounding and Runtime State Evidence:** DOM identity, accessible semantics, text evidence, structure, geometry, and the address the artifact was showing, plus the content-addressed artifact revision (BLAKE3 over canonical bytes plus asset manifest). A Builder-Reviewer may attach a **Captured View**, a browser-composited image taken by an explicit permissioned capture rather than a re-render.
+2. **Source Provenance:** a build-time source-location stamp the artifact carries, read from the product's own attribute or a known working third-party attribute, identifying the editable file and line.
 
-The UI must not silently promote a likely file or component into exact provenance. When evidence is ambiguous or unavailable, it says so.
+The UI must not silently promote a likely file or component into exact provenance. `exact` is claimed only where an instrumented artifact stamped a source location, per Target; when evidence is ambiguous or unavailable, it says so.
 
 Authenticated production applications, arbitrary cross-origin private apps, and universal framework provenance are not V0 commitments.
 
@@ -188,9 +184,9 @@ Choose several real interface corrections and perform them with screenshot-and-c
 
 Open one saved HTML artifact, select an element or text range, submit a structured envelope, update the artifact, reload it, and verify the change. Make this loop feel unusually clean before adding breadth.
 
-### 2. Prove Application Mode
+### 2. Prove the proxied application
 
-Connect to one local React/Vite application. Implement generic Rendered Grounding and a narrow instrumented path to exact Source Provenance. Make evidence levels visible.
+Connect to one local React/Vite application. Forward its requests faithfully, proxy its update channel, give it a policy that admits its own traffic, and read a build-time source stamp for exact Source Provenance. Make evidence levels visible and keep the revision the artifact reports separate from the revision a source offers.
 
 ### 3. Prove target resolution
 
@@ -242,7 +238,7 @@ Evaluate:
 - obvious invocation;
 - time until the artifact is usable;
 - instantaneous-feeling hover and selection;
-- minimal and comprehensible modes;
+- minimal and comprehensible controls;
 - relational language understandable without CSS vocabulary;
 - visible uncertainty;
 - unambiguous delivery timing and state;

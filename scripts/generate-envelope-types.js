@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-const versions = [{ version: '0.2', typeName: 'VisualIntentEnvelope' }];
+const versions = [{ version: '0.3', typeName: 'VisualIntentEnvelope' }];
 
 for (const { version, typeName } of versions) {
   const schemaPath = join(root, 'schema', `envelope-v${version}.schema.json`);

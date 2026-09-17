@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { validateEnvelope } from './validate.js';
 import { representativeEnvelope } from './fixtures.js';
 
-describe('Visual Intent Envelope schema conformance (v0.2)', () => {
+describe('Visual Intent Envelope schema conformance (v0.3)', () => {
   it('accepts the representative envelope fixture', () => {
     const result = validateEnvelope(representativeEnvelope);
     expect(result.ok).toBe(true);
@@ -73,6 +73,37 @@ describe('Visual Intent Envelope schema conformance (v0.2)', () => {
     }
   });
 
+  it('keeps a 0.2 envelope without Runtime State Evidence readable', () => {
+    const legacy = structuredClone(representativeEnvelope) as unknown as Record<string, unknown>;
+    legacy['schemaVersion'] = '0.2';
+    const result = validateEnvelope(legacy);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.schemaVersion).toBe('0.3');
+    }
+  });
+
+  it('reads Runtime State Evidence on an element, text-range and region target', () => {
+    const withState = structuredClone(representativeEnvelope) as unknown as Record<string, unknown>;
+    const annotation = (withState['annotations'] as Array<Record<string, unknown>>)[0]!;
+    const target = (annotation['targets'] as Array<Record<string, unknown>>)[0]!;
+    target['runtimeState'] = { address: 'checkout.html#delivery' };
+    const result = validateEnvelope(withState);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const read = result.value.annotations[0]!.targets[0]!;
+      expect(read.runtimeState?.address).toBe('checkout.html#delivery');
+    }
+  });
+
+  it('rejects an address that is not a string', () => {
+    const broken = structuredClone(representativeEnvelope) as unknown as Record<string, unknown>;
+    const annotation = (broken['annotations'] as Array<Record<string, unknown>>)[0]!;
+    const target = (annotation['targets'] as Array<Record<string, unknown>>)[0]!;
+    target['runtimeState'] = { address: '' };
+    expect(validateEnvelope(broken).ok).toBe(false);
+  });
+
   it('ships the 0.2 schema file as the versioned contract', () => {
     const schema = JSON.parse(readFileSync('schema/envelope-v0.2.schema.json', 'utf8')) as {
       $id?: string;
@@ -80,6 +111,20 @@ describe('Visual Intent Envelope schema conformance (v0.2)', () => {
     };
     expect(schema.$id).toContain('visual-intent-envelope');
     expect(schema['x-version']).toBe('0.2.0');
+  });
+
+  it('ships 0.3 as the contract and rebuilds its generated types from the schema', () => {
+    const schema = JSON.parse(readFileSync('schema/envelope-v0.3.schema.json', 'utf8')) as {
+      $id?: string;
+      'x-version'?: string;
+      $defs?: { target?: { properties?: Record<string, unknown> } };
+    };
+    expect(schema.$id).toContain('visual-intent-envelope-0.3');
+    expect(schema['x-version']).toBe('0.3.0');
+    expect(schema.$defs?.target?.properties?.['runtimeState']).toBeDefined();
+    const generated = readFileSync('src/envelope/generated/envelope-v0.3.ts', 'utf8');
+    expect(generated).toContain('schemaVersion: "0.3"');
+    expect(generated).toContain('runtimeState');
   });
 
   it('keeps the published wire name supersedes on the envelope schema', () => {

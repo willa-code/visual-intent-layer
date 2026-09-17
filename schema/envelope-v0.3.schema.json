@@ -1,0 +1,587 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://visual-intent-layer.dev/schema/visual-intent-envelope-0.3.json",
+  "title": "VisualIntentEnvelope",
+  "description": "Experimental open schema for visually grounded human intent. Version 0.3 adds Runtime State Evidence to every Target, recording the address the artifact was showing, and keeps the 0.2 shape readable.",
+  "x-version": "0.3.0",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "envelopeId",
+    "artifact",
+    "annotations",
+    "delivery",
+    "createdAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "description": "Envelope schema version. Major.minor; minor additions are backward compatible.",
+      "const": "0.3"
+    },
+    "envelopeId": {
+      "description": "Stable identifier so retries and redelivery are idempotent.",
+      "type": "string",
+      "minLength": 1
+    },
+    "artifact": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "revision"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Stable artifact identity independent of filesystem spelling or host conversation.",
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "description": "Artifact adapter kind. New kinds extend the contract without breaking the core.",
+          "type": "string",
+          "enum": [
+            "saved-html",
+            "react-vite-app"
+          ]
+        },
+        "revision": {
+          "description": "Immutable content-addressed revision: blake3 over canonical artifact bytes plus local asset manifest.",
+          "type": "string",
+          "pattern": "^blake3:[0-9a-f]{64}$"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "sourceUri": {
+          "type": "string"
+        }
+      }
+    },
+    "annotations": {
+      "description": "One or more Annotations. Each Annotation is independently identified and verified.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/annotation"
+      }
+    },
+    "delivery": {
+      "type": "object",
+      "required": [
+        "intent",
+        "idempotencyKey"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "intent": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "steering",
+            "next-pass",
+            "review-interruption"
+          ]
+        },
+        "idempotencyKey": {
+          "description": "Stable key so repeated delivery cannot create silent duplicates.",
+          "type": "string",
+          "minLength": 1
+        },
+        "requestedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "confidence": {
+      "description": "Provenance Confidence across the batch: exact source span, inferred, or unavailable. Never a target-resolution claim.",
+      "type": "object",
+      "required": [
+        "level"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "exact",
+            "inferred",
+            "unavailable"
+          ]
+        },
+        "notes": {
+          "type": "string"
+        },
+        "abstentions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
+    },
+    "extensions": {
+      "description": "Optional host-, browser-, and framework-specific records. Never required portable semantics.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "host": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "browser": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "framework": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "annotation": {
+      "type": "object",
+      "required": [
+        "annotationId",
+        "note",
+        "targets"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "annotationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "note": {
+          "description": "Human-written direction. Empty only for a relation- or region-only annotation.",
+          "type": "string"
+        },
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/target"
+          }
+        },
+        "relationships": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/relationship"
+          },
+          "default": []
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reference"
+          },
+          "default": []
+        },
+        "attachments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/attachment"
+          },
+          "default": []
+        },
+        "revisionRelation": {
+          "description": "Whether the annotation was written against the revision being compared.",
+          "type": "string",
+          "enum": [
+            "current",
+            "advanced"
+          ],
+          "default": "current"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "targetId",
+        "kind",
+        "renderedGrounding",
+        "provenanceConfidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "targetId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "element",
+            "text-range",
+            "region"
+          ]
+        },
+        "renderedGrounding": {
+          "$ref": "#/$defs/renderedGrounding"
+        },
+        "sourceProvenance": {
+          "$ref": "#/$defs/sourceProvenance"
+        },
+        "provenanceConfidence": {
+          "type": "string",
+          "enum": [
+            "exact",
+            "inferred",
+            "unavailable"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "regionEvidence": {
+          "$ref": "#/$defs/regionEvidence"
+        },
+        "runtimeState": {
+          "description": "Runtime State Evidence: the state the artifact was in when the Target was pointed at, as the artifact saw it rather than as the review proxy served it.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "address": {
+              "description": "Address of the artifact relative to its own base, including query and fragment. Absent when the artifact was at its base.",
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "provenanceConfidence": {
+                "const": "exact"
+              }
+            },
+            "required": [
+              "provenanceConfidence"
+            ]
+          },
+          "then": {
+            "required": [
+              "sourceProvenance"
+            ],
+            "properties": {
+              "sourceProvenance": {
+                "$ref": "#/$defs/sourceProvenance"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "regionEvidence": {
+      "description": "A drawn region records the revision and scroll position it was drawn at.",
+      "type": "object",
+      "required": [
+        "revision",
+        "scrollX",
+        "scrollY"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scrollX": {
+          "type": "number"
+        },
+        "scrollY": {
+          "type": "number"
+        }
+      }
+    },
+    "renderedGrounding": {
+      "description": "Evidence identifying a target within the visible artifact. Not a source claim.",
+      "type": "object",
+      "required": [
+        "boundingBox"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "selectors": {
+          "description": "CSS selectors as evidence, not portable identity.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "boundingBox": {
+          "type": "object",
+          "required": [
+            "x",
+            "y",
+            "width",
+            "height"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "width": {
+              "type": "number",
+              "minimum": 0
+            },
+            "height": {
+              "type": "number",
+              "minimum": 0
+            },
+            "viewportWidth": {
+              "type": "number"
+            },
+            "viewportHeight": {
+              "type": "number"
+            },
+            "devicePixelRatio": {
+              "type": "number"
+            },
+            "scrollX": {
+              "type": "number"
+            },
+            "scrollY": {
+              "type": "number"
+            }
+          }
+        },
+        "textEvidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "exactText": {
+              "type": "string"
+            },
+            "prefix": {
+              "type": "string"
+            },
+            "suffix": {
+              "type": "string"
+            },
+            "startOffset": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "endOffset": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "semanticRole": {
+          "type": "string"
+        },
+        "accessibleName": {
+          "type": "string"
+        },
+        "structuralContext": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "ancestorChain": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "siblingIndex": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "siblingCount": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "geometry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "centerX": {
+              "type": "number"
+            },
+            "centerY": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "sourceProvenance": {
+      "description": "Exact editable source location, supplied only by an instrumented adapter.",
+      "type": "object",
+      "required": [
+        "file",
+        "line",
+        "column",
+        "adapter"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "component": {
+          "type": "string"
+        },
+        "adapter": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceSpan": {
+          "type": "string"
+        }
+      }
+    },
+    "relationship": {
+      "description": "Relational Intent among targets, stored implementation-neutral with no pixel fields.",
+      "type": "object",
+      "required": [
+        "relationshipId",
+        "type",
+        "operator",
+        "targetIds"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "relationshipId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "ordering",
+            "alignment",
+            "spacing",
+            "containment",
+            "equivalence",
+            "comparative-size"
+          ]
+        },
+        "operator": {
+          "description": "Implementation-neutral operator; valid values depend on type.",
+          "type": "string",
+          "enum": [
+            "before",
+            "after",
+            "align-left",
+            "align-center",
+            "align-right",
+            "align-top",
+            "align-middle",
+            "equal-gap",
+            "member-of",
+            "shared-property",
+            "same-width",
+            "same-height"
+          ]
+        },
+        "targetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "property": {
+          "description": "For equivalence: the visible property that should match.",
+          "type": "string"
+        }
+      }
+    },
+    "reference": {
+      "type": "object",
+      "required": [
+        "referenceId",
+        "kind"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "referenceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "image",
+            "url",
+            "text",
+            "envelope"
+          ]
+        },
+        "uri": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "attachment": {
+      "description": "Content-addressed reference to bytes stored locally by the review service.",
+      "type": "object",
+      "required": [
+        "attachmentId",
+        "mediaType",
+        "byteLength",
+        "sha256"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "attachmentId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

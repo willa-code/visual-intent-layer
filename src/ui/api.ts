@@ -34,14 +34,17 @@ export type SessionStatus = {
   openedRevision: string;
   adoptedRevision: string;
   currentRevision: string;
+  revisionBasis: 'document' | 'files';
   changed: boolean;
   unreadable?: boolean;
 };
 
 export type Policy = {
+  kind: 'saved-html' | 'proxied-application';
   remoteOrigins: string[];
   byKind: { stylesheet: string[]; font: string[]; image: string[]; other: string[] };
   contactsRemote: boolean;
+  application?: { proxiedBase: string; permits: string[]; note: string };
 };
 
 export type SendResponse = {
@@ -144,10 +147,22 @@ export class Api {
     return this.json<SessionStatus>(this.url(`/api/sessions/${this.sessionId}/reload`), { method: 'POST' });
   }
 
-  async resolve(annotationId: string, revision: string, candidates: ResolutionCandidate[]): Promise<TargetResolutionRecord[]> {
+  async reportAdopted(revision: string): Promise<SessionStatus> {
+    return this.json<SessionStatus>(this.url(`/api/sessions/${this.sessionId}/adopted`), {
+      method: 'POST',
+      body: JSON.stringify({ revision })
+    });
+  }
+
+  async resolve(
+    annotationId: string,
+    revision: string,
+    candidates: ResolutionCandidate[],
+    address?: string
+  ): Promise<TargetResolutionRecord[]> {
     const result = await this.json<{ resolutions: TargetResolutionRecord[] }>(
       this.url(`/api/annotations/${annotationId}/resolve`),
-      { method: 'POST', body: JSON.stringify({ revision, candidates }) }
+      { method: 'POST', body: JSON.stringify({ revision, candidates, ...(address ? { address } : {}) }) }
     );
     return result.resolutions;
   }

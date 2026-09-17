@@ -109,12 +109,13 @@ function capabilitiesArg(args: Record<string, unknown>): { embeddedUI?: boolean;
 
 function openArgs(args: Record<string, unknown>):
   | { kind: 'saved-html'; path: string }
-  | { kind: 'react-vite-app'; url: string } {
+  | { kind: 'react-vite-app'; url: string; sourceRoot?: string } {
   if (args['kind'] === 'saved-html') {
     return { kind: 'saved-html', path: stringArg(args, 'path') };
   }
   if (args['kind'] === 'react-vite-app') {
-    return { kind: 'react-vite-app', url: stringArg(args, 'url') };
+    const sourceRoot = optionalString(args, 'sourceRoot');
+    return { kind: 'react-vite-app', url: stringArg(args, 'url'), ...(sourceRoot ? { sourceRoot } : {}) };
   }
   throw new Error('open_visual_review requires kind "saved-html" (with path) or "react-vite-app" (with url)');
 }

@@ -115,9 +115,37 @@ describe('mutation benchmark', () => {
     expect(report.confidentlyWrong).toBe(1);
   });
 
+  it('measures the instrumented path for false confidence, not only for hits', () => {
+    const stamped = {
+      provenanceConfidence: 'exact' as const,
+      sourceProvenance: { file: 'src/Checkout.tsx', line: 42, column: 8, adapter: 'visual-intent-stamp@0.1' }
+    };
+    const report = runBenchmark([
+      {
+        name: 'instrumented/hit',
+        target: target(stamped),
+        candidates: [candidate({ nodeId: 'n-target', sourceFile: 'src/Checkout.tsx', sourceLine: 42, sourceColumn: 8 })],
+        expectedNodeId: 'n-target',
+        acceptable: ['exact']
+      },
+      {
+        name: 'instrumented/stale-stamp',
+        target: target(stamped),
+        candidates: [candidate({ nodeId: 'n-decoy', sourceFile: 'src/Checkout.tsx', sourceLine: 42, sourceColumn: 8 })],
+        expectedNodeId: 'n-real',
+        acceptable: ['exact', 'recovered']
+      }
+    ]);
+    expect(report.instrumented.total).toBe(2);
+    expect(report.instrumented.confidentlyWrong).toBe(1);
+    expect(report.instrumented.confidentlyWrongRate).toBe(0.5);
+  });
+
   it('runs the shipped matrix without a confidently-wrong resolution', () => {
     const report = runBenchmark(buildMatrix());
     expect(report.total).toBeGreaterThan(10);
     expect(report.confidentlyWrong).toBe(0);
+    expect(report.instrumented.total).toBeGreaterThanOrEqual(1);
+    expect(report.instrumented.confidentlyWrong).toBe(0);
   });
 });

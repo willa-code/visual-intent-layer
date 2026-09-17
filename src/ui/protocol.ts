@@ -18,7 +18,6 @@ export type Grounding = {
   accessibleName?: string;
   structuralContext?: { ancestorChain: string[]; siblingIndex: number; siblingCount: number };
   geometry?: { centerX: number; centerY: number };
-  stableRuntimeId?: string;
 };
 
 export type SourceProvenance = {
@@ -38,15 +37,22 @@ export type LayerTarget = {
   sourceProvenance?: SourceProvenance;
   provenanceConfidence: 'exact' | 'inferred' | 'unavailable';
   regionEvidence?: { revision: string; scrollX: number; scrollY: number };
+  runtimeState?: { address?: string };
 };
 
-export type LayerReady = { source: 'vil-layer'; type: 'ready' };
+export type LayerReady = { source: 'vil-layer'; type: 'ready'; revision: string };
 export type LayerHover = { source: 'vil-layer'; type: 'hover'; label: string | null };
 export type LayerSelection = { source: 'vil-layer'; type: 'selection'; targets: LayerTarget[] };
-export type LayerCandidates = { source: 'vil-layer'; type: 'candidates'; candidates: ResolutionCandidate[]; revision: string };
-export type LayerNotice = { source: 'vil-layer'; type: 'notice'; message: string };
+export type LayerCandidates = { source: 'vil-layer'; type: 'candidates'; candidates: ResolutionCandidate[]; revision: string; address?: string };
+export type LayerApplied = { source: 'vil-layer'; type: 'applied'; revision?: string };
+export type LayerNotice = {
+  source: 'vil-layer';
+  type: 'notice';
+  message: string;
+  action?: 'back-to-artifact';
+};
 
-export type LayerMessage = LayerReady | LayerHover | LayerSelection | LayerCandidates | LayerNotice;
+export type LayerMessage = LayerReady | LayerHover | LayerSelection | LayerCandidates | LayerApplied | LayerNotice;
 
 export type ShellConfigure = {
   source: 'vil-shell';

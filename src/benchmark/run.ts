@@ -19,6 +19,7 @@ export type BenchmarkReport = {
   recovered: number;
   byMatch: Record<TargetMatch, number>;
   byLabel: Record<ResolutionLabel, number>;
+  instrumented: { total: number; confidentlyWrong: number; confidentlyWrongRate: number };
   latencyMs: { p50: number; p95: number; max: number };
   failures: Array<{ name: string; match: TargetMatch; selected?: string }>;
   signals: {
@@ -33,12 +34,14 @@ export type BenchmarkReport = {
 export function runBenchmark(cases: BenchmarkCase[]): BenchmarkReport {
   const latencies: number[] = [];
   const byMatch: Record<TargetMatch, number> = { exact: 0, recovered: 0, unresolved: 0 };
-  const byLabel: Record<ResolutionLabel, number> = { matched: 0, recovered: 0, ambiguous: 0, deleted: 0 };
+  const byLabel: Record<ResolutionLabel, number> = { matched: 0, recovered: 0, ambiguous: 0, deleted: 0, 'state-only': 0 };
   let correct = 0;
   let confidentlyWrong = 0;
   let correctAmbiguity = 0;
   let correctAbstention = 0;
   let recovered = 0;
+  let instrumentedTotal = 0;
+  let instrumentedConfidentlyWrong = 0;
   const failures: BenchmarkReport['failures'] = [];
 
   for (const benchmarkCase of cases) {
@@ -74,6 +77,12 @@ export function runBenchmark(cases: BenchmarkCase[]): BenchmarkReport {
     if (choseWrong) {
       confidentlyWrong += 1;
     }
+    if (benchmarkCase.target.provenanceConfidence === 'exact') {
+      instrumentedTotal += 1;
+      if (choseWrong) {
+        instrumentedConfidentlyWrong += 1;
+      }
+    }
   }
 
   latencies.sort((a, b) => a - b);
@@ -88,6 +97,11 @@ export function runBenchmark(cases: BenchmarkCase[]): BenchmarkReport {
     recovered,
     byMatch,
     byLabel,
+    instrumented: {
+      total: instrumentedTotal,
+      confidentlyWrong: instrumentedConfidentlyWrong,
+      confidentlyWrongRate: instrumentedTotal === 0 ? 0 : instrumentedConfidentlyWrong / instrumentedTotal
+    },
     latencyMs: {
       p50: percentile(latencies, 0.5),
       p95: percentile(latencies, 0.95),

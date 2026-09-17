@@ -1,6 +1,6 @@
 import type { Envelope } from '../envelope/validate.js';
 import type { TargetResolutionRecord } from '../resolution/resolve.js';
-import { deriveResolutionLabel, type TargetMatch } from '../resolution/model.js';
+import { deriveResolutionLabel, type RuntimeStateContext, type TargetMatch } from '../resolution/model.js';
 
 export type AnnotationTarget = Envelope['annotations'][number]['targets'][number];
 export type AnnotationRelation = NonNullable<Envelope['annotations'][number]['relationships']>[number];
@@ -108,7 +108,10 @@ export function isVerification(state: AnnotationState): boolean {
   return state === 'verified' || state === 'rejected' || state === 'not-fixed' || state === 'replaced' || state === 'obsolete';
 }
 
-export function approvalBlockers(annotation: Annotation): string[] {
+export function approvalBlockers(
+  annotation: Annotation,
+  stateFor?: (resolution: TargetResolutionRecord) => RuntimeStateContext
+): string[] {
   const blockers: string[] = [];
   for (const resolution of annotation.resolutions) {
     if (resolution.match !== 'unresolved') {
@@ -116,6 +119,11 @@ export function approvalBlockers(annotation: Annotation): string[] {
     }
     const label = labelFor(annotation, resolution.targetId);
     if (resolution.candidates.length === 0) {
+      const state = stateFor?.(resolution);
+      if (deriveResolutionLabel(resolution, state) === 'state-only') {
+        blockers.push(`${label} may exist only in a state no longer on screen, so approval is blocked.`);
+        continue;
+      }
       blockers.push(`${label} is deleted from this revision, so approval is blocked.`);
       continue;
     }
@@ -124,11 +132,15 @@ export function approvalBlockers(annotation: Annotation): string[] {
   return blockers;
 }
 
-export function verificationRefusedReason(annotation: Annotation, verdict: VerificationVerdict): string | undefined {
+export function verificationRefusedReason(
+  annotation: Annotation,
+  verdict: VerificationVerdict,
+  stateFor?: (resolution: TargetResolutionRecord) => RuntimeStateContext
+): string | undefined {
   if (verdict !== 'approve') {
     return undefined;
   }
-  const blockers = approvalBlockers(annotation);
+  const blockers = approvalBlockers(annotation, stateFor);
   return blockers.length > 0 ? blockers.join(' ') : undefined;
 }
 

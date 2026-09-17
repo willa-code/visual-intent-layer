@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -346,3 +348,301 @@ async function expectLater<T>(
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 150));
   }
 }
+
+const ARTIFACT_STATE = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Stateful artifact</title>
+    <style>body { margin: 0; font-family: system-ui, sans-serif; }</style>
+  </head>
+  <body>
+    <main>
+      <h1>Orders</h1>
+      <button id="open-panel" type="button">Open panel</button>
+      <button class="stamped" data-vis-source="src/Orders.tsx:14:3" type="button">Ship it</button>
+      <button class="unstamped" type="button">Plain</button>
+      <a id="off-doc" href="second.html">Second page</a>
+    </main>
+    <script>
+      document.getElementById('open-panel').addEventListener('click', function () {
+        var panel = document.createElement('div');
+        panel.id = 'panel';
+        panel.style.cssText = 'position:fixed;right:24px;bottom:24px;border:1px solid #999;padding:12px;';
+        var action = document.createElement('p');
+        action.className = 'panel-action';
+        action.textContent = 'Filter applied';
+        var close = document.createElement('button');
+        close.id = 'close-panel';
+        close.type = 'button';
+        close.textContent = 'Close panel';
+        close.addEventListener('click', function () {
+          panel.remove();
+          window.history.replaceState(null, '', window.location.pathname);
+        });
+        panel.append(action, close);
+        document.body.appendChild(panel);
+        window.location.hash = '#panel';
+      });
+    </script>
+  </body>
+</html>`;
+
+const APP_HTML = `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Running app</title></head>
+  <body>
+    <div class="app-root">
+      <h1>Orders</h1>
+      <form method="post" action="/submit">
+        <input name="filter" value="delivered" />
+        <button type="submit">Apply filter</button>
+      </form>
+      <button class="app-action" data-vis-source="src/Orders.tsx:21:5" type="button">Ship it</button>
+      <button class="app-plain" type="button">Plain</button>
+    </div>
+    <script>
+      var socket = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + location.pathname.replace(/\\/$/, '') + '/hmr');
+      socket.addEventListener('message', function (event) {
+        window.dispatchEvent(new CustomEvent('visual-intent:applied-revision', { detail: { revision: event.data } }));
+      });
+    </script>
+  </body>
+</html>`;
+
+async function startDevServer(): Promise<{
+  url: string;
+  requests: Array<{ method: string; url: string; body: string }>;
+  advancedRevision: string;
+  stop: () => Promise<void>;
+}> {
+  const requests: Array<{ method: string; url: string; body: string }> = [];
+  const advancedRevision = `blake3:${'b'.repeat(64)}`;
+  const upgradeSockets = new Set<import('node:stream').Duplex>();
+  const server = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on('data', (chunk) => chunks.push(chunk as Buffer));
+    request.on('end', () => {
+      const body = Buffer.concat(chunks).toString('utf8');
+      requests.push({ method: request.method ?? 'GET', url: request.url ?? '/', body });
+      if ((request.url ?? '').startsWith('/submit')) {
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ ok: true, method: request.method, body }));
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(APP_HTML);
+    });
+  });
+  server.on('upgrade', (request, socket) => {
+    upgradeSockets.add(socket);
+    socket.on('close', () => upgradeSockets.delete(socket));
+    const key = String(request.headers['sec-websocket-key'] ?? '');
+    const accept = createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
+    socket.write(
+      `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`
+    );
+    const payload = Buffer.from(advancedRevision, 'utf8');
+    setTimeout(() => socket.write(Buffer.concat([Buffer.from([0x81, payload.length]), payload])), 250);
+  });
+  return new Promise((resolvePromise) => {
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      resolvePromise({
+        url: `http://127.0.0.1:${port}/`,
+        requests,
+        advancedRevision,
+        stop: () =>
+          new Promise<void>((done) => {
+            for (const socket of upgradeSockets) {
+              socket.destroy();
+            }
+            server.close(() => done());
+            server.closeAllConnections?.();
+          })
+      });
+    });
+  });
+}
+
+describe('Review Surface: Runtime State Evidence, one document, and a proxied application', () => {
+  it('records the address a Target was pointed at, names a state it no longer exists in, and names a navigation off the document', async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), 'vil-state-artifact-'));
+    const statePath = join(stateDir, 'orders.html');
+    writeFileSync(statePath, ARTIFACT_STATE, 'utf8');
+    writeFileSync(join(stateDir, 'second.html'), '<!doctype html><html><body><h1>Second</h1></body></html>', 'utf8');
+    const opened = await service.openSession({ kind: 'saved-html', path: statePath });
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const statePage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    try {
+      await statePage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+      const frame = statePage.frameLocator('iframe.artifact-frame');
+      await expectLater(() => frame.locator('#open-panel').count(), (count) => count === 1, 'the artifact renders');
+
+      await frame.locator('#open-panel').click();
+      await expectLater(() => frame.locator('#panel').isVisible(), (visible) => visible, 'the panel state is on screen');
+
+      await statePage.getByRole('button', { name: /Point at things/ }).click();
+      await frame.locator('.panel-action').click();
+      await statePage.locator('.anchored-card textarea').fill('Make the filter clear.');
+      await statePage.locator('.anchored-card textarea').press('Enter');
+      await expectLater(
+        () => statePage.locator('.annotation-row[data-state="queued"]').count(),
+        (count) => count === 1,
+        'the Annotation is queued'
+      );
+
+      const snapshot = () =>
+        fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`).then((response) =>
+          response.json()
+        ) as Promise<{
+          annotations: Array<{
+            annotationId: string;
+            state: string;
+            targets: Array<{ runtimeState?: { address?: string }; provenanceConfidence: string; sourceProvenance?: { adapter: string }; label?: string }>;
+            resolutions: Array<{ match: string; candidates: unknown[]; viewedAddress?: string }>;
+          }>;
+        }>;
+      await expectLater(
+        async () => (await snapshot()).annotations[0]?.targets[0]?.runtimeState?.address,
+        (address) => address === '#panel',
+        'the Target records the address it was pointed at'
+      );
+
+      await statePage.getByRole('button', { name: 'Send the queue' }).click();
+      await expectLater(
+        async () => (await snapshot()).annotations[0]?.state,
+        (state) => state === 'delivered',
+        'the queue is sent'
+      );
+
+      await statePage.getByRole('button', { name: /Point at things, armed/ }).click();
+      await frame.locator('#panel').evaluate((panel) => {
+        panel.remove();
+        window.history.replaceState(null, '', window.location.pathname);
+      });
+      await expectLater(() => frame.locator('#panel').count(), (count) => count === 0, 'the panel state is gone');
+      await statePage.reload({ waitUntil: 'domcontentloaded' });
+      await expectLater(
+        () => statePage.locator('.annotation-row .resolution[data-label="state-only"]').count(),
+        (count) => count === 1,
+        'the row says the Target may exist only in a state no longer on screen'
+      );
+      const rowText = await statePage.locator('.annotation-row').first().innerText();
+      expect(rowText).toMatch(/may exist only in a state no longer on screen/i);
+      expect(rowText).not.toMatch(/\d+%/);
+      await expectLater(
+        async () => (await snapshot()).annotations[0]?.resolutions[0]?.match,
+        (match) => match === 'unresolved',
+        'the Target is unresolved rather than silently matched'
+      );
+
+      await frame.locator('#off-doc').click();
+      await expectLater(
+        () => statePage.locator('.notice').innerText(),
+        (text) => /another document/i.test(text),
+        'a navigation off the reviewed document is named'
+      );
+      expect(await frame.locator('#open-panel').count()).toBe(1);
+      expect(await frame.locator('h1', { hasText: 'Second' }).count()).toBe(0);
+    } finally {
+      await statePage.close();
+    }
+  }, 120000);
+
+  it('drives a running application through the proxy: faithful requests, its own policy, its reported revision, and per-Target provenance', async () => {
+    const dev = await startDevServer();
+    const appPage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    try {
+      const opened = await service.openSession({ kind: 'react-vite-app', url: dev.url });
+      const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+      await appPage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+      const frame = appPage.frameLocator('iframe.artifact-frame');
+      await expectLater(() => frame.locator('.app-root').count(), (count) => count === 1, 'the application renders in the frame');
+
+      const proxied = await fetch(`${service.baseUrl}/app/${opened.sessionId}/`, {
+        headers: { 'x-session-cap': opened.capability }
+      });
+      const policy = proxied.headers.get('content-security-policy') ?? '';
+      expect(policy).toContain("connect-src 'self'");
+      expect(policy).toContain("form-action 'self'");
+
+      const disclosure = (await (
+        await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/policy?cap=${opened.capability}`)
+      ).json()) as { kind: string; application?: { permits: string[] } };
+      expect(disclosure.kind).toBe('proxied-application');
+      expect(disclosure.application?.permits.join(' ')).toMatch(/review origin/i);
+
+      const status = () =>
+        fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}?cap=${opened.capability}`).then((response) =>
+          response.json()
+        ) as Promise<{ adoptedRevision: string; currentRevision: string; revisionBasis: string }>;
+      await expectLater(
+        async () => (await status()).adoptedRevision,
+        (revision) => revision === opened.artifact.revision,
+        'the surface records the revision the artifact reports'
+      );
+
+      const advanced = dev.advancedRevision;
+      await expectLater(
+        async () => (await status()).adoptedRevision,
+        (revision) => revision === advanced,
+        'the proxied update channel advances the Adopted Revision through the page'
+      );
+
+      await appPage.getByRole('button', { name: /Point at things/ }).click();
+      await frame.locator('.app-action').click();
+      await expectLater(
+        async () =>
+          (
+            (await (
+              await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`)
+            ).json()) as { annotations: Array<{ targets: Array<{ provenanceConfidence: string; sourceProvenance?: { adapter: string } }> }> }
+          ).annotations[0]?.targets[0]?.provenanceConfidence,
+        (confidence) => confidence === 'exact',
+        'a stamped element reports exact provenance'
+      );
+      const stamped = (await (
+        await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`)
+      ).json()) as { annotations: Array<{ targets: Array<{ sourceProvenance?: { adapter: string } }> }> };
+      expect(stamped.annotations[0]?.targets[0]?.sourceProvenance?.adapter).toBe('visual-intent-stamp@0.1');
+
+      await appPage.locator('.anchored-card textarea').fill('Ship it.');
+      await appPage.locator('.anchored-card textarea').press('Enter');
+      await frame.locator('.app-plain').click();
+      await expectLater(
+        async () =>
+          (
+            (await (
+              await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`)
+            ).json()) as { annotations: Array<{ targets: Array<{ provenanceConfidence: string }> }> }
+          ).annotations.length,
+        (count) => count === 2,
+        'a second Annotation is created'
+      );
+      const both = (await (
+        await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`)
+      ).json()) as { annotations: Array<{ targets: Array<{ provenanceConfidence: string }> }> };
+      expect(both.annotations.some((annotation) => annotation.targets[0]?.provenanceConfidence === 'unavailable')).toBe(true);
+
+      const capture = appPage.locator('.anchored-card [data-action="capture-view"]');
+      expect(await capture.count()).toBe(1);
+      expect(await capture.getAttribute('title')).toMatch(/Chromium desktop/);
+
+      await appPage.getByRole('button', { name: /Point at things, armed/ }).click();
+      await frame.locator('input[name="filter"]').fill('delivered');
+      await frame.getByRole('button', { name: 'Apply filter' }).click();
+      await expectLater(
+        () => dev.requests.filter((request) => request.url.startsWith('/submit') && request.method === 'POST').length,
+        (count) => count >= 1,
+        'a form submission reaches the application'
+      );
+      const submitted = dev.requests.find((request) => request.url.startsWith('/submit') && request.method === 'POST');
+      expect(submitted?.body).toBe('filter=delivered');
+    } finally {
+      await appPage.close();
+      await dev.stop();
+    }
+  }, 120000);
+});

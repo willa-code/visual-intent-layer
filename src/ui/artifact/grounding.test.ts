@@ -40,6 +40,18 @@ describe('artifact grounding', () => {
     expect(candidates.every((candidate) => !candidate.selectors.some((selector) => selector.includes('data-vil-layer')))).toBe(true);
   });
 
+  it('carries a stamped source location into candidate evidence, per element', () => {
+    const document = doc(
+      '<main><button class="stamped" data-vis-source="src/Orders.tsx:21:5">Ship it</button><button class="plain">Plain</button></main>'
+    );
+    const candidates = extractCandidates(document);
+    const stamped = candidates.find((candidate) => candidate.tag === 'button' && candidate.sourceFile !== undefined);
+    expect(stamped?.sourceFile).toBe('src/Orders.tsx');
+    expect(stamped?.sourceLine).toBe(21);
+    expect(stamped?.sourceColumn).toBe(5);
+    expect(candidates.filter((candidate) => candidate.sourceFile !== undefined)).toHaveLength(1);
+  });
+
   it('excludes the interaction layer from candidate extraction and targeting', () => {
     const document = doc('<main data-vil-layer="overlay"><div data-vil-layer="mark"></div></main>');
     const layerNode = document.querySelector('[data-vil-layer="mark"]') as HTMLElement;

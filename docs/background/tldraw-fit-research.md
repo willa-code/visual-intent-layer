@@ -56,13 +56,13 @@ A tldraw shape that visually surrounds a button knows about its own geometry. It
 
 “Application support” means supporting the web application the individual user is currently building or reviewing. Both a saved HTML artifact and a React application eventually render HTML/DOM in a browser, but they are not equally difficult.
 
-### Artifact mode
+### Saved or generated HTML (formerly “Artifact mode”)
 
 The reviewed file is itself the source of truth—for example, a saved or generated HTML file. The visible DOM can often be mapped directly back to that document. There may still be mutations and unstable generated markup, but source provenance is comparatively direct.
 
-### Application mode
+### A local running application (formerly “Application mode”)
 
-The reviewed DOM is an output produced by application source, routing, data, state, assets, and a framework build. A visible element may have come from a component in another file, a repeated list item, a design-system primitive, generated CSS, or server-rendered markup. Authentication, browser state, responsive breakpoints, overlays, iframes, and hot reload add further complexity.
+The reviewed DOM is an output produced by application source, routing, data, state, assets, and a framework build. A visible element may have come from a component in another file, a repeated list item, a design-system primitive, generated CSS, or server-rendered markup. Authentication, browser state, responsive breakpoints, overlays, iframes, and hot reload add further complexity. ADR-0020 deletes the mode vocabulary: both are the same loop, and only the evidence and the revision identity differ.
 
 This is why “HTML supports everything” is true only at the rendering layer. It does not make source targeting or safe revision automatically easy.
 

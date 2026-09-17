@@ -109,15 +109,17 @@ export function buildMatrix(): BenchmarkCase[] {
   accept('unique-element/target-deletion', elementTarget('t-1', 'checkout-submit'), [decoy('n-d')], undefined, ['unresolved']);
   accept('repeated-siblings/ambiguous-duplication', elementTarget('t-1', 'checkout-submit'), [baseCandidate('n-a', 'checkout-submit'), baseCandidate('n-b', 'checkout-submit')], undefined, ['unresolved']);
   accept(
-    'repeated-siblings/provenance-disambiguates',
+    'repeated-siblings/stamp-disambiguates',
     {
       ...elementTarget('t-1', 'checkout-submit'),
-      renderedGrounding: { ...elementTarget('t-1', 'checkout-submit').renderedGrounding, stableRuntimeId: 'fiber-1' },
       provenanceConfidence: 'exact',
-      sourceProvenance: { file: '/app/src/Checkout.tsx', line: 42, column: 8, component: 'CheckoutForm', adapter: 'react-fiber@0.1' }
+      sourceProvenance: { file: 'src/Checkout.tsx', line: 42, column: 8, adapter: 'visual-intent-stamp@0.1' }
     },
-    [{ ...baseCandidate('n-a', 'checkout-submit'), stableRuntimeId: 'fiber-2' }, { ...baseCandidate('n-b', 'checkout-submit'), stableRuntimeId: 'fiber-1' }],
-    'n-b',
+    [
+      { ...baseCandidate('n-a', 'checkout-submit'), sourceFile: 'src/Checkout.tsx', sourceLine: 42, sourceColumn: 8 },
+      { ...baseCandidate('n-b', 'checkout-submit'), sourceFile: 'src/Checkout.tsx', sourceLine: 99, sourceColumn: 8 }
+    ],
+    'n-a',
     ['exact', 'recovered']
   );
   accept('nested-components/wrapper-insertion', elementTarget('t-1', 'checkout-submit'), [{ ...baseCandidate('n-1', 'checkout-submit'), ancestorChain: ['body', 'main.checkout', 'section.promo', 'div.card'] }, decoy('n-d')], 'n-1', ['exact', 'recovered']);

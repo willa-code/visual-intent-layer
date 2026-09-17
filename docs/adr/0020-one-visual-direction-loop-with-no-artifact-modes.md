@@ -1,0 +1,9 @@
+# One Visual Direction Loop, with no artifact or application modes
+
+**Status:** accepted
+
+The product has one loop: a Builder-Reviewer points at a visible Target, writes an Annotation, and verifies the resulting revision. Earlier vocabulary split that loop into Artifact Mode, for a saved document that maps to the source of truth, and Application Mode, for a running application that requires evidence connecting rendered targets to their editable source. Those entries described the same interaction twice and implied that the loop itself changed with the artifact type. Only two things actually differ between artifacts: how strong a Target's evidence is, and how a revision is identified. Provenance Confidence already carries the first and Revision already carries the second, so the modes were redundant. Both are deleted from the glossary.
+
+**Considered Options:** Keeping the two modes was rejected because fidelity is an evidence axis rather than a loop shape, and because the runtime never branched on mode — only on artifact kind, for serving and revision. Replacing them with a framework taxonomy was rejected because the serving mechanism is framework-agnostic and would encode a support promise the evidence does not deliver.
+
+**Consequences:** `Artifact` becomes the only noun for the work under review, and `Runtime State Evidence` and `Target` are added to the glossary. The published envelope keeps its `saved-html` and `react-vite-app` kind values, because a wire name is a compatibility surface rather than a word a Builder-Reviewer reads — the same rule ADR-0016 applied to `supersedes`. Application support stops being a mode the product claims and becomes an artifact type whose evidence must be proved. `SECURITY.md`, `docs/background/product-strategy.md`, `README.md` and the verification skill's feature map need the same sweep.

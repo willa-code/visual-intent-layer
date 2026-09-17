@@ -19,7 +19,6 @@ export type ResolutionCandidate = {
   siblingIndex?: number;
   siblingCount?: number;
   boundingBox?: BoundingBox;
-  stableRuntimeId?: string;
   sourceFile?: string;
   sourceLine?: number;
   sourceColumn?: number;
@@ -37,6 +36,7 @@ export type TargetResolutionRecord = {
   candidates: ScoredCandidate[];
   selectedNodeId?: string;
   resolvedAt: string;
+  viewedAddress?: string;
 };
 
 type Target = Envelope['annotations'][number]['targets'][number];
@@ -52,16 +52,17 @@ const GENERATED_CLASS = /\.(css-[a-z0-9_-]{4,}|[a-z]-{1,2}[a-z0-9]{5,}|sc-[a-z0-
 export function resolveTarget(
   target: Target,
   candidates: ResolutionCandidate[],
-  options: { at?: string } = {}
+  options: { at?: string; viewedAddress?: string } = {}
 ): TargetResolutionRecord {
   const resolvedAt = options.at ?? new Date().toISOString();
+  const address = options.viewedAddress !== undefined ? { viewedAddress: options.viewedAddress } : {};
   const scored = candidates
     .map((candidate) => scoreCandidate(target, candidate))
     .sort((a, b) => b.score - a.score || strongAnchorCount(b) - strongAnchorCount(a));
   const matched = scored.filter((entry) => entry.score >= MATCH_FLOOR);
   const best = matched[0];
   if (!best) {
-    return { targetId: target.targetId, match: 'unresolved', candidates: [], resolvedAt };
+    return { targetId: target.targetId, match: 'unresolved', candidates: [], resolvedAt, ...address };
   }
   const runnerUp = matched[1];
   const contested = runnerUp !== undefined && best.score - runnerUp.score < AMBIGUITY_MARGIN;
@@ -71,11 +72,12 @@ export function resolveTarget(
       targetId: target.targetId,
       match: 'unresolved',
       candidates: contenders.slice(0, MAX_CANDIDATES),
-      resolvedAt
+      resolvedAt,
+      ...address
     };
   }
   if (best.score >= EXACT_THRESHOLD && isExactMatch(target, best)) {
-    return { targetId: target.targetId, match: 'exact', candidates: scored, selectedNodeId: best.candidate.nodeId, resolvedAt };
+    return { targetId: target.targetId, match: 'exact', candidates: scored, selectedNodeId: best.candidate.nodeId, resolvedAt, ...address };
   }
   if (best.score >= RECOVERED_THRESHOLD) {
     return {
@@ -83,14 +85,16 @@ export function resolveTarget(
       match: 'recovered',
       candidates: scored,
       selectedNodeId: best.candidate.nodeId,
-      resolvedAt
+      resolvedAt,
+      ...address
     };
   }
   return {
     targetId: target.targetId,
     match: 'unresolved',
     candidates: matched.slice(0, MAX_CANDIDATES),
-    resolvedAt
+    resolvedAt,
+    ...address
   };
 }
 
@@ -99,10 +103,6 @@ export function scoreCandidate(target: Target, candidate: ResolutionCandidate): 
   let score = 0;
   const matchedAnchors: string[] = [];
 
-  if (grounding.stableRuntimeId && candidate.stableRuntimeId === grounding.stableRuntimeId) {
-    score += 0.45;
-    matchedAnchors.push('stable-runtime-id');
-  }
   const provenance = target.sourceProvenance;
   if (
     provenance &&
@@ -150,21 +150,18 @@ export function chosenCandidate(record: TargetResolutionRecord, nodeId: string):
 }
 
 function strongAnchorCount(entry: ScoredCandidate): number {
-  return entry.matchedAnchors.filter((anchor) => anchor === 'stable-runtime-id' || anchor === 'source-provenance').length;
+  return entry.matchedAnchors.filter((anchor) => anchor === 'source-provenance').length;
 }
 
 function hasUniqueStrongAnchor(best: ScoredCandidate, runnerUp: ScoredCandidate | undefined): boolean {
   if (!runnerUp) {
     return true;
   }
-  const strong = ['stable-runtime-id', 'source-provenance'];
-  return strong.some(
-    (anchor) => best.matchedAnchors.includes(anchor) && !runnerUp.matchedAnchors.includes(anchor)
-  );
+  return best.matchedAnchors.includes('source-provenance') && !runnerUp.matchedAnchors.includes('source-provenance');
 }
 
 function isExactMatch(target: Target, best: ScoredCandidate): boolean {
-  if (best.matchedAnchors.includes('stable-runtime-id') || best.matchedAnchors.includes('source-provenance')) {
+  if (best.matchedAnchors.includes('source-provenance')) {
     return true;
   }
   const hasIdentity =

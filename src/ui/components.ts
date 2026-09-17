@@ -2,7 +2,7 @@ import type { Annotation, AnnotationState } from '../annotation/model.js';
 import { stateLabel } from '../annotation/model.js';
 import type { AgentPositionReport } from '../mcp/service.js';
 import type { SessionPass } from './api.js';
-import { deriveResolutionLabel, resolutionLabelText, type ResolutionLabel } from '../resolution/model.js';
+import { deriveResolutionLabel, resolutionLabelText, type ResolutionLabel, type RuntimeStateContext } from '../resolution/model.js';
 import type { TargetResolutionRecord } from '../resolution/resolve.js';
 import { apiBaseUrl } from './runtime.js';
 import { button, h, iconButton } from './dom.js';
@@ -78,15 +78,27 @@ export function resolutionTone(label: ResolutionLabel): Tone {
     case 'recovered':
       return 'progress';
     case 'ambiguous':
+    case 'state-only':
       return 'attention';
     case 'deleted':
       return 'closed';
   }
 }
 
-export function resolutionItem(record: TargetResolutionRecord, label: string): HTMLElement {
-  const derived = deriveResolutionLabel(record);
-  const cueName: IconName = derived === 'matched' ? 'check' : derived === 'recovered' ? 'recovered' : derived === 'ambiguous' ? 'ambiguous' : 'deleted';
+export function resolutionItem(
+  record: TargetResolutionRecord,
+  label: string,
+  state?: RuntimeStateContext
+): HTMLElement {
+  const derived = deriveResolutionLabel(record, state);
+  const cueName: IconName =
+    derived === 'matched'
+      ? 'check'
+      : derived === 'recovered'
+        ? 'recovered'
+        : derived === 'ambiguous' || derived === 'state-only'
+          ? 'ambiguous'
+          : 'deleted';
   const item = h('li', { class: 'resolution', dataset: { label: derived }, attrs: { 'data-label': derived } });
   const cue = h('span', { class: 'resolution__cue', attrs: { 'aria-hidden': 'true' } });
   cue.appendChild(icon(cueName, { size: 14 }));

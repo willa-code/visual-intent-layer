@@ -48,7 +48,7 @@ A full sweep walks the tiers in order. Within a tier, follow the file order belo
 4. Resolution and honest outcomes (`resolution-and-honesty`).
 5. Verify each Annotation (`verify-each-annotation`).
 6. Never discard writing (`never-discard-writing`).
-7. Second tier: attachments, decision drawer, agent position, session and overflow, running-application mode, accessibility and keyboard.
+7. Second tier: attachments, decision drawer, agent position, session and overflow, a proxied application, accessibility and keyboard.
 8. Third tier: setup and Harness Detection, the MCP agent loop, Check-In.
 9. Cross-surface journeys (`journeys`).
 
@@ -84,8 +84,9 @@ Partly driven live (some sub-features confirmed; the rest are mapped):
 Second tier (mapped, not yet driven):
 
 - [Attachments](./attachments.md)
+- [A Captured View](./captured-view.md)
 - [Session and overflow actions](./session-and-overflow.md)
-- [Running-application mode](./running-application-mode.md)
+- [A proxied application](./proxied-application.md)
 
 Third tier (mapped, not yet driven):
 

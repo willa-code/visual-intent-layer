@@ -1,4 +1,4 @@
-/* Generated from schema/envelope-v0.2.schema.json. Do not edit by hand. */
+/* Generated from schema/envelope-v0.3.schema.json. Do not edit by hand. */
 
 export type Target = {
   [k: string]: any;
@@ -10,6 +10,15 @@ export type Target = {
   provenanceConfidence: "exact" | "inferred" | "unavailable";
   label?: string;
   regionEvidence?: RegionEvidence;
+  /**
+   * Runtime State Evidence: the state the artifact was in when the Target was pointed at, as the artifact saw it rather than as the review proxy served it.
+   */
+  runtimeState?: {
+    /**
+     * Address of the artifact relative to its own base, including query and fragment. Absent when the artifact was at its base.
+     */
+    address?: string;
+  };
 } & {
   targetId: string;
   kind: "element" | "text-range" | "region";
@@ -18,16 +27,25 @@ export type Target = {
   provenanceConfidence: "exact" | "inferred" | "unavailable";
   label?: string;
   regionEvidence?: RegionEvidence;
+  /**
+   * Runtime State Evidence: the state the artifact was in when the Target was pointed at, as the artifact saw it rather than as the review proxy served it.
+   */
+  runtimeState?: {
+    /**
+     * Address of the artifact relative to its own base, including query and fragment. Absent when the artifact was at its base.
+     */
+    address?: string;
+  };
 };
 
 /**
- * Experimental open schema for visually grounded human intent. Version 0.2 makes the Annotation the portable unit and reduces Target Resolution to one axis.
+ * Experimental open schema for visually grounded human intent. Version 0.3 adds Runtime State Evidence to every Target, recording the address the artifact was showing, and keeps the 0.2 shape readable.
  */
 export interface VisualIntentEnvelope {
   /**
    * Envelope schema version. Major.minor; minor additions are backward compatible.
    */
-  schemaVersion: "0.2";
+  schemaVersion: "0.3";
   /**
    * Stable identifier so retries and redelivery are idempotent.
    */
@@ -143,7 +161,6 @@ export interface RenderedGrounding {
     centerX?: number;
     centerY?: number;
   };
-  stableRuntimeId?: string;
 }
 /**
  * Exact editable source location, supplied only by an instrumented adapter.

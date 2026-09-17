@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { computeRevision, stableArtifactId } from '../artifact/revision.js';
+import { computeSourceRootRevision } from '../artifact/source-root.js';
 import { validateEnvelope, type Envelope } from '../envelope/validate.js';
 import { AnnotationStore, type Pass } from '../annotation/store.js';
 import { AttachmentStore } from '../annotation/attachments.js';
@@ -14,7 +15,7 @@ import { openInDefaultBrowser } from '../service/browser.js';
 
 export type OpenArtifactInput =
   | { kind: 'saved-html'; path: string }
-  | { kind: 'react-vite-app'; url: string };
+  | { kind: 'react-vite-app'; url: string; sourceRoot?: string };
 
 export type OpenOptions = {
   baseUrl?: string;
@@ -208,9 +209,12 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     }
     const artifactId = stableArtifactId(input.url);
     assertLocalAppUrl(input.url);
-    const revision = await fetchAppRevision(input.url).catch(() =>
-      computeRevision(Buffer.from(input.url, 'utf8'), [])
-    );
+    const sourceRoot = input.sourceRoot ? resolve(process.cwd(), input.sourceRoot) : undefined;
+    const revision = sourceRoot
+      ? computeSourceRootRevision(sourceRoot)
+      : await fetchAppRevision(input.url).catch(() =>
+          computeRevision(Buffer.from(input.url, 'utf8'), [])
+        );
     const existing = sessions.findByArtifactRevision(artifactId, revision);
     if (existing) {
       lastSessionId = existing.sessionId;
@@ -237,6 +241,7 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
       kind: 'react-vite-app',
       artifactId,
       revision,
+      ...(sourceRoot ? { sourceRoot } : {}),
       displayName: input.url,
       capabilities
     });
@@ -581,6 +586,10 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
             kind: { type: 'string', enum: ['saved-html', 'react-vite-app'] },
             path: { type: 'string', description: 'Filesystem path to the saved HTML artifact.' },
             url: { type: 'string', description: 'Localhost URL of the running React/Vite application.' },
+            sourceRoot: {
+              type: 'string',
+              description: 'Filesystem path to the application source root, so its revision can be derived from files without a build step. Omit to derive the revision from the served document instead.'
+            },
             waitMs: {
               type: 'number',
               description: 'How long to hold the call for the human, in milliseconds. Omit for the default window.'
@@ -693,12 +702,12 @@ export function assertLocalAppUrl(url: string): void {
   try {
     parsed = new URL(url);
   } catch {
-    throw new Error(`Application Mode needs a local http(s) URL, got: ${url}`);
+    throw new Error(`A proxied application needs a local http(s) URL, got: ${url}`);
   }
   const localHost =
     parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '::1';
   if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || !localHost) {
-    throw new Error(`Application Mode only opens loopback development origins, refused: ${url}`);
+    throw new Error(`A proxied application only opens loopback development origins, refused: ${url}`);
   }
 }
 

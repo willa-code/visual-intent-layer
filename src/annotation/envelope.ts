@@ -34,7 +34,7 @@ export function buildBatchEnvelope(input: BatchEnvelopeInput): Envelope {
   const stamped = input.requestedAt ?? new Date().toISOString();
   const idempotencyKey = batchIdempotencyKey(input.annotations);
   return {
-    schemaVersion: '0.2',
+    schemaVersion: '0.3',
     envelopeId: batchEnvelopeId(idempotencyKey),
     artifact: {
       id: input.artifact.id,

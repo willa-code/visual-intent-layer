@@ -1,4 +1,4 @@
-import { provenanceForElement } from '../../adapters/react-provenance.js';
+import { provenanceForElement } from '../../adapters/source-stamp.js';
 import type { CandidateMark, Grounding, LayerMessage, LayerTarget, LayerTool, ShellMessage } from '../protocol.js';
 import {
   LAYER_ATTRIBUTE,
@@ -21,6 +21,7 @@ const MAX_AREA_TARGETS = 5;
 const script = document.currentScript as HTMLScriptElement | null;
 const sessionId = script?.dataset['session'] ?? '';
 const revision = script?.dataset['revision'] ?? '';
+const addressBase = (script?.dataset['addressBase'] ?? '').replace(/\/+$/, '');
 const parentWindow = window.parent !== window ? window.parent : undefined;
 
 let tool: LayerTool = 'operate';
@@ -164,13 +165,25 @@ function stripElement(target: SelectedTarget): LayerTarget {
   return rest;
 }
 
+function addressOf(): string | undefined {
+  const location = window.location;
+  let path = location.pathname;
+  if (addressBase && (path === addressBase || path.startsWith(`${addressBase}/`))) {
+    path = path.slice(addressBase.length).replace(/^\/+/, '');
+  }
+  const relative = `${path}${location.search}${location.hash}`;
+  return relative.length > 0 ? relative : undefined;
+}
+
 function makeTarget(kind: LayerTarget['kind'], grounding: Grounding, element?: HTMLElement): SelectedTarget {
+  const address = addressOf();
   const target: SelectedTarget = {
     targetId: `t-${++targetCounter}`,
     kind,
     grounding,
     provenanceConfidence: 'unavailable',
-    ...(element ? { element } : {})
+    ...(element ? { element } : {}),
+    ...(address ? { runtimeState: { address } } : {})
   };
   if (kind === 'region') {
     target.regionEvidence = {
@@ -461,23 +474,82 @@ function onMessage(event: MessageEvent<ShellMessage>): void {
     case 'mark-candidates':
       markCandidates(message.candidates);
       break;
-    case 'request-candidates':
-      post({ source: 'vil-layer', type: 'candidates', candidates: extractCandidates(document), revision });
+    case 'request-candidates': {
+      const address = addressOf();
+      post({
+        source: 'vil-layer',
+        type: 'candidates',
+        candidates: extractCandidates(document),
+        revision,
+        ...(address ? { address } : {})
+      });
       break;
+    }
     case 'before-after':
       redraw();
       break;
   }
 }
 
+function onDocumentClick(event: MouseEvent): void {
+  if (!addressBase.startsWith('/artifact/')) {
+    return;
+  }
+  const target = event.target as Element | null;
+  const anchor = target?.closest?.('a[href]') as HTMLAnchorElement | null | undefined;
+  if (!anchor) {
+    return;
+  }
+  if (anchor.target && anchor.target !== '_self') {
+    return;
+  }
+  let url: URL;
+  try {
+    url = new URL(anchor.href, window.location.href);
+  } catch {
+    return;
+  }
+  if (url.origin !== window.location.origin || url.pathname === window.location.pathname) {
+    return;
+  }
+  if (!(url.pathname === addressBase || url.pathname.startsWith(`${addressBase}/`))) {
+    return;
+  }
+  if (!/\.html?$/i.test(url.pathname)) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  post({
+    source: 'vil-layer',
+    type: 'notice',
+    message: `${documentNameOf(url.pathname)} is another document. This artifact is reviewed as one document, so it is not served with pointing.`,
+    action: 'back-to-artifact'
+  });
+}
+
+function documentNameOf(pathname: string): string {
+  const name = pathname.split('/').filter(Boolean).pop() ?? pathname;
+  return name;
+}
+
 document.addEventListener('pointerdown', onPointerDown, true);
 document.addEventListener('pointermove', onPointerMove, true);
 document.addEventListener('pointerup', onPointerUp, true);
 document.addEventListener('click', onClick, true);
+document.addEventListener('click', onDocumentClick, true);
 window.addEventListener('scroll', redraw, true);
 window.addEventListener('resize', redraw);
 window.addEventListener('message', onMessage as EventListener);
+window.addEventListener('visual-intent:applied-revision', ((event: CustomEvent<{ revision?: unknown }>) => {
+  const supplied = event.detail?.revision;
+  post({
+    source: 'vil-layer',
+    type: 'applied',
+    ...(typeof supplied === 'string' && supplied.length > 0 ? { revision: supplied } : {})
+  });
+}) as EventListener);
 
 overlay = ensureOverlay();
-post({ source: 'vil-layer', type: 'ready' });
+post({ source: 'vil-layer', type: 'ready', revision });
 void sessionId;

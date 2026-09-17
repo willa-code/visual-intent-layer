@@ -14,7 +14,7 @@ Usage:
   visual-intent serve [--port 3742] [--json]        Start the local review service
   visual-intent open --html <path> [--port 0] [--json] [--no-open]
       Open a saved HTML artifact and print the review URL.
-  visual-intent open --app <localhost-url> [--port 0] [--json] [--no-open]
+  visual-intent open --app <localhost-url> [--source-root <path>] [--port 0] [--json] [--no-open]
       Open a running local app and print the review URL.
   visual-intent setup [--global] [--no-skill] [--print-only] [--status] [--harness <name>]
       Detect the harnesses on this machine (pi, codex, claude-code, opencode),
@@ -131,6 +131,7 @@ async function main(): Promise<void> {
   if (args[0] === 'open') {
     const htmlFlag = args.indexOf('--html');
     const appFlag = args.indexOf('--app');
+    const sourceRootFlag = args.indexOf('--source-root');
     const openBrowser = autoOpenSuppressed() || args.includes('--no-open') ? false : true;
     const port = portFlag(args, 0);
     if (port === undefined) {
@@ -148,7 +149,11 @@ async function main(): Promise<void> {
     const input =
       htmlFlag !== -1 && args[htmlFlag + 1]
         ? ({ kind: 'saved-html', path: args[htmlFlag + 1]! } as const)
-        : ({ kind: 'react-vite-app', url: args[appFlag + 1]! } as const);
+        : ({
+            kind: 'react-vite-app',
+            url: args[appFlag + 1]!,
+            ...(sourceRootFlag !== -1 && args[sourceRootFlag + 1] ? { sourceRoot: args[sourceRootFlag + 1]! } : {})
+          } as const);
     const opened = await reviewService
       .openArtifact(input, { baseUrl: service.baseUrl, openBrowser })
       .catch((error: unknown) => {
