@@ -424,6 +424,20 @@ describe('Lever contract: the relation drive', () => {
     expect((spaced?.targetIds as string[]).length).toBe(3);
   }, 180000);
 
+  it('records an ordering relation by dragging a selected target past another', () => {
+    const related = lever(['relate', '--run', name, '--from', '.d', '--to', '.e', '--dx', '120', '--expect', 'after']);
+    expect(related.status, related.stderr).toBe(0);
+    const recorded = relationships();
+    expect(recorded.some((relation) => relation.type === 'ordering' && relation.operator === 'after')).toBe(true);
+    expect(JSON.stringify(recorded)).not.toMatch(/"(x|y|width|height|left|top|dx|dy|px)"/);
+  }, 180000);
+
+  it('records containment by dropping a selected target inside another', () => {
+    const related = lever(['relate', '--run', name, '--from', '.a', '--to', '.b', '--dy', '-50', '--expect', 'member-of']);
+    expect(related.status, related.stderr).toBe(0);
+    expect(relationships().some((relation) => relation.operator === 'member-of')).toBe(true);
+  }, 180000);
+
   it('refuses a drag that infers no relation with exit code 4', () => {
     const related = lever(['relate', '--run', name, '--from', '.a', '--to', '.b', '--dx', '240', '--dy', '240']);
     expect(related.status).toBe(4);
