@@ -75,6 +75,7 @@ export type AnnotationSummary = {
   order: number;
   revisionRelation: 'current' | 'advanced';
   resolutions: Array<{ targetId: string; match: TargetMatch; label: ReturnType<typeof deriveResolutionLabel>; candidates: number }>;
+  relationships: AnnotationRelation[];
   blockers: string[];
   passId?: string;
   replaces?: string;
@@ -148,6 +149,19 @@ export function labelFor(annotation: Annotation, targetId: string): string {
   return targetName(annotation.targets, targetId);
 }
 
+export function missingRelationTargets(annotation: Annotation): string[] {
+  const present = new Set(annotation.targets.map((target) => target.targetId));
+  const missing = new Set<string>();
+  for (const relation of annotation.relationships) {
+    for (const targetId of relation.targetIds) {
+      if (!present.has(targetId)) {
+        missing.add(targetId);
+      }
+    }
+  }
+  return [...missing];
+}
+
 export function targetName(targets: AnnotationTarget[], targetId: string): string {
   const target = targets.find((entry) => entry.targetId === targetId);
   if (!target) {
@@ -170,6 +184,7 @@ export function summarise(annotation: Annotation): AnnotationSummary {
       label: deriveResolutionLabel(resolution),
       candidates: resolution.candidates.length
     })),
+    relationships: annotation.relationships,
     blockers: approvalBlockers(annotation),
     ...(annotation.passId ? { passId: annotation.passId } : {}),
     ...(annotation.replaces ? { replaces: annotation.replaces } : {}),

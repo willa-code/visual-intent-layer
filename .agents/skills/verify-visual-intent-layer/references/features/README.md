@@ -93,9 +93,9 @@ Third tier (mapped, not yet driven):
 - [Setup and Harness Detection](./setup-and-detection.md)
 - [The MCP agent loop](./mcp-agent-loop.md)
 
-Deferred out of this iteration:
+Driven:
 
-- [Relational Intent by direct manipulation](./relational-intent.md) — no surface expresses a relation; its recipes must not be run against this build.
+- [Relational Intent by direct manipulation](./relational-intent.md) — a set is built with `Shift` and a drag on a selected target records one relation; the drive is `relate`.
 
 Cross-surface:
 

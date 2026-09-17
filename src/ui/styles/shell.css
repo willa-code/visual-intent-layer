@@ -863,6 +863,27 @@ body.gallery-body {
   margin: 0;
 }
 
+.relation-sentences {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.relation-sentence {
+  font: var(--type-label);
+  color: var(--ink-secondary);
+  margin: 0;
+}
+
+.relation-sentence[data-relation-preview] {
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+.relation-sentence[hidden] {
+  display: none;
+}
+
 .anchored-card__actions {
   display: flex;
   justify-content: space-between;

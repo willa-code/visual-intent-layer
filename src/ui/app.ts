@@ -1,5 +1,6 @@
 import type { Annotation } from '../annotation/model.js';
-import { approvalBlockers, isInQueue, isVerification, stateLabel } from '../annotation/model.js';
+import { approvalBlockers, isInQueue, isVerification, missingRelationTargets, stateLabel, targetName } from '../annotation/model.js';
+import { relationSentence } from '../annotation/relations.js';
 import { deriveResolutionLabel, type RuntimeStateContext } from '../resolution/model.js';
 import type { ResolutionCandidate, TargetResolutionRecord } from '../resolution/resolve.js';
 import { Api, type Policy, type SessionPass, type SessionSnapshot, type SessionStatus } from './api.js';
@@ -29,7 +30,7 @@ import {
 import { button, clear, h, iconButton, qs } from './dom.js';
 import { CAPTURE_SUPPORT_STATEMENT, captureArtifactView, captureAvailable, captureUnavailableReason } from './capture.js';
 import { icon, type IconName } from './icons.js';
-import type { LayerMessage, LayerTarget, LayerTool, ShellMarkTargets, ShellMessage } from './protocol.js';
+import type { LayerMessage, LayerRelation, LayerTarget, LayerTool, ShellMarkTargets, ShellMessage } from './protocol.js';
 import { debounce, readConfig, type ShellConfig } from './runtime.js';
 
 const THEME_KEY = 'vil-theme';
@@ -43,6 +44,7 @@ class App {
   private policy?: Policy;
   private mode: LayerTool = 'operate';
   private selection: LayerTarget[] = [];
+  private relationPreview?: string;
   private activeAnnotationId?: string;
   private amendFor?: string;
   private repointFor?: string;
@@ -95,6 +97,7 @@ class App {
     this.applyTheme();
     window.addEventListener('message', (event) => this.onLayerMessage(event));
     window.addEventListener('keydown', (event) => this.onKeyDown(event));
+    window.addEventListener('pointerup', () => this.postToLayer({ source: 'vil-shell', type: 'cancel-relation' }));
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         void this.refresh();
@@ -392,6 +395,24 @@ class App {
       row.appendChild(h('p', { class: 'annotation-row__note', text: annotation.note || 'No note' }));
     }
 
+    for (const relation of annotation.relationships) {
+      row.appendChild(
+        h('p', {
+          class: 'relation-sentence',
+          dataset: { relation: 'true' },
+          text: relationSentence(relation, (targetId) => targetName(annotation.targets, targetId))
+        })
+      );
+    }
+    if (missingRelationTargets(annotation).length > 0) {
+      row.appendChild(
+        h('p', {
+          class: 'hint',
+          text: 'A target this relation names is no longer in this Annotation, so the relation cannot be judged against it.'
+        })
+      );
+    }
+
     const targets = h('ul', { class: 'resolution-list' });
     const stateFor = this.stateContextFor(annotation);
     for (const resolution of annotation.resolutions) {
@@ -565,7 +586,7 @@ class App {
     if (!annotation) {
       return;
     }
-    const target = this.selection[0];
+    const target = this.selection.length > 0 ? this.selection[this.selection.length - 1] : undefined;
     const resolution = annotation.resolutions[0];
     const bounds = target?.grounding.boundingBox;
     const card = h('div', {
@@ -573,6 +594,7 @@ class App {
       attrs: { role: 'dialog', 'aria-label': 'Annotation card' }
     });
     card.appendChild(this.targetLine(annotation, target));
+    card.appendChild(this.relationLine(annotation));
     const textarea = h('textarea', {
       class: 'textarea',
       attrs: { rows: '4', placeholder: 'What should change?', 'aria-label': 'What should change?' },
@@ -611,11 +633,44 @@ class App {
     void resolution;
   }
 
+  private relationLine(annotation: Annotation): HTMLElement {
+    const wrap = h('div', { class: 'relation-sentences' });
+    for (const relation of annotation.relationships) {
+      wrap.appendChild(
+        h('p', {
+          class: 'relation-sentence',
+          text: relationSentence(relation, (targetId) => targetName(annotation.targets, targetId))
+        })
+      );
+    }
+    const preview = h('p', { class: 'relation-sentence', attrs: { 'data-relation-preview': 'true' } }) as HTMLElement;
+    preview.hidden = !this.relationPreview;
+    preview.textContent = this.relationPreview ? `Preview — not recorded yet: ${this.relationPreview}` : '';
+    wrap.appendChild(preview);
+    if (missingRelationTargets(annotation).length > 0) {
+      wrap.appendChild(
+        h('p', {
+          class: 'hint',
+          text: 'A target this relation names is no longer in this Annotation, so the relation cannot be judged against it.'
+        })
+      );
+    }
+    return wrap;
+  }
+
   private targetLine(annotation: Annotation, target: LayerTarget | undefined): HTMLElement {
     const line = h('p', { class: 'anchored-card__target' });
+    const members = annotation.targets.length > 0 ? annotation.targets : this.selection;
     const kind = target?.kind ?? annotation.targets[0]?.kind ?? 'element';
     line.appendChild(icon(kindIcon(kind), { size: 14 }));
-    line.append(describeTarget(target ?? annotation.targets[0]));
+    if (members.length <= 1) {
+      line.append(describeTarget(target ?? annotation.targets[0]));
+      return line;
+    }
+    const names = members.map((entry) => describeTarget(entry));
+    const shown = names.slice(0, 3);
+    const rest = names.length - shown.length;
+    line.append(`${shown.join(', ')}${rest > 0 ? ` and ${rest} more` : ''}`);
     return line;
   }
 
@@ -905,6 +960,15 @@ class App {
       case 'selection':
         void this.onSelection(message.targets);
         break;
+      case 'relation-preview':
+        this.relationPreview = message.sentence ?? undefined;
+        this.updateRelationPreview();
+        break;
+      case 'relation':
+        this.relationPreview = undefined;
+        this.updateRelationPreview();
+        void this.onRelation(message.relation);
+        break;
       case 'candidates':
         this.candidates = message.candidates;
         this.viewedAddress = message.address;
@@ -954,6 +1018,38 @@ class App {
       }
     }
     this.renderCard();
+  }
+
+  private async onRelation(relation: LayerRelation): Promise<void> {
+    const annotation = this.activeAnnotation();
+    if (!annotation || !isInQueue(annotation.state)) {
+      return;
+    }
+    const samePairing = (entry: { targetIds: readonly string[] }): boolean =>
+      entry.targetIds.length === relation.targetIds.length &&
+      [...entry.targetIds].sort().join('\u0000') === [...relation.targetIds].sort().join('\u0000');
+    if (relation.targetIds.length === 0) {
+      return;
+    }
+    const relationships = [
+      ...annotation.relationships.filter((entry) => !samePairing(entry)),
+      relation
+    ] as Annotation['relationships'];
+    try {
+      await this.api.patchAnnotation(annotation.annotationId, { relationships });
+      await this.refresh();
+    } catch (error) {
+      this.showNotice(messageOf(error));
+    }
+  }
+
+  private updateRelationPreview(): void {
+    const element = qs<HTMLElement>(this.cardHost, '[data-relation-preview]');
+    if (!element) {
+      return;
+    }
+    element.hidden = !this.relationPreview;
+    element.textContent = this.relationPreview ? `Preview — not recorded yet: ${this.relationPreview}` : '';
   }
 
   private onNoteInput(value: string): void {
@@ -1007,6 +1103,7 @@ class App {
       await this.refresh();
       this.activeAnnotationId = undefined;
       this.selection = [];
+      this.relationPreview = undefined;
       this.postToLayer({ source: 'vil-shell', type: 'clear-selection' });
       this.renderCard();
     } catch (error) {
@@ -1066,6 +1163,7 @@ class App {
       if (this.activeAnnotationId === annotationId) {
         this.activeAnnotationId = undefined;
         this.selection = [];
+        this.relationPreview = undefined;
         this.postToLayer({ source: 'vil-shell', type: 'clear-selection' });
       }
       await this.refresh();
@@ -1590,6 +1688,7 @@ class App {
         this.renderCard();
       } else if (this.selection.length > 0) {
         this.selection = [];
+        this.relationPreview = undefined;
         this.postToLayer({ source: 'vil-shell', type: 'clear-selection' });
       } else if (this.mode !== 'operate') {
         this.setMode('operate');

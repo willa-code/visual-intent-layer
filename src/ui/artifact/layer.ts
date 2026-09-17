@@ -1,5 +1,6 @@
 import { provenanceForElement } from '../../adapters/source-stamp.js';
-import type { CandidateMark, Grounding, LayerMessage, LayerTarget, LayerTool, ShellMessage } from '../protocol.js';
+import { relationSentence } from '../../annotation/relations.js';
+import type { CandidateMark, Grounding, LayerMessage, LayerRelation, LayerTarget, LayerTool, ShellMessage } from '../protocol.js';
 import {
   LAYER_ATTRIBUTE,
   describeElement,
@@ -17,6 +18,9 @@ const ATTENTION_FILL = 'rgba(107, 74, 0, 0.12)';
 const MIN_BOX = 12;
 const DRAG_THRESHOLD = 5;
 const MAX_AREA_TARGETS = 5;
+const MAX_TARGETS = 8;
+const ALIGN_TOLERANCE = 10;
+const SPACING_TOLERANCE = 10;
 
 const script = document.currentScript as HTMLScriptElement | null;
 const sessionId = script?.dataset['session'] ?? '';
@@ -30,10 +34,20 @@ let hovered: HTMLElement | null = null;
 let marks: Mark[] = [];
 let regionMarks: HTMLElement[] = [];
 let candidateMarkBoxes: Array<{ box: HTMLElement; element: HTMLElement }> = [];
-let boxDrag: { startX: number; startY: number } | null = null;
-let pointDrag: { startX: number; startY: number; startedOnSelected: boolean; moved: boolean } | null = null;
+let boxDrag: { startX: number; startY: number; additive: boolean } | null = null;
+let pointDrag: {
+  startX: number;
+  startY: number;
+  startedOnSelected: boolean;
+  moved: boolean;
+  element: HTMLElement;
+  ghost?: HTMLElement;
+  relation?: LayerRelation;
+  refusal?: string;
+} | null = null;
 let hoverBox: HTMLElement | null = null;
 let targetCounter = 0;
+let relationCounter = 0;
 let overlay: HTMLElement;
 
 type SelectedTarget = LayerTarget & { element?: HTMLElement };
@@ -56,7 +70,7 @@ function ensureOverlay(): HTMLElement {
   return element;
 }
 
-function boxFor(element: Element | null, kind: 'owned' | 'drawn' | 'candidate' | 'hover', label: string): HTMLElement {
+function boxFor(element: Element | null, kind: 'owned' | 'drawn' | 'candidate' | 'hover' | 'relation', label: string): HTMLElement {
   const box = document.createElement('div');
   box.setAttribute(LAYER_ATTRIBUTE, 'mark');
   box.setAttribute('data-vil-mark', kind);
@@ -67,7 +81,9 @@ function boxFor(element: Element | null, kind: 'owned' | 'drawn' | 'candidate' |
       ? `border:2px dashed ${ATTENTION_INK};background:${ATTENTION_FILL};`
       : kind === 'candidate'
         ? `border:2px dashed ${ATTENTION_INK};`
-        : `border:1px solid ${SELECTION_INK};`;
+        : kind === 'relation'
+          ? `border:1px dashed ${SELECTION_INK};background:${SELECTION_HOVER_FILL};`
+          : `border:1px solid ${SELECTION_INK};`;
   box.style.cssText = `position:fixed;pointer-events:none;border-radius:4px;box-sizing:border-box;${border}`;
   if (kind !== 'candidate') {
     box.setAttribute('aria-hidden', 'true');
@@ -203,8 +219,35 @@ function makeTarget(kind: LayerTarget['kind'], grounding: Grounding, element?: H
   return target;
 }
 
-function selectElement(element: HTMLElement): void {
-  targets = [makeTarget('element', describeElement(element), element)];
+function isSelected(element: HTMLElement): boolean {
+  return targets.some((target) => target.element === element);
+}
+
+function appendTarget(target: SelectedTarget): boolean {
+  if (targets.length >= MAX_TARGETS) {
+    post({
+      source: 'vil-layer',
+      type: 'notice',
+      message: `A set holds at most ${MAX_TARGETS} targets, so that one was not added. Remove one first.`
+    });
+    return false;
+  }
+  targets = [...targets, target];
+  return true;
+}
+
+function selectElement(element: HTMLElement, additive: boolean): void {
+  if (!additive) {
+    targets = [makeTarget('element', describeElement(element), element)];
+    renderTargets();
+    return;
+  }
+  if (isSelected(element)) {
+    targets = targets.filter((entry) => entry.element !== element);
+    renderTargets();
+    return;
+  }
+  appendTarget(makeTarget('element', describeElement(element), element));
   renderTargets();
 }
 
@@ -213,7 +256,7 @@ function clearSelection(): void {
   renderTargets();
 }
 
-function selectEnclosed(rect: { x: number; y: number; width: number; height: number }): void {
+function selectEnclosed(rect: { x: number; y: number; width: number; height: number }, additive: boolean): void {
   const view = { width: window.innerWidth, height: window.innerHeight, scrollX: window.scrollX, scrollY: window.scrollY };
   const grounding = describeRegion(rect, view);
   const enclosed = enclosedElements(rect);
@@ -234,7 +277,11 @@ function selectEnclosed(rect: { x: number; y: number; width: number; height: num
     summary.length > 0
       ? `Area enclosing ${summary.join(', ')}${enclosed.length > summary.length ? ` and ${enclosed.length - summary.length} more` : ''}`
       : 'A drawn area enclosing nothing the artifact owns';
-  targets = [target];
+  if (additive) {
+    appendTarget(target);
+  } else {
+    targets = [target];
+  }
   renderTargets();
 }
 
@@ -271,13 +318,13 @@ function onPointerDown(event: PointerEvent): void {
     return;
   }
   if (tool === 'box') {
-    boxDrag = { startX: event.clientX, startY: event.clientY };
+    boxDrag = { startX: event.clientX, startY: event.clientY, additive: event.shiftKey };
     return;
   }
   const startedOnSelected = targets.some(
     (target) => target.element === element || target.element?.contains(element)
   );
-  pointDrag = { startX: event.clientX, startY: event.clientY, startedOnSelected, moved: false };
+  pointDrag = { startX: event.clientX, startY: event.clientY, startedOnSelected, moved: false, element };
 }
 
 function onPointerMove(event: PointerEvent): void {
@@ -289,6 +336,10 @@ function onPointerMove(event: PointerEvent): void {
     const distance = Math.hypot(event.clientX - pointDrag.startX, event.clientY - pointDrag.startY);
     if (distance > DRAG_THRESHOLD) {
       pointDrag.moved = true;
+    }
+    if (pointDrag.moved && pointDrag.startedOnSelected) {
+      updateRelationDrag(event);
+      return;
     }
   }
   if (tool === 'point') {
@@ -316,12 +367,15 @@ function onPointerUp(event: PointerEvent): void {
       });
       return;
     }
-    selectEnclosed({
-      x: Math.min(start.startX, event.clientX),
-      y: Math.min(start.startY, event.clientY),
-      width,
-      height
-    });
+    selectEnclosed(
+      {
+        x: Math.min(start.startX, event.clientX),
+        y: Math.min(start.startY, event.clientY),
+        width,
+        height
+      },
+      start.additive
+    );
     return;
   }
   if (!pointDrag) {
@@ -331,13 +385,17 @@ function onPointerUp(event: PointerEvent): void {
   pointDrag = null;
   if (drag.moved) {
     if (drag.startedOnSelected) {
-      const selection = document.getSelection();
-      selection?.removeAllRanges();
+      finishRelationDrag(drag);
       return;
     }
     const selection = document.getSelection();
     if (selection && selection.rangeCount > 0 && !selection.isCollapsed && selection.toString().trim().length > 0) {
-      targets = [makeTarget('text-range', describeTextRange(selection.getRangeAt(0)))];
+      const target = makeTarget('text-range', describeTextRange(selection.getRangeAt(0)));
+      if (event.shiftKey) {
+        appendTarget(target);
+      } else {
+        targets = [target];
+      }
       renderTargets();
     }
     return;
@@ -346,7 +404,237 @@ function onPointerUp(event: PointerEvent): void {
   if (!element || isLayerNode(element)) {
     return;
   }
-  selectElement(element);
+  selectElement(element, event.shiftKey);
+}
+
+function targetNameOf(targetId: string): string {
+  const target = targets.find((entry) => entry.targetId === targetId);
+  return target?.label ?? (target?.element ? labelOf(target.element) : targetId);
+}
+
+function updateRelationDrag(event: PointerEvent): void {
+  const drag = pointDrag;
+  if (!drag || !drag.moved || !drag.startedOnSelected) {
+    return;
+  }
+  const rect = drag.element.getBoundingClientRect();
+  const dx = event.clientX - drag.startX;
+  const dy = event.clientY - drag.startY;
+  if (!drag.ghost) {
+    drag.ghost = boxFor(drag.element, 'relation', '');
+    drag.ghost.setAttribute('aria-hidden', 'true');
+  }
+  drag.ghost.style.left = `${rect.left + dx}px`;
+  drag.ghost.style.top = `${rect.top + dy}px`;
+  drag.ghost.style.width = `${rect.width}px`;
+  drag.ghost.style.height = `${rect.height}px`;
+  drag.ghost.style.display = 'block';
+  const result = computeRelation(drag.element, rect, dx, dy, {
+    alt: event.altKey,
+    ctrl: event.ctrlKey || event.metaKey,
+    shift: event.shiftKey
+  });
+  drag.relation = result.relation;
+  drag.refusal = result.refusal;
+  post({
+    source: 'vil-layer',
+    type: 'relation-preview',
+    sentence: drag.relation ? relationSentence(drag.relation, targetNameOf) : null
+  });
+}
+
+function finishRelationDrag(drag: NonNullable<typeof pointDrag>): void {
+  clearRelationGhost(drag);
+  document.getSelection()?.removeAllRanges();
+  const relation = drag.relation;
+  if (!relation) {
+    post({ source: 'vil-layer', type: 'relation-preview', sentence: null });
+    post({
+      source: 'vil-layer',
+      type: 'notice',
+      message: drag.refusal ?? 'That drag does not express a relation the product knows, so nothing was recorded.'
+    });
+    return;
+  }
+  relation.relationshipId = `rel-${++relationCounter}`;
+  post({ source: 'vil-layer', type: 'relation', relation, sentence: relationSentence(relation, targetNameOf) });
+}
+
+function clearRelationGhost(drag: NonNullable<typeof pointDrag>): void {
+  drag.ghost?.remove();
+  drag.ghost = undefined;
+}
+
+function cancelRelationDrag(): void {
+  const drag = pointDrag;
+  if (!drag) {
+    return;
+  }
+  pointDrag = null;
+  clearRelationGhost(drag);
+  document.getSelection()?.removeAllRanges();
+  post({ source: 'vil-layer', type: 'relation-preview', sentence: null });
+}
+
+type Box = { left: number; top: number; right: number; bottom: number; width: number; height: number };
+
+function boxOfElement(element: HTMLElement): Box {
+  const rect = element.getBoundingClientRect();
+  return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
+}
+
+function boxOfTarget(target: SelectedTarget): Box | undefined {
+  if (target.element?.isConnected) {
+    return boxOfElement(target.element);
+  }
+  const bounds = target.grounding.boundingBox;
+  if (!bounds) {
+    return undefined;
+  }
+  return { left: bounds.x, top: bounds.y, right: bounds.x + bounds.width, bottom: bounds.y + bounds.height, width: bounds.width, height: bounds.height };
+}
+
+function computeRelation(
+  dragged: HTMLElement,
+  rect: DOMRect,
+  dx: number,
+  dy: number,
+  modifiers: { alt: boolean; ctrl: boolean; shift: boolean }
+): { relation?: LayerRelation; refusal?: string } {
+  const draggedTarget = targets.find((entry) => entry.element === dragged);
+  if (!draggedTarget) {
+    return {};
+  }
+  const box: Box = { left: rect.left + dx, top: rect.top + dy, right: rect.right + dx, bottom: rect.bottom + dy, width: rect.width, height: rect.height };
+  const others = targets
+    .filter((entry) => entry !== draggedTarget)
+    .map((entry) => ({ target: entry, box: boxOfTarget(entry) }))
+    .filter((entry): entry is { target: SelectedTarget; box: Box } => Boolean(entry.box));
+  if (others.length === 0) {
+    return {};
+  }
+  const draggedId = draggedTarget.targetId;
+  const nearest = nearestTo(box, others);
+  if (modifiers.alt) {
+    if (targets.length < 3) {
+      return { refusal: 'Equal spacing needs three or more targets, so nothing was recorded.' };
+    }
+    return { relation: spacingFor(box, draggedId, dx, dy) };
+  }
+  if (modifiers.ctrl) {
+    return {
+      relation: { relationshipId: '', type: 'equivalence', operator: 'shared-property', targetIds: [draggedId, nearest.target.targetId] }
+    };
+  }
+  if (modifiers.shift) {
+    const operator = Math.abs(dx) >= Math.abs(dy) ? 'same-width' : 'same-height';
+    return {
+      relation: { relationshipId: '', type: 'comparative-size', operator, targetIds: [draggedId, nearest.target.targetId] }
+    };
+  }
+  return {
+    relation:
+      containmentFor(box, others, draggedId) ??
+      orderingFor(box, dx, dy, nearest.box, draggedId, nearest.target.targetId) ??
+      alignmentFor(box, nearest.box, draggedId, nearest.target.targetId)
+  };
+}
+
+function nearestTo(box: Box, others: Array<{ target: SelectedTarget; box: Box }>): { target: SelectedTarget; box: Box } {
+  return others
+    .map((entry) => ({
+      ...entry,
+      distance: Math.hypot(
+        entry.box.left + entry.box.width / 2 - (box.left + box.width / 2),
+        entry.box.top + entry.box.height / 2 - (box.top + box.height / 2)
+      )
+    }))
+    .sort((a, b) => a.distance - b.distance)[0]!;
+}
+
+function containmentFor(
+  box: Box,
+  others: Array<{ target: SelectedTarget; box: Box }>,
+  draggedId: string
+): LayerRelation | undefined {
+  const centreX = box.left + box.width / 2;
+  const centreY = box.top + box.height / 2;
+  const container = others.find(
+    (entry) =>
+      centreX > entry.box.left &&
+      centreX < entry.box.right &&
+      centreY > entry.box.top &&
+      centreY < entry.box.bottom
+  );
+  if (!container) {
+    return undefined;
+  }
+  return { relationshipId: '', type: 'containment', operator: 'member-of', targetIds: [draggedId, container.target.targetId] };
+}
+
+function spacingFor(box: Box, draggedId: string, dx: number, dy: number): LayerRelation | undefined {
+  const entries = targets
+    .map((target) => {
+      const targetBox = target.targetId === draggedId ? box : boxOfTarget(target);
+      return targetBox ? { targetId: target.targetId, box: targetBox } : undefined;
+    })
+    .filter((entry): entry is { targetId: string; box: Box } => Boolean(entry));
+  if (entries.length < 3) {
+    return undefined;
+  }
+  const horizontal = Math.abs(dx) >= Math.abs(dy);
+  const centres = entries
+    .map((entry) => ({ targetId: entry.targetId, centre: horizontal ? entry.box.left + entry.box.width / 2 : entry.box.top + entry.box.height / 2 }))
+    .sort((a, b) => a.centre - b.centre);
+  const gaps = centres.slice(1).map((entry, index) => entry.centre - centres[index]!.centre);
+  const smallest = Math.min(...gaps);
+  const largest = Math.max(...gaps);
+  if (smallest <= 0 || largest - smallest > SPACING_TOLERANCE) {
+    return undefined;
+  }
+  return { relationshipId: '', type: 'spacing', operator: 'equal-gap', targetIds: centres.map((entry) => entry.targetId) };
+}
+
+function orderingFor(
+  box: Box,
+  dx: number,
+  dy: number,
+  other: Box,
+  draggedId: string,
+  otherId: string
+): LayerRelation | undefined {
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const overlap = Math.min(box.bottom, other.bottom) - Math.max(box.top, other.top);
+    if (overlap <= Math.min(box.height, other.height) * 0.5 || Math.abs(dx) < other.width * 0.6) {
+      return undefined;
+    }
+    return { relationshipId: '', type: 'ordering', operator: dx > 0 ? 'after' : 'before', targetIds: [draggedId, otherId] };
+  }
+  const overlap = Math.min(box.right, other.right) - Math.max(box.left, other.left);
+  if (overlap <= Math.min(box.width, other.width) * 0.5 || Math.abs(dy) < other.height * 0.6) {
+    return undefined;
+  }
+  return { relationshipId: '', type: 'ordering', operator: dy > 0 ? 'after' : 'before', targetIds: [draggedId, otherId] };
+}
+
+function alignmentFor(
+  box: Box,
+  other: Box,
+  draggedId: string,
+  otherId: string
+): LayerRelation | undefined {
+  const candidates: Array<{ operator: LayerRelation['operator']; delta: number }> = [
+    { operator: 'align-left', delta: Math.abs(box.left - other.left) },
+    { operator: 'align-right', delta: Math.abs(box.right - other.right) },
+    { operator: 'align-center', delta: Math.abs(box.left + box.width / 2 - (other.left + other.width / 2)) },
+    { operator: 'align-top', delta: Math.abs(box.top - other.top) },
+    { operator: 'align-middle', delta: Math.abs(box.top + box.height / 2 - (other.top + other.height / 2)) }
+  ];
+  const best = candidates.sort((a, b) => a.delta - b.delta)[0]!;
+  if (best.delta > ALIGN_TOLERANCE) {
+    return undefined;
+  }
+  return { relationshipId: '', type: 'alignment', operator: best.operator, targetIds: [draggedId, otherId] };
 }
 
 function onClick(event: MouseEvent): void {
@@ -422,6 +710,7 @@ function selectorElement(selector: string | undefined): HTMLElement | null {
 }
 
 function markBySelectors(selectors: string[], nodeIds: string[], chosenNodeId?: string): void {
+  targets = [];
   for (const mark of marks) {
     mark.box.remove();
   }
@@ -447,6 +736,7 @@ function markBySelectors(selectors: string[], nodeIds: string[], chosenNodeId?: 
 
 function configure(nextTool: LayerTool): void {
   tool = nextTool;
+  pointDrag?.ghost?.remove();
   pointDrag = null;
   boxDrag = null;
   removeMarquee();
@@ -467,6 +757,9 @@ function onMessage(event: MessageEvent<ShellMessage>): void {
       break;
     case 'clear-selection':
       clearSelection();
+      break;
+    case 'cancel-relation':
+      cancelRelationDrag();
       break;
     case 'mark-targets':
       markBySelectors(message.selectors ?? [], message.nodeIds, message.chosenNodeId);
@@ -533,9 +826,29 @@ function documentNameOf(pathname: string): string {
   return name;
 }
 
+function onKeyDown(event: KeyboardEvent): void {
+  if (event.key !== 'Escape' || !pointDrag) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  cancelRelationDrag();
+}
+
 document.addEventListener('pointerdown', onPointerDown, true);
 document.addEventListener('pointermove', onPointerMove, true);
 document.addEventListener('pointerup', onPointerUp, true);
+document.addEventListener('pointercancel', () => {
+  if (pointDrag?.startedOnSelected) {
+    cancelRelationDrag();
+  }
+});
+document.addEventListener('keydown', onKeyDown, true);
+window.addEventListener('blur', () => {
+  if (pointDrag?.startedOnSelected) {
+    cancelRelationDrag();
+  }
+});
 document.addEventListener('click', onClick, true);
 document.addEventListener('click', onDocumentClick, true);
 window.addEventListener('scroll', redraw, true);

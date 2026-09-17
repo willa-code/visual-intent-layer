@@ -190,7 +190,7 @@ One rail, and one island over the artifact. No chrome spans the window.
 │  stage: artifact frame                       │                            │
 │  + artifact-document overlay                 │  one ledger of Passes      │
 │    (hover, target marks, focus ring,         │                            │
-│     drawn-target boundary,                   │  verdicts on each row      │
+│     drawn-target boundary, relation ghost,   │  verdicts on each row      │
 │     candidate marks, pass-outcome marks)     │                            │
 │                                              │                            │
 │         ┌─────────────────┐                  │                            │
@@ -218,6 +218,14 @@ governs. Operating the artifact is the unarmed state rather than a tile: neither
 tile lit is the resting state, and arming an armed tile again returns to it. The
 island is never hidden and never covers the target of the current selection; the
 anchored card is positioned so the two cannot overlap.
+
+**A relation is a gesture, not a third tile.** `Shift` extends the selection
+into a set of up to eight targets, and dragging a target already in that set
+moves a ghost and infers one relation, shown as one sentence in the anchored card
+before release. The artifact-document overlay draws the ghost; the card draws the
+sentence. A drag that begins anywhere else behaves as the artifact does, so text
+selection is unaffected. Nothing about the relation is a displacement: it records
+the desired relationship and leaves the implementation to the agent.
 
 **One ledger, grouped by Pass.** The rail holds every Annotation — unsent and
 sent — in the order the Builder-Reviewer set, grouped by the Pass it belongs to.
@@ -268,11 +276,12 @@ gallery in §9 renders them.
 | `AttentionTrigger` | hidden at zero, badge with count |
 | `OverflowMenu` | closed, open, item focus |
 | `ArtifactFrame` | loading, ready, unreachable, policy-blocked, changed |
-| `OverlayMark` | hover, selected, focused, drawn-target boundary, candidate mark, pass outcome (answered, untouched, gone) |
+| `OverlayMark` | hover, selected, focused, drawn-target boundary, relation ghost, candidate mark, pass outcome (answered, untouched, gone) |
+| `RelationSentence` | preview before release; recorded on the Annotation in the card and the rail row, from one formatter; names the targets and the desired relationship, never a pixel value |
 | `DrawnTargetBoundary` | drawing; drawn; below the minimum-size threshold it produces nothing |
 | `BeforeAfterToggle` | before, after, off; at the stage's top edge, never over the stage's content footprint; present only while the selected row has a result from a different revision to compare; the selected row states which revision it compares |
 | `AnchoredCard` | positioned left/right/flipped, clamped to viewport, dismissed |
-| `AnnotationCard` | drafting; with attachment. Its target line is a kind icon plus what was pointed at, never the bare kind word, and an Area carries the drawn-boundary glyph. `Queue` is the only worded action, with attach and delete as icons. No instruction copy anywhere in the card: the placeholder carries the question and the attach control explains itself through its accessible name |
+| `AnnotationCard` | drafting; with attachment; with relation, showing the `RelationSentence`. Its target line is a kind icon plus what was pointed at, never the bare kind word, and an Area carries the drawn-boundary glyph. `Queue` is the only worded action, with attach and delete as icons. No instruction copy anywhere in the card: the placeholder carries the question and the attach control explains itself through its accessible name |
 | `AttachmentChip` | uploading, ready, failed, removed |
 | `PassLedger` | empty; one Pass open; several Passes. Rows grouped by Pass, where the state pill carries the difference so sending never moves an Annotation out of view; actionable Annotations first, and closed ones behind one toggle rather than deleted; a Pass header states its state and its outcome counts |
 | `AnnotationPill` | draft, queued, delivered, acknowledged, resolved, verified, rejected, not-fixed, replaced, obsolete |
@@ -314,6 +323,27 @@ composed again, so it is not consequential in the sense this section means.
 - Pointing is one state with two outcomes the gesture already distinguishes:
   clicking targets a thing the artifact owns, and dragging across words targets
 exactly those words.
+- A modifier extends the selection into one set. `Shift` adds a target the
+  artifact owns, a text range or a drawn Area, and removes a member already in
+the set; a plain click or box replaces the set, and the existing `Escape` level
+clears it. A set holds at most eight targets, and a ninth is refused in words
+rather than truncated.
+- A drag that begins on a target already in the set is a relation drag: it moves
+a ghost, infers one relation, and shows one sentence before release. Geometry
+infers containment (the dragged target lands inside another), ordering (it is
+dragged past another along the dominant axis) and alignment (an edge or centre
+line comes into line with another). The three the geometry cannot discriminate
+are declared with a key held through the drag: `Alt` for equal spacing, which
+needs three or more targets, `Ctrl`/`Cmd` for a shared visible property, and
+`Shift` for comparative size, whose dominant axis chooses width or height.
+Releasing records it; `Escape` or a release outside records nothing. A drag that
+begins anywhere else behaves as the artifact does, so text selection is
+unaffected. The stored relation names a desired relationship and carries no
+pixel value.
+- Relational Intent has no keyboard route, and the surface states it: no target
+of any kind is reachable by keyboard today, so a relation-only route would be the
+product's only keyboard targeting and would misstate the surface. The route is
+reopened when keyboard targeting exists.
 - `Enter` in an anchored annotation card queues the annotation. In a replacement
   editor `Enter` delivers the Replacement. `Cmd/Ctrl+Enter` queues and sends the
   whole queue, and is never a shortcut inside a replacement editor. Keys are
@@ -672,3 +702,37 @@ Not adopted: the reference's celebration surface. Recorded here so the omission
 is a decision rather than an oversight. The reference's lavender, amber, blue
 and coral roles are all present; its celebration role waits for a state that
 deserves it.
+
+### 2026-09-17 — Relational Intent returns as a gesture over a set
+
+Reason: amendment 4 deferred Relational Intent because the gesture was undefined
+and the `Arrange` tool that carried it did nothing until two targets were already
+selected. That deferral was always conditional — the capability returns with a
+gesture that is designed rather than inherited — and the gesture is now designed
+and accepted. The maintainer chose the drag this ticket recorded: a modifier
+extends a set of targets into one Annotation, and a drag beginning on a target
+already in that set expresses one relation. The alternative the review named,
+explicit handles on a multi-selection, was considered and refused because it
+costs a new selection-bounds component for a capability the two-tile island can
+already carry. ADR-0023 records the decision and the alternatives it traded
+against.
+
+Replaces:
+
+- §5's composition diagram, which omitted the relation ghost from the
+  artifact-document overlay, and the state §5 was left in when amendment 4
+  removed relation guides and handles.
+- §6's `OverlayMark` entry, which no longer draws a relation ghost, the
+  `AnnotationCard` variant that showed no relation, and the `RelationSentence`
+  entry that amendment 4 deleted.
+- §7's interaction rules, which named no set modifier, no relation drag and no
+  keyboard route for Relational Intent.
+
+Consequence worth stating plainly: the capability amendment 4 deferred now
+ships, so the deferral is superseded rather than standing. The envelope's
+`relationship` definition is unchanged, because it was never the part that was
+missing. The Intent Preview the product promised is the ghost plus the sentence,
+not a separate capability: a reversible visual proposal shown before the
+relation is recorded, which never mutates authoritative source. The keyboard
+route is stated as absent, because no target of any kind is reachable by
+keyboard today and a relation-only route would misrepresent the surface.

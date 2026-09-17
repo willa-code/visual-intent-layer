@@ -244,11 +244,18 @@ const handlers = {
     const startY = fromBox.y + 1;
     const endX = toBox.x + toBox.width - 1;
     const endY = toBox.y + toBox.height - 1;
+    const modifiers = body.modifiers ?? [];
+    for (const key of modifiers) {
+      await page.keyboard.down(key);
+    }
     await page.mouse.move(startX, startY);
     await page.mouse.down();
     await page.mouse.move(endX, endY, { steps: 12 });
     await page.mouse.move(endX, endY);
     await page.mouse.up();
+    for (const key of modifiers.slice().reverse()) {
+      await page.keyboard.up(key);
+    }
     return { ok: true };
   },
   'POST /wait': async (body) => {

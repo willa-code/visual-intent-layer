@@ -72,6 +72,38 @@ describe('Annotation store', () => {
     expect(reopened.get(annotation.annotationId)?.state).toBe('draft');
   });
 
+  it('keeps a recorded relation across a restart and carries it on the delivered envelope', () => {
+    const dir = dataDir();
+    const store = new AnnotationStore(dir);
+    const second = { ...target(), targetId: 't-2', label: 'Logo' } as AnnotationTarget;
+    const annotation = store.createDraft({
+      artifactId: 'a',
+      writtenRevision: 'rev-1',
+      targets: [target(), second],
+      relationships: [
+        {
+          relationshipId: 'rel-1',
+          type: 'alignment',
+          operator: 'align-left',
+          targetIds: ['t-1', 't-2'] as [string, string]
+        }
+      ]
+    });
+
+    const reopened = new AnnotationStore(dir);
+    expect(reopened.get(annotation.annotationId)?.relationships).toHaveLength(1);
+    expect(reopened.get(annotation.annotationId)?.relationships[0]?.operator).toBe('align-left');
+
+    const pass = store.markDelivered([annotation.annotationId], {
+      host: 'test',
+      intent: 'next-pass',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+    });
+    const delivered = pass.envelope.annotations[0]?.relationships;
+    expect(delivered?.[0]).toMatchObject({ type: 'alignment', operator: 'align-left', targetIds: ['t-1', 't-2'] });
+    expect(JSON.stringify(delivered)).not.toMatch(/"(x|y|width|height|left|top|dx|dy|px)"/);
+  });
+
   it('lists only unsent Annotations in the queue and reorders them', () => {
     const store = new AnnotationStore(dataDir());
     const first = store.createDraft({ artifactId: 'a', writtenRevision: 'r', targets: [target()] });

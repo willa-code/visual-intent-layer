@@ -9,9 +9,10 @@ target, drafts a note in a card anchored to it, attaches reference images, and
 queues the result. Sending delivers one **Visual Intent Envelope** carrying each
 Annotation with its own identity. Each Annotation is verified on its own.
 
-The Annotation and the envelope carry one or more targets; the surface composes
-one target per selection today, until `.scratch/several-targets-and-relations/`
-restores the set gesture.
+The Annotation and the envelope carry one or more targets. `Shift` extends a
+selection into one Annotation's set, and dragging a target already in that set
+expresses one relation — ordering, alignment, equal spacing, containment, shared
+property or comparative size — shown as one sentence before it is recorded.
 
 ## Install
 
@@ -106,8 +107,12 @@ it and delivers the amendment; it is never rewritten in place.
 A small **island** over the artifact holds two icon-only tiles: point at things,
 and box an area. Operating the artifact is the unarmed resting state rather than
 a third tile. Pointing is a gesture: clicking targets a thing the artifact owns,
-and dragging across words targets exactly those words. `P`, `B` and `V` arm and
-disarm them.
+and dragging across words targets exactly those words. `Shift` extends the
+selection into a set of up to eight targets and removes a member already in it;
+a plain click or box replaces the set. Dragging a target that is already in the
+set is a relation drag: it moves a ghost and states one sentence before anything
+is recorded. A drag that begins anywhere else behaves as the artifact does, so
+text selection is unaffected. `P`, `B` and `V` arm and disarm the tiles.
 
 Type and press Enter in the Annotation card to queue it; `Cmd/Ctrl+Enter` sends
 the whole queue. Escape unwinds exactly one level — close the card, then clear
@@ -117,15 +122,15 @@ writing.
 ### The Annotation model
 
 - An Annotation is durable and individually identified: targets, note,
-  references, delivery state and resolution. The envelope keeps its support for
-  relationships, but this iteration's surface expresses no relation.
+  references, relations, delivery state and resolution. A relation is stored as
+  the desired relationship, with no pixel field, and the agent chooses how to
+  achieve it.
 - Unsent text survives a surface reload, a service restart and a browser
   restart. Nothing discards a note silently.
-- One selection composes one Annotation today; a drawn Area records the
-  revision and scroll position it was drawn at and reports the elements it
-  encloses. Gathering several targets into one Annotation is deferred to
-  `.scratch/several-targets-and-relations/`, and the Annotation and the envelope
-  still carry a target set.
+- An Annotation carries a set of targets. `Shift` extends the set or removes a
+  member; a drawn Area is one member and may take part in a relation. A relation
+  is shown as one sentence in the card and in the rail row, from one
+  implementation.
 - Every Target carries Runtime State Evidence: the address the artifact was
   showing when it was pointed at, recorded relative to the artifact's own base
   so it means the same thing whether the artifact is served directly or through
@@ -138,9 +143,11 @@ writing.
 - Reference images are added by picker, paste or drop, are content-addressed by
   their own bytes, and are refused visibly (and unread) when disallowed or
   larger than 5MB. Only image types are accepted.
-- Relational Intent stays in the domain model and the envelope keeps its support
-  for relationships, but this iteration's surface expresses no relation. The
-  capability is deferred deliberately, not removed.
+- Relational Intent is expressed by manipulating targets directly: `Shift`
+  extends a selection into a set, and dragging a member of that set infers one
+  relation, shown as one sentence before it is recorded. The relation is stored
+  in the envelope as the desired relationship, with no pixel value anywhere, and
+  the artifact's source and authoritative DOM are never changed by the drag.
 - The product never writes style values into the artifact or its source.
 
 ### Resolution, honesty and the agent

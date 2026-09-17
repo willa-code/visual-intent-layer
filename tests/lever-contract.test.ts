@@ -38,6 +38,8 @@ describe('Lever contract: usage and preconditions at the process boundary', () =
     expect(result.stdout).toContain('amend');
     expect(result.stdout).toContain('stop');
     expect(result.stdout).toContain('--tool point');
+    expect(result.stdout).toContain('--add');
+    expect(result.stdout).toContain('relate');
     expect(result.stdout).not.toContain('--tool element');
     expect(result.stdout).not.toContain('Arrange');
   });
@@ -368,4 +370,63 @@ describe('Lever contract: every verdict path that remains a row control', () => 
     const approved = state.annotations.find((annotation) => annotation.state === 'verified')!;
     expect((approved.verification as Record<string, unknown>).verdict).toBe('approve');
   }, 240000);
+});
+
+describe('Lever contract: the relation drive', () => {
+  const name = `relate-${process.pid}-${Date.now()}`;
+
+  beforeAll(() => {
+    const result = lever(['launch', '--html', 'fixtures/relations.html', '--name', name, '--no-build']);
+    expect(result.status, result.stderr).toBe(0);
+  }, 180000);
+
+  afterAll(() => {
+    lever(['cleanup', '--run', name]);
+  });
+
+  function relationships(): Array<Record<string, unknown>> {
+    const state = lever(['state', '--run', name]).json as { annotations: Array<Record<string, unknown>> };
+    return (state.annotations[0]?.relationships as Array<Record<string, unknown>>) ?? [];
+  }
+
+  it('builds a set with select --add and records an inferred relation with relate', () => {
+    expect(lever(['select', '--run', name, '--tool', 'point', '--target', '.a']).status).toBe(0);
+    expect(lever(['select', '--run', name, '--tool', 'point', '--target', '.b', '--add']).status).toBe(0);
+
+    const related = lever(['relate', '--run', name, '--from', '.a', '--to', '.b', '--expect', 'align-left']);
+    expect(related.status, related.stderr).toBe(0);
+    const recorded = relationships();
+    expect(recorded.some((relation) => relation.operator === 'align-left')).toBe(true);
+    expect(JSON.stringify(recorded)).not.toMatch(/"(x|y|width|height|left|top|dx|dy|px)"/);
+  }, 180000);
+
+  it('records equal spacing across three targets with Alt held', () => {
+    expect(lever(['select', '--run', name, '--tool', 'point', '--target', '.a']).status).toBe(0);
+    expect(lever(['select', '--run', name, '--tool', 'point', '--target', '.b', '--add']).status).toBe(0);
+    expect(lever(['select', '--run', name, '--tool', 'point', '--target', '.c', '--add']).status).toBe(0);
+
+    const related = lever([
+      'relate',
+      '--run',
+      name,
+      '--to',
+      '.b',
+      '--modifier',
+      'Alt',
+      '--dy',
+      '30',
+      '--expect',
+      'equal-gap'
+    ]);
+    expect(related.status, related.stderr).toBe(0);
+    const spaced = relationships().find((relation) => relation.operator === 'equal-gap');
+    expect(spaced).toBeDefined();
+    expect((spaced?.targetIds as string[]).length).toBe(3);
+  }, 180000);
+
+  it('refuses a drag that infers no relation with exit code 4', () => {
+    const related = lever(['relate', '--run', name, '--from', '.a', '--to', '.b', '--dx', '240', '--dy', '240']);
+    expect(related.status).toBe(4);
+    expect(related.json?.error).toMatchObject({ class: 'unreachable' });
+  }, 180000);
 });

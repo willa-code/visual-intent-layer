@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   approvalBlockers,
+  missingRelationTargets,
   stateLabel,
   verificationRefusedReason,
   type Annotation,
@@ -91,6 +92,20 @@ describe('Annotation model', () => {
     const deleted = annotation({ resolutions: [resolution({ match: 'unresolved' })] });
     expect(verificationRefusedReason(deleted, 'obsolete')).toBeUndefined();
     expect(verificationRefusedReason(deleted, 'reject')).toBeUndefined();
+  });
+
+  it('names a target a relation refers to that is no longer in the Annotation', () => {
+    const present = annotation({
+      relationships: [
+        { relationshipId: 'rel-1', type: 'alignment', operator: 'align-left', targetIds: ['t-1', 't-2'] },
+        { relationshipId: 'rel-2', type: 'ordering', operator: 'before', targetIds: ['t-1', 't-gone'] }
+      ]
+    });
+    expect(missingRelationTargets(present)).toEqual(['t-gone']);
+    const intact = annotation({
+      relationships: [{ relationshipId: 'rel-1', type: 'alignment', operator: 'align-left', targetIds: ['t-1', 't-2'] }]
+    });
+    expect(missingRelationTargets(intact)).toEqual([]);
   });
 
   it('labels every annotation state without relying on colour alone', () => {

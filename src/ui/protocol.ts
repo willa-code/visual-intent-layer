@@ -40,11 +40,33 @@ export type LayerTarget = {
   runtimeState?: { address?: string };
 };
 
+export type LayerRelation = {
+  relationshipId: string;
+  type: 'ordering' | 'alignment' | 'spacing' | 'containment' | 'equivalence' | 'comparative-size';
+  operator:
+    | 'before'
+    | 'after'
+    | 'align-left'
+    | 'align-center'
+    | 'align-right'
+    | 'align-top'
+    | 'align-middle'
+    | 'equal-gap'
+    | 'member-of'
+    | 'shared-property'
+    | 'same-width'
+    | 'same-height';
+  targetIds: string[];
+  property?: string;
+};
+
 export type LayerReady = { source: 'vil-layer'; type: 'ready'; revision: string };
 export type LayerHover = { source: 'vil-layer'; type: 'hover'; label: string | null };
 export type LayerSelection = { source: 'vil-layer'; type: 'selection'; targets: LayerTarget[] };
 export type LayerCandidates = { source: 'vil-layer'; type: 'candidates'; candidates: ResolutionCandidate[]; revision: string; address?: string };
 export type LayerApplied = { source: 'vil-layer'; type: 'applied'; revision?: string };
+export type LayerRelationPreview = { source: 'vil-layer'; type: 'relation-preview'; sentence: string | null };
+export type LayerRelationCommit = { source: 'vil-layer'; type: 'relation'; relation: LayerRelation; sentence: string };
 export type LayerNotice = {
   source: 'vil-layer';
   type: 'notice';
@@ -52,7 +74,7 @@ export type LayerNotice = {
   action?: 'back-to-artifact';
 };
 
-export type LayerMessage = LayerReady | LayerHover | LayerSelection | LayerCandidates | LayerApplied | LayerNotice;
+export type LayerMessage = LayerReady | LayerHover | LayerSelection | LayerCandidates | LayerApplied | LayerRelationPreview | LayerRelationCommit | LayerNotice;
 
 export type ShellConfigure = {
   source: 'vil-shell';
@@ -74,6 +96,7 @@ export type CandidateMark = { nodeId?: string; selector?: string; numeral: numbe
 export type ShellMarkCandidates = { source: 'vil-shell'; type: 'mark-candidates'; candidates: CandidateMark[] };
 export type ShellRequestCandidates = { source: 'vil-shell'; type: 'request-candidates' };
 export type ShellBeforeAfter = { source: 'vil-shell'; type: 'before-after'; mode: 'before' | 'after' | 'off' };
+export type ShellCancelRelation = { source: 'vil-shell'; type: 'cancel-relation' };
 
 export type ShellMessage =
   | ShellConfigure
@@ -81,7 +104,8 @@ export type ShellMessage =
   | ShellMarkTargets
   | ShellMarkCandidates
   | ShellRequestCandidates
-  | ShellBeforeAfter;
+  | ShellBeforeAfter
+  | ShellCancelRelation;
 
 export const LAYER_SOURCE = 'vil-layer';
 export const SHELL_SOURCE = 'vil-shell';

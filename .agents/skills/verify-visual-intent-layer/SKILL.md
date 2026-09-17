@@ -70,8 +70,14 @@ One rail, two tiles:
 
 ```sh
 $LEVER select --tool point --target ".checkout-submit"
+$LEVER select --tool point --target ".shipping-note" --add        # Shift extends the set
+$LEVER relate --from ".checkout-submit" --to ".shipping-note" --expect align-left  # one relation, no pixel field
 $LEVER select --tool point --text ".gallery-note"                     # drag across exact words
 $LEVER select --tool box --from ".gallery" --to ".checkout-submit"    # a drawn Area
+$LEVER select --tool point --target ".a"
+$LEVER select --tool point --target ".b" --add
+$LEVER select --tool point --target ".c" --add
+$LEVER relate --to ".b" --modifier Alt --dy 30 --expect equal-gap        # equal spacing over the whole set
 $LEVER select --tool operate                                          # return to operating the artifact
 $LEVER mode --to point|box|operate
 $LEVER annotate --note "Make the Place order button impossible to miss."

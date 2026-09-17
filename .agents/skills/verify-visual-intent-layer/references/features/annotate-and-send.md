@@ -5,6 +5,7 @@ A Builder-Reviewer points at one or more visible targets, writes a note onto the
 ## Sub-features
 
 - `select-point` clicks a thing the artifact owns with the point tile.
+- `select-add` holds `Shift` to add a target to the set or remove one already in it.
 - `select-text` drags across exact words and takes the artifact's own selection.
 - `select-box` draws a dashed Area and reports what it encloses.
 - `mode-operate` returns to operating the artifact, the unarmed state.
@@ -32,6 +33,7 @@ Preconditions:
 
 - **Point at an element.** Arm the point tile and click the target. Run `… lever.mjs select --tool point --target ".checkout-submit"`. Exit `0`, a screenshot under `evidence/`, and `… lever.mjs state` showing one draft Annotation with one target labelled `Place order`.
 - **Point at an exact text range.** Arm the point tile and drag across the words. Run `… lever.mjs select --tool point --text ".gallery-note"`. Exit `0` and `state` showing a draft Annotation whose target `kind` is `text-range`.
+- **Extend the set.** With a selection already made, `Shift`-click another target. Run `… lever.mjs select --tool point --target ".shipping-note" --add`. Exit `0` and `state` showing one Annotation with both targets. `Shift`-clicking a member again removes it from the set.
 - **Box an area.** Arm the box tile and drag a rectangle. Run `… lever.mjs select --tool box --from "h1" --to ".shipping-note"`. Exit `0` and `state` showing a draft Annotation whose target `kind` is `region` and whose `label` names the elements it encloses.
 - **Return to operating.** Run `… lever.mjs mode --to operate` or press `v`. The tile reports no armed state.
 - **Write the note.** Type into the anchored card. Run `… lever.mjs annotate --note "Make the Place order button impossible to miss."`. Exit `0`; after the debounce, `state` shows the same note on the draft.
@@ -45,7 +47,7 @@ Preconditions:
 
 ## Gotchas
 
-- The anchored card is positioned beside the target and can cover a neighbouring target, so point where the card will not sit over the next thing you want to point at, or close the card with Escape before the next selection. One selection composes one Annotation; a second target is a second Annotation until `.scratch/several-targets-and-relations/` restores the set gesture.
+- The anchored card is positioned beside the most recently added target and can cover a neighbouring target, so point where the card will not sit over the next thing you want to point at, or close the card with Escape before the next selection. `Shift` extends the selection into one Annotation's set, up to eight targets; a plain click or box replaces the set.
 - Arming an armed tile returns to operating. A select recipe must not assume the tile is unarmed; the Lever checks the armed state before clicking.
 - The note is saved on a debounce. Wait for the observable note in `state`; do not assume the keystroke landed immediately.
 - `Queue` needs at least one target. Selecting then immediately queueing without a note still creates a durable Annotation with `No note yet`.

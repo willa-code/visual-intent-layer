@@ -323,6 +323,443 @@ describe('Review Surface (primary seam: a real browser engine)', () => {
     expect(problems, problems.join('\n')).toEqual([]);
   }, 200000);
 
+  it('gathers several targets into one Annotation, removes one, caps the set, and replaces it', async () => {
+    const setArtifact = `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Set artifact</title>
+    <style>body { margin: 0; } button.member { display: block; width: 120px; margin: 8px; }</style>
+  </head>
+  <body>
+    ${Array.from({ length: 10 }, (_, index) => `<button class="member" type="button">Member ${index + 1}</button>`).join('\n    ')}
+  </body>
+</html>`;
+    const setPath = join(artifactDir, 'set.html');
+    writeFileSync(setPath, setArtifact, 'utf8');
+
+    const opened = await service.openSession({ kind: 'saved-html', path: setPath });
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const setPage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await setPage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+    const frame = setPage.frameLocator('iframe.artifact-frame');
+    await expectLater(() => frame.locator('button.member').count(), (count) => count === 10, 'the artifact renders ten members');
+
+    const storedTargets = () =>
+      fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`)
+        .then((response) => response.json()) as Promise<{ annotations: Array<{ targets: Array<{ targetId: string; kind: string }> }> }>;
+
+    await setPage.getByRole('button', { name: /Point at things/ }).click();
+    if (await setPage.locator('.coachmark').count()) {
+      await setPage.getByRole('button', { name: 'Got it' }).click();
+    }
+
+    await frame.locator('button.member').nth(0).click();
+    await expectLater(async () => (await storedTargets()).annotations[0]?.targets.length, (count) => count === 1, 'a first click composes a one-target Annotation');
+
+    for (const index of [1, 2, 3, 4, 5, 6, 7]) {
+      await frame.locator('button.member').nth(index).click({ modifiers: ['Shift'] });
+    }
+    await expectLater(async () => (await storedTargets()).annotations[0]?.targets.length, (count) => count === 8, 'shift-clicking builds a set of eight');
+    await expectLater(
+      () => setPage.locator('.anchored-card__target').innerText(),
+      (text) => /Member 1, Member 2, Member 3 and 5 more/.test(text),
+      'the card names what is in the set rather than only its first member'
+    );
+    await expectLater(() => frame.locator('[data-vil-mark="owned"]').count(), (count) => count === 8, 'every member of the set is marked');
+
+    await frame.locator('button.member').nth(8).click({ modifiers: ['Shift'] });
+    await expectLater(async () => (await storedTargets()).annotations[0]?.targets.length, (count) => count === 8, 'a ninth target is refused rather than silently truncated');
+    await expectLater(() => setPage.locator('.notice').isVisible(), (visible) => visible === true, 'the refusal is stated in words');
+
+    await frame.locator('button.member').nth(1).click({ modifiers: ['Shift'] });
+    await expectLater(async () => (await storedTargets()).annotations[0]?.targets.length, (count) => count === 7, 'shift-clicking a member removes it from the set');
+
+    await frame.locator('button.member').nth(9).click();
+    await expectLater(async () => (await storedTargets()).annotations[0]?.targets.length, (count) => count === 1, 'a plain click replaces the set');
+
+    await setPage.close();
+  }, 120000);
+
+  it('expresses an alignment relation by dragging a selected target, and refuses a drag that infers nothing', async () => {
+    const setArtifact = `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Relation artifact</title>
+    <style>body { margin: 0; } button.member { display: block; width: 120px; margin: 8px; }</style>
+  </head>
+  <body>
+    <button class="member" type="button">Member 1</button>
+    <button class="member" type="button">Member 2</button>
+    <button class="member" type="button">Member 3</button>
+  </body>
+</html>`;
+    const setPath = join(artifactDir, 'relations.html');
+    writeFileSync(setPath, setArtifact, 'utf8');
+
+    const opened = await service.openSession({ kind: 'saved-html', path: setPath });
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const relationPage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await relationPage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+    const frame = relationPage.frameLocator('iframe.artifact-frame');
+    await expectLater(() => frame.locator('button.member').count(), (count) => count === 3, 'the artifact renders three members');
+
+    const stored = () =>
+      fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`)
+        .then((response) => response.json()) as Promise<{
+        annotations: Array<{
+          annotationId: string;
+          targets: Array<{ targetId: string } & Record<string, unknown>>;
+          relationships: Array<{ relationshipId: string; type: string; operator: string; targetIds: string[] }>;
+        }>;
+      }>;
+
+    await relationPage.getByRole('button', { name: /Point at things/ }).click();
+    if (await relationPage.locator('.coachmark').count()) {
+      await relationPage.getByRole('button', { name: 'Got it' }).click();
+    }
+    await frame.locator('button.member').nth(0).click();
+    await frame.locator('button.member').nth(1).click({ modifiers: ['Shift'] });
+
+    const member = await frame.locator('button.member').nth(1).boundingBox();
+    const startX = member!.x + member!.width / 2;
+    const startY = member!.y + member!.height / 2;
+    const before = await frame.locator('button.member').nth(1).boundingBox();
+
+    await relationPage.mouse.move(startX, startY);
+    await relationPage.mouse.down();
+    await relationPage.mouse.move(startX + 7, startY + 1, { steps: 5 });
+    await expectLater(
+      () => frame.locator('[data-vil-mark="relation"]').count(),
+      (count) => count === 1,
+      'dragging a selected target moves a ghost'
+    );
+    await expectLater(
+      () => relationPage.locator('[data-relation-preview]').innerText(),
+      (text) => /Preview — not recorded yet:.*align on the left/.test(text),
+      'the card shows one sentence before release'
+    );
+    await relationPage.mouse.up();
+
+    await expectLater(
+      async () => JSON.stringify((await stored()).annotations[0]?.relationships ?? []),
+      (text) => text.includes('"type":"alignment"') && text.includes('"operator":"align-left"'),
+      'the relation is recorded implementation-neutrally'
+    );
+    await expectLater(
+      () => relationPage.locator('.annotation-row .relation-sentence').innerText(),
+      (text) => /align on the left/.test(text),
+      'the rail row shows the same sentence as the card'
+    );
+    await expectLater(
+      async () => JSON.stringify((await stored()).annotations[0]?.relationships ?? []),
+      (text) => !/"(x|y|left|top|dx|dy|px)"/.test(text),
+      'the stored relation carries no pixel field'
+    );
+    await expectLater(
+      async () => (await stored()).annotations[0]?.relationships?.length ?? 0,
+      (count) => count === 1,
+      'the recorded relation appears once on the Annotation'
+    );
+    const after = await frame.locator('button.member').nth(1).boundingBox();
+    expect(after).toEqual(before);
+
+    const dragMember2 = async (): Promise<void> => {
+      const box = await frame.locator('button.member').nth(1).boundingBox();
+      await relationPage.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+      await relationPage.mouse.down();
+      await relationPage.mouse.move(box!.x + box!.width / 2 + 7, box!.y + box!.height / 2 + 1, { steps: 5 });
+    };
+
+    const firstId = (await stored()).annotations[0]?.relationships?.[0]?.relationshipId;
+    await dragMember2();
+    await relationPage.mouse.up();
+    await expectLater(
+      async () => (await stored()).annotations[0]?.relationships?.[0]?.relationshipId,
+      (id) => typeof id === 'string' && id !== firstId,
+      'a second drag on the same pairing replaces the relation'
+    );
+    await relationPage.waitForTimeout(300);
+    expect((await stored()).annotations[0]?.relationships?.length).toBe(1);
+
+    await frame.locator('button.member').nth(2).click({ modifiers: ['Shift'] });
+    await expectLater(
+      async () => (await stored()).annotations[0]?.targets?.length ?? 0,
+      (count) => count === 3,
+      'the third target joined the set'
+    );
+    const member3 = await frame.locator('button.member').nth(2).boundingBox();
+    await relationPage.mouse.move(member3!.x + member3!.width / 2, member3!.y + member3!.height / 2);
+    await relationPage.mouse.down();
+    await relationPage.mouse.move(member3!.x + member3!.width / 2 + 240, member3!.y + member3!.height / 2 + 240, { steps: 8 });
+    await relationPage.mouse.up();
+    await expectLater(
+      () => relationPage.locator('.notice').innerText(),
+      (text) => /does not express a relation/.test(text),
+      'a drag that infers nothing says so in words'
+    );
+    await relationPage.waitForTimeout(400);
+    expect((await stored()).annotations[0]?.relationships?.length, 'a drag that infers nothing records nothing').toBe(1);
+
+    await frame.locator('button.member').nth(1).focus();
+    await dragMember2();
+    await expectLater(
+      () => frame.locator('[data-vil-mark="relation"]').count(),
+      (count) => count === 1,
+      'the ghost is showing before Escape'
+    );
+    await relationPage.keyboard.press('Escape');
+    await expectLater(
+      () => frame.locator('[data-vil-mark="relation"]').count(),
+      (count) => count === 0,
+      'Escape cancels the drag and leaves no ghost'
+    );
+    await expectLater(
+      () => relationPage.locator('[data-relation-preview]').isVisible().catch(() => false),
+      (visible) => visible === false,
+      'the preview is gone after Escape'
+    );
+    await relationPage.mouse.up();
+    await relationPage.waitForTimeout(400);
+    expect((await stored()).annotations[0]?.relationships?.length, 'an abandoned drag records nothing').toBe(1);
+
+    await dragMember2();
+    await relationPage.mouse.move(1000, 400, { steps: 10 });
+    await relationPage.mouse.up();
+    await expectLater(
+      () => frame.locator('[data-vil-mark="relation"]').count(),
+      (count) => count === 0,
+      'releasing away from the artifact leaves no ghost'
+    );
+    await relationPage.waitForTimeout(400);
+    expect((await stored()).annotations[0]?.relationships?.length, 'a drag released outside the artifact records nothing').toBe(1);
+
+    const storedAnnotation = (await stored()).annotations[0]!;
+    await fetch(`${service.baseUrl}/api/annotations/${storedAnnotation.annotationId}?${auth}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ targets: [storedAnnotation.targets[0]] })
+    });
+    await relationPage.reload({ waitUntil: 'domcontentloaded' });
+    await expectLater(
+      () => relationPage.locator('.annotation-row .relation-sentence').innerText(),
+      (text) => /align on the left/.test(text),
+      'the row sentence survives a reload and a target change'
+    );
+    await expectLater(
+      () => relationPage.locator('.annotation-row .hint').innerText(),
+      (text) => /no longer in this Annotation/.test(text),
+      'the row says in words that a target the relation names is gone'
+    );
+
+    await relationPage.close();
+  }, 120000);
+
+  it('expresses equal spacing with Alt and containment by dropping a target inside another', async () => {
+    const setArtifact = `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Spacing artifact</title>
+    <style>body { margin: 0; } button.member { position: absolute; left: 8px; width: 120px; height: 40px; } .a { top: 0px; } .b { top: 60px; } .c { top: 180px; }</style>
+  </head>
+  <body>
+    <button class="member a" type="button">Member 1</button>
+    <button class="member b" type="button">Member 2</button>
+    <button class="member c" type="button">Member 3</button>
+  </body>
+</html>`;
+    const setPath = join(artifactDir, 'spacing.html');
+    writeFileSync(setPath, setArtifact, 'utf8');
+
+    const opened = await service.openSession({ kind: 'saved-html', path: setPath });
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const spacingPage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await spacingPage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+    const frame = spacingPage.frameLocator('iframe.artifact-frame');
+    await expectLater(() => frame.locator('button.member').count(), (count) => count === 3, 'the artifact renders three members');
+
+    const relationships = async (): Promise<Array<{ type: string; operator: string; targetIds: string[] }>> => {
+      const body = (await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`).then((response) =>
+        response.json()
+      )) as { annotations: Array<{ relationships: Array<{ type: string; operator: string; targetIds: string[] }> }> };
+      return body.annotations[0]?.relationships ?? [];
+    };
+
+    await spacingPage.getByRole('button', { name: /Point at things/ }).click();
+    if (await spacingPage.locator('.coachmark').count()) {
+      await spacingPage.getByRole('button', { name: 'Got it' }).click();
+    }
+    await frame.locator('button.member').nth(0).click();
+    await frame.locator('button.member').nth(1).click({ modifiers: ['Shift'] });
+    await frame.locator('button.member').nth(2).click({ modifiers: ['Shift'] });
+
+    const dragMember2 = async (deltaY: number): Promise<void> => {
+      const box = await frame.locator('button.member').nth(1).boundingBox();
+      await spacingPage.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+      await spacingPage.mouse.down();
+      await spacingPage.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2 + deltaY, { steps: 6 });
+    };
+
+    await spacingPage.keyboard.down('Alt');
+    await dragMember2(30);
+    await expectLater(
+      () => spacingPage.locator('[data-relation-preview]').innerText(),
+      (text) => /equally spaced/.test(text),
+      'Alt shows the equal-spacing sentence before release'
+    );
+    await spacingPage.mouse.up();
+    await spacingPage.keyboard.up('Alt');
+    await expectLater(
+      async () => JSON.stringify(await relationships()),
+      (text) => text.includes('"type":"spacing"') && text.includes('"operator":"equal-gap"'),
+      'equal spacing is recorded across the set'
+    );
+
+    await dragMember2(-60);
+    await expectLater(
+      () => spacingPage.locator('[data-relation-preview]').innerText(),
+      (text) => /contained inside/.test(text),
+      'dropping a target inside another shows the containment sentence'
+    );
+    await spacingPage.mouse.up();
+    await expectLater(
+      async () => JSON.stringify(await relationships()),
+      (text) => text.includes('"type":"containment"') && text.includes('"operator":"member-of"'),
+      'containment is recorded'
+    );
+    await expectLater(
+      async () => JSON.stringify(await relationships()),
+      (text) => !/"(x|y|left|top|dx|dy|px)"/.test(text),
+      'neither relation carries a pixel field'
+    );
+
+    await spacingPage.close();
+  }, 120000);
+
+  it('expresses comparative size with Shift and a shared property with Ctrl', async () => {
+    const setArtifact = `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Property artifact</title>
+    <style>body { margin: 0; } button.member { position: absolute; left: 8px; width: 120px; height: 40px; } .a { top: 0px; } .b { top: 60px; }</style>
+  </head>
+  <body>
+    <button class="member a" type="button">Member 1</button>
+    <button class="member b" type="button">Member 2</button>
+  </body>
+</html>`;
+    const setPath = join(artifactDir, 'property.html');
+    writeFileSync(setPath, setArtifact, 'utf8');
+
+    const opened = await service.openSession({ kind: 'saved-html', path: setPath });
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const propertyPage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await propertyPage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+    const frame = propertyPage.frameLocator('iframe.artifact-frame');
+    await expectLater(() => frame.locator('button.member').count(), (count) => count === 2, 'the artifact renders two members');
+
+    const relationships = async (): Promise<Array<{ type: string; operator: string }>> => {
+      const body = (await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`).then((response) =>
+        response.json()
+      )) as { annotations: Array<{ relationships: Array<{ type: string; operator: string }> }> };
+      return body.annotations[0]?.relationships ?? [];
+    };
+
+    await propertyPage.getByRole('button', { name: /Point at things/ }).click();
+    if (await propertyPage.locator('.coachmark').count()) {
+      await propertyPage.getByRole('button', { name: 'Got it' }).click();
+    }
+    await frame.locator('button.member').nth(0).click();
+    await frame.locator('button.member').nth(1).click({ modifiers: ['Shift'] });
+
+    const dragMember1 = async (): Promise<void> => {
+      const box = await frame.locator('button.member').nth(0).boundingBox();
+      await propertyPage.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+      await propertyPage.mouse.down();
+      await propertyPage.mouse.move(box!.x + box!.width / 2 + 30, box!.y + box!.height / 2, { steps: 6 });
+    };
+
+    await propertyPage.keyboard.down('Shift');
+    await dragMember1();
+    await expectLater(
+      () => propertyPage.locator('[data-relation-preview]').innerText(),
+      (text) => /same width/.test(text),
+      'Shift shows the comparative-size sentence before release'
+    );
+    await propertyPage.mouse.up();
+    await propertyPage.keyboard.up('Shift');
+    await expectLater(
+      async () => JSON.stringify(await relationships()),
+      (text) => text.includes('"type":"comparative-size"') && text.includes('"operator":"same-width"'),
+      'comparative size is recorded'
+    );
+
+    await propertyPage.keyboard.down('Control');
+    await dragMember1();
+    await expectLater(
+      () => propertyPage.locator('[data-relation-preview]').innerText(),
+      (text) => /share the same/.test(text),
+      'Ctrl shows the shared-property sentence before release'
+    );
+    await propertyPage.mouse.up();
+    await propertyPage.keyboard.up('Control');
+    await expectLater(
+      async () => JSON.stringify(await relationships()),
+      (text) => text.includes('"type":"equivalence"') && text.includes('"operator":"shared-property"'),
+      'a shared property is recorded'
+    );
+
+    await propertyPage.close();
+  }, 120000);
+
+  it('expresses an ordering relation by dragging a selected target past another', async () => {
+    const setArtifact = `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Ordering artifact</title>
+    <style>body { margin: 0; } button.member { position: absolute; left: 8px; width: 120px; height: 40px; } .a { top: 0px; } .b { top: 600px; }</style>
+  </head>
+  <body>
+    <button class="member a" type="button">Member 1</button>
+    <button class="member b" type="button">Member 2</button>
+  </body>
+</html>`;
+    const setPath = join(artifactDir, 'ordering.html');
+    writeFileSync(setPath, setArtifact, 'utf8');
+
+    const opened = await service.openSession({ kind: 'saved-html', path: setPath });
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const orderingPage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await orderingPage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+    const frame = orderingPage.frameLocator('iframe.artifact-frame');
+    await expectLater(() => frame.locator('button.member').count(), (count) => count === 2, 'the artifact renders two members');
+
+    await orderingPage.getByRole('button', { name: /Point at things/ }).click();
+    if (await orderingPage.locator('.coachmark').count()) {
+      await orderingPage.getByRole('button', { name: 'Got it' }).click();
+    }
+    await frame.locator('button.member').nth(0).click();
+    await frame.locator('button.member').nth(1).click({ modifiers: ['Shift'] });
+
+    const member = await frame.locator('button.member').nth(0).boundingBox();
+    await orderingPage.mouse.move(member!.x + member!.width / 2, member!.y + member!.height / 2);
+    await orderingPage.mouse.down();
+    await orderingPage.mouse.move(member!.x + member!.width / 2, member!.y + member!.height / 2 + 250, { steps: 10 });
+    await expectLater(
+      () => orderingPage.locator('[data-relation-preview]').innerText(),
+      (text) => /should come after/.test(text),
+      'dragging past another shows the ordering sentence before release'
+    );
+    await orderingPage.mouse.up();
+
+    const stored = () =>
+      fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`).then((response) => response.json()) as Promise<{
+        annotations: Array<{ relationships: Array<{ type: string; operator: string }> }>;
+      }>;
+    await expectLater(
+      async () => (await stored()).annotations[0]?.relationships?.[0]?.type,
+      (type) => type === 'ordering',
+      'the ordering relation is recorded'
+    );
+    expect((await stored()).annotations[0]?.relationships?.[0]?.operator).toBe('after');
+
+    await orderingPage.close();
+  }, 120000);
+
   it('ends the session from the overflow menu and refuses the stored review URL afterwards', async () => {
     const opened = await service.openSession({ kind: 'saved-html', path: artifactPath });
     const ending = await browser.newPage({ viewport: { width: 1280, height: 800 } });

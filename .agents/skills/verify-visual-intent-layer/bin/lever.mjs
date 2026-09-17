@@ -54,9 +54,10 @@ Usage:
   lever cleanup [--run <name>]
   lever open --html <path> [--name <label>]        (alias of launch)
 
-  lever select --tool point --target <css> [--text <css>]
-  lever select --tool box --from <css> --to <css>
+  lever select --tool point --target <css> [--text <css>] [--add]
+  lever select --tool box --from <css> --to <css> [--add]
   lever select --tool operate
+  lever relate --to <css> [--from <css>] [--dx <n>] [--dy <n>] [--modifier <key>] [--expect <operator>]
   lever mode --to point|box|operate
   lever annotate --note <text>
   lever attach --file <path>
@@ -915,14 +916,20 @@ async function commandSelect(flags) {
     } else {
       await host('/click', {
         target: targetFromFlags(flags),
-        frame: 'artifact'
+        frame: 'artifact',
+        ...(flags.add ? { modifiers: ['Shift'] } : {})
       });
     }
   } else {
     if (typeof flags.from !== 'string' || typeof flags.to !== 'string') {
       fail(EXIT.usage, 'box selection needs --from <css> and --to <css>.', 'Run `lever help` for the surface.');
     }
-    await host('/drag-box', { from: selector(flags.from), to: selector(flags.to), frame: 'artifact' });
+    await host('/drag-box', {
+      from: selector(flags.from),
+      to: selector(flags.to),
+      ...(flags.add ? { modifiers: ['Shift'] } : {}),
+      frame: 'artifact'
+    });
   }
   await host('/wait', { target: { selector: '.anchored-card' }, state: 'visible' });
   const shot = await host('/screenshot', { name: `select-${tool}-${Date.now()}` });
@@ -931,6 +938,86 @@ async function commandSelect(flags) {
   recordCoverage(runDir, 'annotate-and-send', 'driven', `selected with the ${tool} mode`, [`select-${tool}`]);
   output({ ok: true, command: 'select', tool, screenshot: shot.path });
 }
+
+async function commandRelate(flags) {
+  const runDir = resolveRun(flags.run);
+  const secret = await assertHealthy(runDir);
+  const from = typeof flags.from === 'string' ? flags.from : undefined;
+  const to = typeof flags.to === 'string' ? flags.to : undefined;
+  if (!to) {
+    fail(EXIT.usage, 'relate needs --to <css>.', 'Add --from <css> to build the set, or select the set first with `select --add`.');
+  }
+  const dx = flags.dx === undefined ? 6 : Number(flags.dx);
+  const dy = flags.dy === undefined ? 0 : Number(flags.dy);
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+    fail(EXIT.usage, 'relate needs numeric --dx and --dy.', 'Run `lever help` for the surface.');
+  }
+  const modifier = typeof flags.modifier === 'string' ? flags.modifier : undefined;
+  const expect = typeof flags.expect === 'string' ? flags.expect : undefined;
+  if (flags['dry-run']) {
+    output({ dryRun: true, would: { from, to, dx, dy, modifier, expect } });
+    return;
+  }
+  const host = hostCall(secret);
+  await armTile(host, 'point');
+  if (from) {
+    await host('/click', { target: selector(from), frame: 'artifact' });
+    await host('/click', { target: selector(to), frame: 'artifact', modifiers: ['Shift'] });
+  }
+  const before = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
+  const beforeRelationships = JSON.stringify(before.json.annotations?.[0]?.relationships ?? []);
+  await host('/drag', {
+    from: selector(to),
+    to: selector(to),
+    nudgeX: dx,
+    nudgeY: dy,
+    ...(modifier ? { modifiers: [modifier] } : {}),
+    frame: 'artifact'
+  });
+  await sleep(300);
+  const snapshot = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
+  const relationships = snapshot.json.annotations?.[0]?.relationships ?? [];
+  if (JSON.stringify(relationships) === beforeRelationships) {
+    fail(EXIT.unreachable, 'The drag recorded no relation.', 'Check the geometry and the modifier, then retry.');
+  }
+  if (expect && !relationships.some((relation) => relation.operator === expect)) {
+    fail(
+      EXIT.unreachable,
+      `No relation with operator ${expect} was recorded.`,
+      `Recorded: ${relationships.map((relation) => relation.operator).join(', ')}.`
+    );
+  }
+  if (/"(x|y|width|height|left|top|right|bottom|dx|dy|px)"/.test(JSON.stringify(relationships))) {
+    fail(EXIT.precondition, 'The stored relation carries a pixel field.', 'A stored relation names the desired relationship only.');
+  }
+  const shot = await host('/screenshot', { name: `relate-${Date.now()}` });
+  recordEvidence(runDir, { kind: 'screenshot', name: 'relate', path: shot.path });
+  await host('/snapshot', { name: `relate-${Date.now()}` });
+  const families = [...new Set(relationships.map((relation) => RELATION_FAMILIES[relation.operator]).filter(Boolean))];
+  recordCoverage(
+    runDir,
+    'relational-intent',
+    'driven',
+    `dragged a selected target and recorded ${relationships.map((relation) => relation.operator).join(', ')}`,
+    ['relation-stored', ...families]
+  );
+  output({ ok: true, command: 'relate', relationships, screenshot: shot.path });
+}
+
+const RELATION_FAMILIES = {
+  before: 'relation-ordering',
+  after: 'relation-ordering',
+  'align-left': 'relation-alignment',
+  'align-center': 'relation-alignment',
+  'align-right': 'relation-alignment',
+  'align-top': 'relation-alignment',
+  'align-middle': 'relation-alignment',
+  'equal-gap': 'relation-spacing',
+  'member-of': 'relation-containment',
+  'shared-property': 'relation-equivalence',
+  'same-width': 'relation-comparative-size',
+  'same-height': 'relation-comparative-size'
+};
 
 async function commandMode(flags) {
   const runDir = resolveRun(flags.run);
@@ -1793,6 +1880,7 @@ async function main() {
     session: commandSession,
     cleanup: commandCleanup,
     select: commandSelect,
+    relate: commandRelate,
     mode: commandMode,
     annotate: commandAnnotate,
     queue: commandQueue,

@@ -1,6 +1,6 @@
 # Several targets and relations: pointing at a set, then saying how it relates
 
-Status: needs-triage
+Status: done
 
 Scope and gesture accepted by maintainer decision. The design and the tickets are not
 written; this file exists so the capability has an owner rather than a promise with
@@ -88,3 +88,9 @@ today.
 - Canvas-object applications and desktop shells: those need the target's cooperation and
   are adapter opportunities, with tldraw recorded as the cheap exception.
 - Proof and measurement, which remain parked.
+
+## Comments
+
+Landed 2026-09-17: `Status: done`. Every ticket in `issues/` is done with every acceptance box ticked. The set, the gesture, all six relation families, the one sentence, delivery and reload are implemented and covered by `tests/browser-loop.test.ts`, `src/annotation/relations.test.ts`, `src/annotation/model.test.ts`, `src/annotation/store.test.ts` and `tests/lever-contract.test.ts` (314 tests green, `scripts/check-records.js` green). `design.md` §5/§6/§7 and a new amendment supersede amendment 4, and ADR-0023 records the gesture.
+
+No Verification Run was performed for this iteration. The tickets `.scratch/truth-and-sync/05` deferred to "the Verification Run of `.scratch/several-targets-and-relations/`" therefore stay deferred; that run is the named trigger and the next step.

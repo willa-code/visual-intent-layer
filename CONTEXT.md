@@ -25,7 +25,7 @@ The act, on one Annotation, of comparing a resulting artifact revision against w
 _Avoid_: Approval screen, review mode, diff view, verify mode
 
 **Visual Intent Layer**:
-A product layer that converts what a Builder-Reviewer points to or selects on a visible artifact into contextual instructions an agent can act on. It exists to preserve intent that would be lossy or slow to express using words alone. The envelope retains support for relations among targets, but the surface currently expresses none.
+A product layer that converts what a Builder-Reviewer points to or selects on a visible artifact into contextual instructions an agent can act on. It exists to preserve intent that would be lossy or slow to express using words alone. The envelope retains support for relations among targets, and the surface expresses them by dragging a target that is already in the selection.
 _Avoid_: HTML annotator, visual editor, MCP transport
 
 **Visual Intent Envelope**:
@@ -61,7 +61,7 @@ Visible work that a Builder-Reviewer can direct and verify, whatever produces it
 _Avoid_: HTML file, canvas, document, mode, artifact mode, application mode
 
 **Intent Preview**:
-A reversible visual proposal showing the transformation a Builder-Reviewer means before it is delivered to an agent. It never mutates authoritative source. Relational Intent was to be expressed this way by manipulating targets directly; that surface is deferred, so no Intent Preview is built in this iteration.
+A reversible visual proposal showing the transformation a Builder-Reviewer means before it is delivered to an agent. It never mutates authoritative source. Relational Intent is expressed this way: a drag on an already-selected target moves a ghost and states one sentence before anything is recorded, and that ghost plus sentence is the Intent Preview rather than a separate capability.
 _Avoid_: Direct edit, WYSIWYG change, canvas object
 
 **Baseline Compatibility**:
@@ -141,7 +141,7 @@ The act of locating the same intended target in another artifact revision. A res
 _Avoid_: Selector match, reattachment, best guess
 
 **Relational Intent**:
-Intent expressed through a relationship among targets, such as alignment, ordering, spacing, containment, or equivalence. The envelope carries it; the current surface does not express it.
+Intent expressed through a relationship among targets, such as alignment, ordering, spacing, containment, or equivalence. It is expressed by manipulating targets directly: a modifier extends a selection into a set, and a drag beginning on a target already in that set infers one relation, shown as one sentence before it is recorded.
 _Avoid_: Multiple annotations, grouped feedback
 
 **Verified Intent**:
