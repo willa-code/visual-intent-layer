@@ -2,7 +2,7 @@
 
 The chrome and the work are visibly different substances: the rail is the warm `canvas` primitive, the stage behind the artifact is `surface.sunken`, and the artifact is served on its own white `surface`. The theme is the operator's — auto, light or dark — is remembered, and is never sampled or derived from the artifact. Dark mode is the same design in different values, and the armed mode tile is legible by glyph form and not by colour alone.
 
-_Partly driven live: the rail/stage/artifact material, canvas versus surface, the filled and outlined tile forms, and the light/dark theme choice were confirmed in the Pass A Verification Run. The remaining recipes are mapped._
+_Partly driven live: the rail/stage/artifact material, canvas versus surface, the filled and outlined tile forms, and the light/dark theme choice were confirmed in the surface-refinement Verification Run. The remaining recipes are mapped._
 
 ## Sub-features
 
