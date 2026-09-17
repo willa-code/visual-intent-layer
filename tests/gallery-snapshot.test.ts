@@ -137,15 +137,14 @@ describe('design gallery scripted pass', () => {
         return;
       }
       if (!existsSync(baselinePath)) {
+        const actualPath = writeActualRender(theme, buffer);
         throw new Error(
-          `No ${theme} gallery baseline for ${RENDER_PLATFORM} at ${baselinePath}. A missing baseline is not the same as an unchanged one, and another platform's baseline does not substitute for this one: a screenshot is pinned per rendering platform because font metrics move the layout. Record this platform's baseline with UPDATE_GALLERY=1 once the design is intended.`
+          `No ${theme} gallery baseline for ${RENDER_PLATFORM} at ${baselinePath}. A missing baseline is not the same as an unchanged one, and another platform's baseline does not substitute for this one: font metrics move the layout, so a screenshot is pinned per rendering platform. This run's render is at ${actualPath}; record it as this platform's baseline once the design is intended, or record here with UPDATE_GALLERY=1.`
         );
       }
       const difference = pixelDifference(readFileSync(baselinePath), buffer);
       if (difference.ratio > TOLERANCE) {
-        const actualPath = join(root, '.scratch', `gallery-${theme}.actual.png`);
-        mkdirSync(dirname(actualPath), { recursive: true });
-        writeFileSync(actualPath, buffer);
+        writeActualRender(theme, buffer);
       }
       expect(
         difference.ratio,
@@ -154,6 +153,13 @@ describe('design gallery scripted pass', () => {
     });
   }
 });
+
+function writeActualRender(theme: string, buffer: Buffer): string {
+  const actualPath = join(root, '.scratch', `gallery-${theme}.actual.png`);
+  mkdirSync(dirname(actualPath), { recursive: true });
+  writeFileSync(actualPath, buffer);
+  return actualPath;
+}
 
 function pixelDifference(
   expected: Buffer,
