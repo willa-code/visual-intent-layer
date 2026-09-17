@@ -17,3 +17,10 @@ Found while making CI green. `src/mcp/service.test.ts > check-in and interruptio
 The fix gives every delivery an order: `Pass.sequence` and the `amended` event's `sequence` are stamped from a counter persisted with the store, the cursor is `String(sequenceNow)`, and both streams filter on `sequence > position`. `annotations.json` keeps version 2 because the fields are additive — the loader stamps positions onto a store written without them, ordering the unstamped items by `at`, which is exactly the order the old cursor could see. A cursor that is not a position (a timestamp from an older build) is treated as "nothing collected yet", which re-reads direction instead of dropping it.
 
 Evidence: `npm run typecheck`, `npm test` (269 passing), `npm run build`, `npm run benchmark`, `node scripts/check-bins.js`.
+
+Shipped in `0.3.0-next.3` and proved against the published bytes, both under a frozen clock so the tie is exact and not a race:
+
+- `visual-intent-layer@0.3.0-next.2` — cursor `2026-01-01T00:00:00.000Z`, deliveries `(none)`, amendments `0`: the Replacement was dropped.
+- `visual-intent-layer@0.3.0-next.3` — cursor `1`, deliveries `steering`, amendments `1`: the Replacement is read, and `lastCheckedInAt` is still a truthful wall-clock stamp.
+
+Run against `npm install visual-intent-layer@<version>` output, not the working tree, so the proof is of the artifact users receive.
