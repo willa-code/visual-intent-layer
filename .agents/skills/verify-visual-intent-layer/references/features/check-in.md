@@ -36,3 +36,4 @@ Preconditions:
 - Contact is recorded by every MCP call for a session, not only `open_visual_review`; a `get_intent_status` or `acknowledge_intent` also updates "last checked in".
 - The interruption is not a Visual Intent Envelope and never appears in a batch. The envelope's `review-interruption` value is reserved and never emitted.
 - A request that nothing collects stays pending; the surface states it as not collected, not as in progress.
+- The cursor is a position in the delivery order, not a time. Passing `lastCheckedInAt` reads everything again instead of nothing, so a wrong cursor over-reports rather than dropping direction.
