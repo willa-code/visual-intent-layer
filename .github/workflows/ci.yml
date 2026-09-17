@@ -24,6 +24,7 @@ jobs:
         with:
           name: gallery-actual
           path: .scratch/gallery-*.actual.png
+          include-hidden-files: true
           if-no-files-found: ignore
       - run: npm run build
       - run: npm run benchmark
