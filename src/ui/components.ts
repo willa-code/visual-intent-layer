@@ -9,7 +9,7 @@ import { button, h, iconButton } from './dom.js';
 import { icon, type IconName } from './icons.js';
 import type { LayerTool } from './protocol.js';
 
-type Tone = 'default' | 'progress' | 'success' | 'attention' | 'closed' | 'destructive';
+type Tone = 'default' | 'progress' | 'private' | 'success' | 'attention' | 'closed' | 'destructive';
 
 export function pill(text: string, tone: Tone = 'default', cue?: IconName | string): HTMLElement {
   const element = h('span', { class: 'pill', dataset: { tone }, attrs: { 'data-tone': tone } });
@@ -28,6 +28,7 @@ export function stateTone(state: AnnotationState): Tone {
   switch (state) {
     case 'draft':
     case 'queued':
+      return 'private';
     case 'delivered':
     case 'resolved':
     case 'acknowledged':

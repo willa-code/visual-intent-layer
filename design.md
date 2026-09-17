@@ -121,6 +121,7 @@ its own; a token pair is not licensed for a use it was not checked against.
 | Role surface | Light surface / ink | Dark surface / ink |
 | --- | --- | --- |
 | `attention` | `#FFF2CC` / `#6B4A00` | `#3A2E15` / `#F0D089` |
+| `private` | `#EEEAFD` / `#4D3D97` | `#2B2545` / `#CFCBF5` |
 | `progress` | `#E9EAFE` / `#37358F` | `#232449` / `#B9BCF5` |
 | `success` | `#E6EFE2` / `#2E4A28` | `#212E1D` / `#A9C9A0` |
 | `closed` | `#F0EEEC` / `#57535E` | `#262220` / `#B3ACA4` |
@@ -170,7 +171,7 @@ a shape, a border, or a position.
 | Mode | operating (unarmed), point, box | `accent` on the armed tile, and no accent while operating | The lit tile, the cursor over the artifact, and the pre-commit hover outline. Operating is the unarmed state and is never a tile. Never colour alone |
 | Pass | open, in flight, ready, closed | `progress` open and in flight, `attention` ready, `closed` closed | One status line naming whose turn it is. A new revision moves a Pass to ready and never closes it; only the Builder-Reviewer closes a Pass |
 | Pass outcome | answered, untouched, gone | `success`, `attention`, `closed` | Anchor-level only. Never states that an agent fixed anything, because nothing reports it |
-| Annotation | draft, queued, delivered, acknowledged, resolved, verified, rejected, not-fixed, replaced, obsolete | `progress` while in flight, `success` verified, `closed` rejected/not-fixed/replaced/obsolete | Label text per state; delivery and implementation are never shown as one state |
+| Annotation | draft, queued, delivered, acknowledged, resolved, verified, rejected, not-fixed, replaced, obsolete | `private` for unsent draft and queued, `progress` while in flight, `success` verified, `closed` rejected/not-fixed/replaced/obsolete | Label text per state; delivery and implementation are never shown as one state |
 | Resolution | matched, recovered, ambiguous, deleted | `success`, `progress`, `attention`, `closed` | Glyph plus label. Ambiguous marks its candidates on the artifact and never resolves itself; deleted states that approval is blocked |
 | Revision | current, advanced | `closed`, `attention` | Annotation-level, never a target label. Phrased as "written before this revision", not as an error |
 | Provenance | source span, inferred, unavailable | `progress`, `closed`, `attention` | Always labelled. Never uses the word "exact", which belongs to resolution alone |
@@ -645,3 +646,29 @@ Unchanged: every light primitive and semantic value, every dark primitive, the
 artifact is served on its own white and never samples chrome. The dark base
 remains the warm near-black canvas, elevated charcoal surfaces and light ink the
 reference asks for; each dark semantic pair clears 4.5:1.
+
+### 2026-09-16 — The unsent Annotation takes the reference's private tone
+
+Reason: the palette audit above adopted none of the reference's remaining
+semantic roles. Two were candidates. `state.private` (lavender) has an honest
+consumer here: an unsent Annotation is personal and has not left the machine,
+yet the surface toned draft and queued with `progress`, whose own cue is "while
+in flight". That contradicted §4's rule that delivery and implementation are
+never shown as one state, and it is exactly what the reference means by
+"personal possibility/editing, not secrecy theatre". `state.commitment` (warm
+celebration) has no consumer: the Review Surface has no mutual-confirmation
+moment, an individual verdict is not a shared Commitment, and a semantic
+surface added for a state the product does not have is the speculative token the
+contract forbids.
+
+Replaces:
+
+- §3's semantic surface-pair table, adding `private`: `#EEEAFD` / `#4D3D97`
+  light, `#2B2545` / `#CFCBF5` dark, both clearing 4.5:1.
+- §4's Annotation role: `private` for unsent draft and queued, `progress` while
+  in flight, `success` verified, `closed` rejected/not-fixed/replaced/obsolete.
+
+Not adopted: the reference's celebration surface. Recorded here so the omission
+is a decision rather than an oversight. The reference's lavender, amber, blue
+and coral roles are all present; its celebration role waits for a state that
+deserves it.

@@ -690,6 +690,11 @@ body.gallery-body {
   color: var(--progress-ink);
   border-color: var(--progress-ink);
 }
+.pill[data-tone='private'] {
+  background: var(--private-surface);
+  color: var(--private-ink);
+  border-color: var(--private-ink);
+}
 .pill[data-tone='success'] {
   background: var(--success-surface);
   color: var(--success-ink);

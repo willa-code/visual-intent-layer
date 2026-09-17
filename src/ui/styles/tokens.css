@@ -20,6 +20,8 @@
   /* Semantic surface pairs */
   --attention-surface: #fff2cc;
   --attention-ink: #6b4a00;
+  --private-surface: #eeeafd;
+  --private-ink: #4d3d97;
   --progress-surface: #e9eafe;
   --progress-ink: #37358f;
   --success-surface: #e6efe2;
@@ -95,6 +97,8 @@
 
   --attention-surface: #3a2e15;
   --attention-ink: #f0d089;
+  --private-surface: #2b2545;
+  --private-ink: #cfcbf5;
   --progress-surface: #232449;
   --progress-ink: #b9bcf5;
   --success-surface: #212e1d;
@@ -121,6 +125,8 @@
     --accent-ink: #14110e;
     --attention-surface: #3a2e15;
     --attention-ink: #f0d089;
+    --private-surface: #2b2545;
+    --private-ink: #cfcbf5;
     --progress-surface: #232449;
     --progress-ink: #b9bcf5;
     --success-surface: #212e1d;

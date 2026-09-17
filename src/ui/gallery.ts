@@ -41,6 +41,7 @@ const COLOUR_TOKENS: Array<[string, string]> = [
 
 const SEMANTIC_TOKENS: Array<[string, string, string]> = [
   ['attention', 'var(--attention-surface)', 'var(--attention-ink)'],
+  ['private', 'var(--private-surface)', 'var(--private-ink)'],
   ['progress', 'var(--progress-surface)', 'var(--progress-ink)'],
   ['success', 'var(--success-surface)', 'var(--success-ink)'],
   ['closed', 'var(--closed-surface)', 'var(--closed-ink)'],

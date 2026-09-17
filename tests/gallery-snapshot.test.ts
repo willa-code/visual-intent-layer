@@ -75,6 +75,7 @@ describe('design gallery scripted pass', () => {
     const failures = await page.evaluate(() => {
       const pairs = [
         ['attention', '--attention-surface', '--attention-ink'],
+        ['private', '--private-surface', '--private-ink'],
         ['progress', '--progress-surface', '--progress-ink'],
         ['success', '--success-surface', '--success-ink'],
         ['closed', '--closed-surface', '--closed-ink'],
