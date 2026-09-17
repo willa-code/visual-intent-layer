@@ -1581,6 +1581,8 @@ async function commandState(flags) {
     sessionId: secret.sessionId,
     changed: status.json.changed ?? false,
     currentRevision: status.json.currentRevision ?? null,
+    adoptedRevision: status.json.adoptedRevision ?? null,
+    revisionBasis: status.json.revisionBasis ?? null,
     agent: agent.json,
     passes: snapshot.json.passes ?? [],
     annotations: (snapshot.json.annotations ?? []).map(safeAnnotation)
@@ -1608,7 +1610,9 @@ function safeAnnotation(annotation) {
       kind: target.kind,
       label: target.label,
       provenanceConfidence: target.provenanceConfidence,
-      selectors: target.renderedGrounding?.selectors ?? []
+      selectors: target.renderedGrounding?.selectors ?? [],
+      ...(target.runtimeState ? { runtimeState: target.runtimeState } : {}),
+      ...(target.sourceProvenance ? { sourceProvenance: target.sourceProvenance } : {})
     }))
   };
 }

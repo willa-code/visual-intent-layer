@@ -2,7 +2,7 @@
 
 A Builder-Reviewer can attach a Captured View to an Annotation: a browser-composited image of the artifact as they actually saw it, taken by an explicit permissioned capture in the tab that shows the artifact and cropped to the artifact rather than to the screen or the product's own chrome. It is never taken implicitly, never assembled from DOM and style data, and never replaced by a re-render. The stored image is content-addressed like a reference attachment and is subject to the same size refusal. The drawer discloses it will leave the machine before the queue is sent.
 
-_Not yet driven. The capture itself is undriven because no script can grant the browser permission; everything around it is proved._
+_Partly driven live: the capture control and its Chromium-desktop support statement were driven on the Annotation card. The permission request, the actual capture and the stored bytes remain undriven because no script can grant the display-capture permission._
 
 ## Sub-features
 

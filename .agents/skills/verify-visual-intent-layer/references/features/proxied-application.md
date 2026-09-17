@@ -2,7 +2,7 @@
 
 A Builder-Reviewer reviews a running local application through the same Review Surface and the same loop, with Source Provenance available only where an instrumented artifact stamped a source location. An application is an artifact type, not a mode: the same rail, the same Annotation card and the same point/box controls. The proxy opens loopback development origins only, forwards a client's method, body, headers and redirects, proxies the application's update channel, and serves it a content policy that permits the application's own requests and nothing else.
 
-_Not yet driven. Recipes are mapped; no live drive has confirmed them._
+_Partly driven live: the run opened a loopback development server through the proxy, read its stamp provenance per Target, saw the policy disclosure state the application's permitted origin, and watched a frame over the proxied update channel advance the Adopted Revision. Form submission and the native dev-server HMR protocol remain mapped rather than driven; the method-and-body forwarding is asserted in the browser-loop and http seams._
 
 ## Sub-features
 
