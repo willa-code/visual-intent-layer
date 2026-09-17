@@ -254,8 +254,12 @@ The design gallery is at `/gallery` on a running service. It is not part of the
 product's navigation. `tests/gallery-snapshot.test.ts` pins every design token
 exactly, fails on a screenshot difference, checks every semantic surface/ink
 pair against the contrast floor in both themes, and fails when a baseline is
-missing rather than silently writing one. Regenerate baselines with
-`UPDATE_GALLERY=1` once the change is intended.
+missing rather than silently writing one. Tokens are pinned once because they
+are strings; screenshots are pinned per rendering platform, because font
+metrics move the layout — a missing platform baseline fails and leaves the
+render this run produced in `.scratch/`, which CI uploads as the
+`gallery-actual` artifact. Regenerate baselines for the platform you are on
+with `UPDATE_GALLERY=1` once the change is intended.
 
 ## Layout
 
