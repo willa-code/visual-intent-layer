@@ -11,6 +11,7 @@ import { startLocalService, type LocalService } from '../src/service/http.js';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const baselineDir = join(root, 'tests', '__screenshots__');
 const TOKEN_BASELINE = join(baselineDir, 'tokens.json');
+const RENDER_PLATFORM = process.platform;
 const TOLERANCE = 0.03;
 
 let browser: Browser;
@@ -128,7 +129,7 @@ describe('design gallery scripted pass', () => {
     it(`captures the ${theme} gallery and fails on difference`, async () => {
       const section = page.locator(`.gallery[data-theme="${theme}"]`);
       const buffer = await section.screenshot();
-      const baselinePath = join(baselineDir, `gallery-${theme}.png`);
+      const baselinePath = join(baselineDir, `gallery-${theme}-${RENDER_PLATFORM}.png`);
       if (process.env['UPDATE_GALLERY'] === '1') {
         mkdirSync(baselineDir, { recursive: true });
         writeFileSync(baselinePath, buffer);
@@ -137,7 +138,7 @@ describe('design gallery scripted pass', () => {
       }
       if (!existsSync(baselinePath)) {
         throw new Error(
-          `No ${theme} gallery baseline at ${baselinePath}. A missing baseline is not the same as an unchanged one; run with UPDATE_GALLERY=1 once the design is intended.`
+          `No ${theme} gallery baseline for ${RENDER_PLATFORM} at ${baselinePath}. A missing baseline is not the same as an unchanged one, and another platform's baseline does not substitute for this one: a screenshot is pinned per rendering platform because font metrics move the layout. Record this platform's baseline with UPDATE_GALLERY=1 once the design is intended.`
         );
       }
       const difference = pixelDifference(readFileSync(baselinePath), buffer);
