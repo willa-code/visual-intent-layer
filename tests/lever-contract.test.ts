@@ -425,7 +425,7 @@ describe('Lever contract: the relation drive', () => {
   }, 180000);
 
   it('records an ordering relation by dragging a selected target past another', () => {
-    const related = lever(['relate', '--run', name, '--from', '.d', '--to', '.e', '--dx', '120', '--expect', 'after']);
+    const related = lever(['relate', '--run', name, '--from', '.d', '--to', '.e', '--dx', '30', '--expect', 'after']);
     expect(related.status, related.stderr).toBe(0);
     const recorded = relationships();
     expect(recorded.some((relation) => relation.type === 'ordering' && relation.operator === 'after')).toBe(true);
