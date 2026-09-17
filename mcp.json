@@ -2,7 +2,7 @@
   "mcpServers": {
     "visual-intent-layer": {
       "command": "npx",
-      "args": ["-y", "--package", "visual-intent-layer@0.3.0-next.2", "visual-intent-mcp"],
+      "args": ["-y", "--package", "visual-intent-layer@0.3.0-next.3", "visual-intent-mcp"],
       "env": {
         "VISUAL_INTENT_DATA_DIR": "${HOME}/.visual-intent-layer/data"
       }

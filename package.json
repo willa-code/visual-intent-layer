@@ -1,6 +1,6 @@
 {
   "name": "visual-intent-layer",
-  "version": "0.3.0-next.2",
+  "version": "0.3.0-next.3",
   "description": "Local-first Visual Direction Loop: point at visible targets, deliver a versioned Visual Intent Envelope over MCP, verify by hand.",
   "license": "Apache-2.0",
   "repository": {
