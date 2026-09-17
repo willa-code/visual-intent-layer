@@ -1,6 +1,6 @@
 # Pass A — the honest surface
 
-Status: ready-for-agent
+Status: done
 
 Amends `design.md` in five recorded amendments on 2026-09-16, the last of which
 covers this iteration, and follows the terms now in `CONTEXT.md`. ADR-0019
@@ -426,3 +426,7 @@ use and absent on a second artifact; a notice at the rail's top edge that does n
 cover the island; and a note composed after a reload carrying the adopted
 revision. Accessibility snapshots and stored-state read-backs are evidence; a
 driven verdict path is Mechanical Verification and never Verified Intent.
+
+## Comments
+
+Corrected 2026-09-17: `Status: done`. Every ticket landed in `2f03186` ("Give the Review Surface a Pass") and the surface it describes is the shipped one. Its Verification Run is parked with the rest; see `.scratch/truth-and-sync/issues/06-park-verification-with-a-named-trigger.md`.

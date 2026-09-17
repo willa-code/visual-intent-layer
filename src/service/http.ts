@@ -265,6 +265,20 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     return;
   }
 
+  const endMatch = /^\/api\/sessions\/([^/]+)\/end$/.exec(path);
+  if (method === 'POST' && endMatch) {
+    const session = authorizedOrRefuse(context, endMatch[1]!, url);
+    if (!session) {
+      return;
+    }
+    sessions.end(session.sessionId);
+    sendJson(response, 200, {
+      ended: true,
+      message: 'Session ended. The review URL and its capability no longer authorize. Unsent Annotations stay stored on this machine.'
+    });
+    return;
+  }
+
   const sessionMatch = /^\/api\/sessions\/([^/]+)$/.exec(path);
   if (method === 'GET' && sessionMatch) {
     const session = authorizedOrRefuse(context, sessionMatch[1]!, url);

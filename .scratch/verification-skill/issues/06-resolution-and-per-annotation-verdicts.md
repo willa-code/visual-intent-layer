@@ -21,3 +21,7 @@
 Live-driven: artifact change, reload, re-resolution, revision relation, before/after toggle, and every verdict path (approve, reject, another-pass, supersede, obsolete) with stored-state read-back. Mapped but not driven live: an ambiguous resolution with candidate choice, and a blocked verdict refusal. `resolution-and-honesty.md` and `verify-each-annotation.md` map them.
 
 Code-review follow-up: `decide` now waits for the verdict to land in stored state and reports an unreachable path if it does not, so a click alone no longer reports success.
+
+Corrected 2026-09-17: the ticket keeps `done`, and its two unticked boxes are now named rather than silent.
+
+Deferred confirmation: the box "An ambiguous resolution shows its candidates, is never chosen automatically, and can be chosen by the agent as the Builder-Reviewer would" cannot be driven by the agent: the surface presents candidates and never auto-chooses, but choosing one is a Builder-Reviewer act, and `surface-refinement-pass-a` (tickets 05 and 06) replaced the on-row chooser with candidate marks on the artifact and repair by re-pointing. The box "A verdict that is blocked states its reason rather than silently refusing" was later driven by the browser loop — `tests/browser-loop.test.ts` asserts the row states the target could not be matched and disables Approve — but the box is left unticked because no Verification Run completed for this iteration.

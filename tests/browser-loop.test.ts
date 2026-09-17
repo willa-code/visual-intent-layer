@@ -322,6 +322,28 @@ describe('Review Surface (primary seam: a real browser engine)', () => {
 
     expect(problems, problems.join('\n')).toEqual([]);
   }, 200000);
+
+  it('ends the session from the overflow menu and refuses the stored review URL afterwards', async () => {
+    const opened = await service.openSession({ kind: 'saved-html', path: artifactPath });
+    const ending = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await ending.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+
+    await ending.getByRole('button', { name: 'More actions' }).click();
+    await ending.getByRole('menuitem', { name: /End session/ }).click();
+    await expectLater(
+      () => ending.locator('.notice').innerText(),
+      (text) => /Session ended/.test(text),
+      'the surface states that the session ended'
+    );
+
+    const refused = await fetch(opened.reviewUrl);
+    expect(refused.status).toBe(401);
+    expect(
+      (await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?session=${opened.sessionId}&cap=${opened.capability}`)).status
+    ).toBe(401);
+
+    await ending.close();
+  }, 60000);
 });
 
 async function expectLater<T>(

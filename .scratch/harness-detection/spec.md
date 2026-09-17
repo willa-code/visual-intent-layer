@@ -1,6 +1,6 @@
 # Harness detection, registration fidelity, and status
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 
@@ -80,3 +80,6 @@ Registration becomes content-verified: an entry that matches what the installed 
 - The detection design is grounded in two first-party implementations read at implementation time: herdr's `src/integration/registry.rs` (command aliases, executable-bit verification, Windows command candidates, symlink resolution, install-layout probes) and the skills ecosystem's `src/agents.ts` (one descriptor per Harness, configuration-directory detection, `CODEX_HOME`/`CLAUDE_CONFIG_DIR`/`XDG_CONFIG_HOME` overrides, `/etc/codex`). Re-verify against those primary sources and each Harness's own documentation if behaviour looks off, since Harness docs drift.
 - The background research note on Harness MCP setup already records the per-Harness configuration paths and entry schemas; it should gain the detection evidence and environment overrides as part of the documentation ticket, so the spec does not duplicate that record.
 - The version line closes the loop on the report that started this work: any future "setup configured the wrong Harness" report can state the release that produced it, which separates a stale installation from a detection gap.
+## Comments
+
+Corrected 2026-09-17: `Status: done`. Detection, registration fidelity and status shipped. Ticket `07` (live detection on a multi-harness machine) is parked with a named trigger rather than left reading as active work; see `.scratch/truth-and-sync/issues/06-park-verification-with-a-named-trigger.md`.

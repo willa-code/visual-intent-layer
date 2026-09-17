@@ -1,6 +1,6 @@
 # Surface refinement: one rail, two tiles, honest delivery
 
-Status: ready-for-agent
+Status: done
 
 Amends `.scratch/review-surface/spec.md` where the two disagree, and follows the
 four amendments recorded in `design.md` on 2026-09-16, the terms resolved in
@@ -213,3 +213,6 @@ Recorded so nothing here is lost silently. Each carries what would unblock it.
   iteration removes and the previous spec's stated differentiator; the deferral is
   recorded in issue 18 and in `design.md` §11 so it can be reversed deliberately
   rather than rediscovered.
+## Comments
+
+Corrected 2026-09-17: `Status: done`. The iteration's behaviour shipped in `14a73a1` ("Refine the Review Surface: one rail, two tiles, honest delivery") and `surface-refinement-pass-a` then re-cut part of it. The nineteen tickets resolve under `.scratch/truth-and-sync/issues/04-resolve-the-surface-refinement-ticket-set.md`; `18` (Relational Intent) stays `needs-triage` and `13` (a Verification Run) is `deferred`. A parked verification does not reopen an iteration whose behaviour shipped.

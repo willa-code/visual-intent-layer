@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 (one rail), 02 (one icon set)
 
-**Status:** ready-for-agent
+**Status:** superseded
 
 - [ ] The rail lists unsent and sent Annotations in one ordered list, and sending moves an Annotation's state without removing its row
 - [ ] Each row states its own state as a label plus a non-colour cue, and never shows delivery and implementation as one state
@@ -25,3 +25,5 @@
 Split from a larger ticket after review and a maintainer decision. This ticket previously also carried per-row revision comparison, filters, reordering and resolution timing — fourteen acceptance criteria spanning seven concerns, which no agent lands cleanly in one pass. Comparison, ordering and what is hidden moved to issue 19; the resolution flow moved to issue 20.
 
 Also amended: `supersede` appeared here as a row verdict *and* in issue 08 as the effect of Amend, so two tickets could claim one control. It now belongs to Amend alone.
+
+Resolved 2026-09-17: superseded by `.scratch/surface-refinement-pass-a/spec.md`. The one-list rule shipped in `14a73a1`, but Pass A replaced the flat note list with a Pass ledger and re-cut the verdict controls: Approve and Reject on the row, Not Fixed and obsolete behind one overflow, and a blocked verdict stated on the row. The replacement is Pass A tickets 03 and 04. The boxes are left unticked because the shape they describe is no longer the shipped one.

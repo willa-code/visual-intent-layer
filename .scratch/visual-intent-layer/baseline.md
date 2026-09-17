@@ -1,7 +1,12 @@
 # Screenshot-and-chat baseline (ticket 01)
 
-Status: awaiting-human — the three corrections below must be performed by the
-builder on work they genuinely care about, before product enthusiasm can bias them.
+Status: deferred — the three corrections below must be performed by the builder on
+work they genuinely care about, before product enthusiasm can bias them.
+
+**Trigger:** the Verification Run of `.scratch/several-targets-and-relations/`, the
+first feature spec after `.scratch/truth-and-sync/`, plus maintainer time — 2026-09-17.
+This template is parked by maintainer decision, not waiting on active work; see
+`.scratch/truth-and-sync/issues/06-park-verification-with-a-named-trigger.md`.
 
 ## How to record
 

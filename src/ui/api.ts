@@ -154,6 +154,12 @@ export class Api {
     });
   }
 
+  async endSession(): Promise<{ ended: boolean; message: string }> {
+    return this.json<{ ended: boolean; message: string }>(this.url(`/api/sessions/${this.sessionId}/end`), {
+      method: 'POST'
+    });
+  }
+
   async resolve(
     annotationId: string,
     revision: string,

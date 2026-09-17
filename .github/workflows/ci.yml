@@ -17,6 +17,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run typecheck
+      - run: node scripts/check-records.js
       - run: npm test
       - name: Upload the gallery render this runner produced
         if: failure()

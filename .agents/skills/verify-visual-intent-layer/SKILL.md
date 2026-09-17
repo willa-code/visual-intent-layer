@@ -71,7 +71,6 @@ One rail, two tiles:
 ```sh
 $LEVER select --tool point --target ".checkout-submit"
 $LEVER select --tool point --text ".gallery-note"                     # drag across exact words
-$LEVER select --tool point --target ".gallery-note" --add              # a second target
 $LEVER select --tool box --from ".gallery" --to ".checkout-submit"    # a drawn Area
 $LEVER select --tool operate                                          # return to operating the artifact
 $LEVER mode --to point|box|operate

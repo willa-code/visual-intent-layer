@@ -48,3 +48,5 @@ ship, and the browser-loop seam proves the control exists with its Chromium
 desktop support statement. The capture itself is not driven, and no script can
 grant the display-capture permission, so the Verification Run box stays open
 until a human grants it once and records the stored bytes.
+
+Deferred confirmation: the unticked box — "A Verification Run proves the control, the permission request and the stored evidence, and reports the capture itself as undriven because no script can grant the permission" — cannot be driven by an agent. The three attempts at `.visual-intent-verify/runs/2026-09-17_14-35-05-target-evidence`, `…_14-36-31-proxied-app` and `…_14-36-52-proxied-app-2` ended `aborted`/`stopped`, so no completed run exists for the iteration, and granting the display-capture permission needs a human. The three run directories and their records are left byte-identical; the record of an aborted run is evidence.

@@ -18,3 +18,5 @@ Implemented (implemented in 8b70d52): drag-to-reorder/align/match-size ghost pre
 Superseded: drag-to-reorder, align and match-size stop being separate experimental previews and become the input method for Relational Intent inside the Review state, so the keep-or-kill question this ticket deferred is answered by whether they work as the relation input (ADR-0016).
 
 See `.scratch/review-surface/spec.md`.
+
+Corrected 2026-09-17: the ticket keeps `done`, and the `preview` object it drove left the wire when `schema/envelope-v0.2.schema.json` was cut — `schema/envelope-v0.1.schema.json:110` is the only schema that carries it, and neither `0.2` nor `0.3` does. No preview code exists in `src/ui`, so `dogfood.md`'s preview verdicts cannot be filled as written. The reversible preview folded into the relation gesture, which `.scratch/several-targets-and-relations/` owns; `.scratch/truth-and-sync/issues/06-park-verification-with-a-named-trigger.md` marks the table superseded.

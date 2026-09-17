@@ -1,6 +1,6 @@
 # Review Surface: annotations, fidelity, and craft
 
-Status: ready-for-agent
+Status: superseded in part by `.scratch/surface-refinement/spec.md` and `.scratch/surface-refinement-pass-a/spec.md`
 
 Supersedes the interaction and presentation portions of
 `.scratch/visual-intent-layer/spec.md`. The domain model, envelope contract,
@@ -458,3 +458,6 @@ The work is one combined change rather than a hotfix followed by a redesign. Wit
 ### Relationship to prior art
 
 The competitive benchmarks remain as recorded: the closest comparable local review product for the local-HTML loop and for the shape of its chrome; a commercial review-lifecycle product for lifecycle; a framework-context product for provenance context; a re-anchoring product for honest missing targets; and the integrated design-mode products for interaction polish. The one parity decision this spec declines on purpose is style-value editing, which those integrated products offer and this product must not.
+## Comments
+
+Corrected 2026-09-17: `Status: superseded in part`. Two later iterations amended this one: `surface-refinement` replaced the three interaction modes with one rail and two tiles, and `surface-refinement-pass-a` re-cut the vocabulary, the Pass object, the status line and the candidates. The domain model, envelope contract, resolution semantics and security posture recorded here remain in force.

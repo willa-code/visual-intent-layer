@@ -19,3 +19,5 @@ Verification note: scroll/zoom/reflow/overlap ticked on grounding evidence (view
 Superseded: region and multi-target selection are unchanged as capabilities, with one addition: a drawn region now records the artifact revision and scroll position it was drawn at as evidence (ADR-0016).
 
 See `.scratch/review-surface/spec.md`.
+
+Corrected 2026-09-17: the ticket keeps `done`, and its "Multiple targets can be selected as one set" box was true when ticked and is not true of the current surface. Multi-target composition shipped in `0f2a16f` and was removed in `14a73a1`, which replaced every selection path in `src/ui/artifact/layer.ts` (`:207`, `:237`, `:340`) with a one-element assignment. `.scratch/several-targets-and-relations/` owns restoring the set; see `.scratch/truth-and-sync/issues/05-mark-the-regressed-and-superseded-capabilities.md`. The argument and the ticks above are left as they were.

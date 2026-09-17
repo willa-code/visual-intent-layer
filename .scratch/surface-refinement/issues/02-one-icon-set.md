@@ -4,14 +4,16 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] One module exports every chrome icon, and no chrome control draws its own glyph inline or as text
-- [ ] All icons in the set share one stroke weight, one viewbox and one size scale drawn from a metric token
-- [ ] No chrome surface renders an emoji character anywhere
-- [ ] Every icon-only control carries an accessible name, and the name states what the control does
-- [ ] Icons take `currentColor`, so a semantic role's ink applies without a per-icon override
-- [ ] The design gallery in `design.md` §9 renders the whole set in light and dark, and the scripted pass covers it
-- [ ] The tests this change breaks are re-cut in the same change, and the suite is green when it lands
+- [x] One module exports every chrome icon, and no chrome control draws its own glyph inline or as text
+- [x] All icons in the set share one stroke weight, one viewbox and one size scale drawn from a metric token
+- [x] No chrome surface renders an emoji character anywhere
+- [x] Every icon-only control carries an accessible name, and the name states what the control does
+- [x] Icons take `currentColor`, so a semantic role's ink applies without a per-icon override
+- [x] The design gallery in `design.md` §9 renders the whole set in light and dark, and the scripted pass covers it
+- [x] The tests this change breaks are re-cut in the same change, and the suite is green when it lands
 
 ## Comments
+
+Resolved 2026-09-17: done. `src/ui/icons.ts` is the one icon module and every chrome control draws from it; `14a73a1` removed the emoji and the mixed `/`-glyph buttons. `surface-refinement-pass-a` added the filled tile form without adding a second set.

@@ -1,6 +1,6 @@
 # Multi-harness MCP setup: pi, Codex, Claude Code, opencode
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 
@@ -75,3 +75,7 @@ From the Builder-Reviewer's perspective, the setup command learns the four harne
 - The VS Code `"servers"` versus `"mcpServers"` schema split matters for the follow-up harness spec, not this one.
 - The pi adapter's read paths were verified against a live install of the adapter's own README and config source: the current project and global outputs are correct for pi and stay unchanged.
 - Superseded in part: the detection decision above (binary on `PATH` or config file present) is replaced by ADR-0014 and the follow-up spec in `.scratch/harness-detection/`, which union configuration-home-aware locations, project-local paths, executable-checked commands with aliases, and per-Harness extra locations, and which makes Registration content-verified rather than presence-checked. The paths, schemas, and merge behaviour recorded here still stand.
+
+## Comments
+
+Corrected 2026-09-17: `Status: done`. Registration and setup shipped for each Harness. Ticket `06` (live verification on four harnesses) is parked with a named trigger rather than left `ready-for-human`; see `.scratch/truth-and-sync/issues/06-park-verification-with-a-named-trigger.md`.

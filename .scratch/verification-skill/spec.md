@@ -1,6 +1,6 @@
 # Verification skill: the Lever, the feature map, and mechanical proof
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 
@@ -262,3 +262,7 @@ The skill body exists and has been executed end to end at least once, in the ord
 ### Working order
 
 The Lever first, with its health check and lifecycle, so that a launch can be trusted before anything depends on it. Then one first-tier feature driven through it end to end, to prove the drive path against the real surface before mapping the rest. Then the skill body, written against what the Lever actually does rather than what it was intended to do. Then the feature map's index and first-tier files, then the remaining tiers as an honest backlog. Then the evidence and run-record contract, then the vocabulary and the decision record. The contract test is written alongside the Lever rather than after it, because the dry-run and exit-code rules are easiest to get right while the surface is still changing.
+
+## Comments
+
+Corrected 2026-09-17: `Status: done`. The Lever, the feature map and the skill body shipped, and the mapped first-tier drive ran live. Two tickets carried gaps their own boxes made visible: `05` is now `deferred` and `06` names its two unticked boxes in a `Deferred confirmation:`; see `.scratch/truth-and-sync/issues/05-mark-the-regressed-and-superseded-capabilities.md`. Parked verification does not reopen an iteration whose behaviour shipped.

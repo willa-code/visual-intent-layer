@@ -4,7 +4,9 @@
 
 **Blocked by:** 01–12, 14, 15, 16, 17, 19, 20
 
-**Status:** ready-for-agent
+**Status:** deferred
+
+**Trigger:** the Verification Run of `.scratch/several-targets-and-relations/`, the first feature spec after `.scratch/truth-and-sync/`, plus maintainer time for the parts only a human can do — 2026-09-17
 
 - [ ] `health` is clean at launch and the instance is not stale when any drive command runs
 - [ ] The run drives: open the artifact; arm point and box and return to operating; point at an element; point at a text range; box an area; compose and queue; send; amend the sent Annotation; ask the agent to stop; toggle closed rows; compare a row's revisions; judge the result in place
@@ -26,3 +28,5 @@
 ## Comments
 
 Amended after independent review: the drives this ticket originally listed could not be reached, because the Lever still clicks a `Review` button that issue 01 deletes, whitelists `element|text|region|arrange`, excludes `review-interruption`, and has no amend or stop command. Issue 17 updates the drive surface first. Several claims this iteration relies on are settleable only by running, and the review listed them — the review's own words — rather than letting them pass as assertions.
+
+Deferred 2026-09-17: the Verification Run over the whole loop is parked rather than performed. The surface it would have driven shipped in `14a73a1` and `2f03186`, and the parked run is covered by `.scratch/truth-and-sync/issues/06-park-verification-with-a-named-trigger.md`. No box is ticked by the deferral.

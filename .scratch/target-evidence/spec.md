@@ -1,6 +1,6 @@
 # Target evidence — one loop, honest targets
 
-Status: ready-for-agent
+Status: done
 
 Amends `CONTEXT.md` (Artifact Mode and Application Mode deleted; `Target`,
 Runtime State Evidence, Captured View and Adopted Revision added) and records
@@ -338,3 +338,7 @@ tools. What was missing was never a mode: it was a revision that responds to an
 edit, a client whose requests arrive intact, an update channel, and a policy that
 admits the application's own traffic. Those are tickets 03–05 and 08–09, and the
 application seam test (07) proves them.
+
+## Comments
+
+Corrected 2026-09-17: `Status: done`. Every ticket landed and the behaviour shipped. The iteration has no completed Verification Run: the three attempts at `.visual-intent-verify/runs/2026-09-17_14-35-05-target-evidence`, `…_14-36-31-proxied-app` and `…_14-36-52-proxied-app-2` ended `aborted`/`stopped`, so this iteration is done and unverified. `issues/10` names its unticked capture-proof box in a `Deferred confirmation:`. The three run directories, their `run.json` outcome and their `report.md` are left byte-identical: the record of an aborted run is evidence, not a mistake to clean.

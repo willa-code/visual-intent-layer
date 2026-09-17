@@ -54,7 +54,7 @@ Usage:
   lever cleanup [--run <name>]
   lever open --html <path> [--name <label>]        (alias of launch)
 
-  lever select --tool point --target <css> [--text <css>] [--add]
+  lever select --tool point --target <css> [--text <css>]
   lever select --tool box --from <css> --to <css>
   lever select --tool operate
   lever mode --to point|box|operate
@@ -915,8 +915,7 @@ async function commandSelect(flags) {
     } else {
       await host('/click', {
         target: targetFromFlags(flags),
-        frame: 'artifact',
-        ...(flags.add ? { modifiers: ['Shift'] } : {})
+        frame: 'artifact'
       });
     }
   } else {
@@ -929,7 +928,7 @@ async function commandSelect(flags) {
   const shot = await host('/screenshot', { name: `select-${tool}-${Date.now()}` });
   recordEvidence(runDir, { kind: 'screenshot', name: `select-${tool}`, path: shot.path });
   await host('/snapshot', { name: `select-${tool}-${Date.now()}` });
-  recordCoverage(runDir, 'annotate-and-send', 'driven', `selected with the ${tool} mode`, [flags.add ? 'select-multiple' : `select-${tool}`]);
+  recordCoverage(runDir, 'annotate-and-send', 'driven', `selected with the ${tool} mode`, [`select-${tool}`]);
   output({ ok: true, command: 'select', tool, screenshot: shot.path });
 }
 

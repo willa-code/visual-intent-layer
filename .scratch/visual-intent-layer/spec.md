@@ -1,6 +1,6 @@
 # Visual Intent Layer Proof Product
 
-Status: superseded in part by `.scratch/review-surface/spec.md`
+Status: superseded in part by `.scratch/review-surface/spec.md`, `.scratch/surface-refinement/spec.md` and `.scratch/surface-refinement-pass-a/spec.md`
 
 ## Superseded decisions
 
@@ -367,3 +367,7 @@ V0 supports Artifact Mode for saved or generated HTML and Application Mode for a
 - The full local direction loop should remain permissively open. Future monetization should attach to services around the core rather than weaken privacy, provenance, reliability, or verification.
 - The central strategic risk is building an attractive annotation tool with MCP attached. Relational Intent, revision identity, confidence-bearing target resolution, durable delivery semantics, and human verification must therefore exist in the first coherent slice rather than being deferred as platform work.
 - The long-term north star remains an artifact-neutral envelope with per-type resolvers. A CLI fallback for non-MCP agents remains a documented principle but is not a V0 deliverable. A pixel and semantic diff engine is deferred; V0 keeps revision-aware comparison with explicit resolution status.
+
+## Comments
+
+Corrected 2026-09-17: `Status: superseded in part`. Every iteration that amended this spec is now named on the status line: `review-surface` superseded its interaction and presentation portions, and `surface-refinement` and `surface-refinement-pass-a` amended those in turn. The domain model, envelope contract and security posture recorded here remain in force.

@@ -4,18 +4,22 @@
 
 **Blocked by:** 06 (the list)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Selecting a row sets the comparison pair from that Annotation's written revision to the revision its result came from
-- [ ] Two rows written against different revisions do not share one comparison, and the surface never implies they do
-- [ ] The before/after toggle appears on the stage only while the selected row has something to compare, and is absent otherwise
-- [ ] Unsent Annotations can be reordered, the order survives a reload, and the delivered envelope carries that order
-- [ ] Closed Annotations — verified, superseded, obsolete — are hidden by default behind a single toggle that states how many are hidden
-- [ ] The toggle is one control: no query builder, no facets, no search box, no saved views
-- [ ] The default view opens on what needs a decision
+- [x] Selecting a row sets the comparison pair from that Annotation's written revision to the revision its result came from
+- [x] Two rows written against different revisions do not share one comparison, and the surface never implies they do
+- [x] The before/after toggle appears on the stage only while the selected row has something to compare, and is absent otherwise
+- [x] Unsent Annotations can be reordered, the order survives a reload, and the delivered envelope carries that order
+- [x] Closed Annotations — verified, superseded, obsolete — are hidden by default behind a single toggle that states how many are hidden
+- [x] The toggle is one control: no query builder, no facets, no search box, no saved views
+- [x] The default view opens on what needs a decision
 - [ ] Driven live: reordering is read back in the delivered order; the comparison is per row and differs between two rows; the toggle reveals and hides closed rows and reports its count
-- [ ] The tests this change breaks are re-cut in the same change, and the suite is green when it lands
+- [x] The tests this change breaks are re-cut in the same change, and the suite is green when it lands
 
 ## Comments
 
 Added when issue 06 was split. The review's argument for filters was about an ever-growing list, and the maintainer's counter was that a filter affordance is a second question in a surface whose vision is one question at a time. The resolution is a single toggle plus ordering, not filters. Rail resizing was considered and rejected for this iteration: the width is fixed, and legibility at that width is measured in issue 13 rather than assumed.
+
+Resolved 2026-09-17: done. Per-row comparison, unsent reorder and the single closed-rows toggle shipped; `surface-refinement-pass-a` ticket 08 moved the before/after control to the stage's top edge without changing the fact it names.
+
+Deferred confirmation: the `Driven live` box is parked with the iteration's Verification Run; the browser loop and the Lever drive each of the three.

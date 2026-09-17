@@ -200,6 +200,28 @@ describe('local service boundary', () => {
     expect((await fetch(`${baseUrl}/review/session-nope`)).status).toBe(401);
   });
 
+  it('ends a session so its capability stops authorizing, without touching another session', async () => {
+    const { service, baseUrl } = await setup();
+    const opened = await openGallery(service);
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    expect((await fetch(`${baseUrl}/api/sessions/${opened.sessionId}?${auth}`)).status).toBe(200);
+    expect((await fetch(`${opened.reviewUrl}`)).status).toBe(200);
+
+    expect(
+      (await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/end?${auth}`, { method: 'POST' })).status
+    ).toBe(200);
+    expect((await fetch(`${baseUrl}/api/sessions/${opened.sessionId}?${auth}`)).status).toBe(401);
+    expect((await fetch(`${opened.reviewUrl}`)).status).toBe(401);
+    expect(
+      (await fetch(`${baseUrl}/api/sessions/${opened.sessionId}/end?${auth}`, { method: 'POST' })).status
+    ).toBe(401);
+
+    const other = await openGallery(service);
+    const otherAuth = `session=${other.sessionId}&cap=${other.capability}`;
+    expect((await fetch(`${baseUrl}/api/sessions/${other.sessionId}/annotations?${otherAuth}`)).status).toBe(200);
+    expect((await fetch(`${other.reviewUrl}`)).status).toBe(200);
+  });
+
   it('rejects cross-origin browser requests and foreign Host headers', async () => {
     const { service, baseUrl } = await setup();
     const response = await fetch(`${baseUrl}/health`, { headers: { Origin: 'https://evil.example.com' } });

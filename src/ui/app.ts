@@ -780,7 +780,7 @@ class App {
             icon: 'attention',
             onSelect: () => this.toggleGuidance()
           },
-          { label: 'End session', icon: 'close', onSelect: () => this.endSession() }
+          { label: 'End session', icon: 'close', onSelect: () => void this.endSession() }
         ],
         extra: h(
           'div',
@@ -1521,8 +1521,15 @@ class App {
     }
   }
 
-  private endSession(): void {
-    this.showNotice('Session ended. Your unsent Annotations are still stored on this machine.');
+  private async endSession(): Promise<void> {
+    let message: string;
+    try {
+      const result = await this.api.endSession();
+      message = result.message;
+    } catch {
+      message = 'The session could not be ended, so the review URL still authorizes. Your unsent Annotations are still stored on this machine.';
+    }
+    this.showNotice(message);
     window.close();
   }
 

@@ -15,6 +15,7 @@ export type SessionRecord = {
   sourceRoot?: string;
   displayName: string;
   capabilities?: HostCapabilities;
+  endedAt?: string;
 };
 
 export class SessionRecords {
@@ -40,19 +41,30 @@ export class SessionRecords {
 
   get(sessionId: string): SessionRecord | undefined {
     this.records = this.load();
-    return this.records[sessionId];
+    const record = this.records[sessionId];
+    return record && !record.endedAt ? record : undefined;
+  }
+
+  end(sessionId: string): void {
+    this.records = this.load();
+    const record = this.records[sessionId];
+    if (!record || record.endedAt) {
+      return;
+    }
+    this.records[sessionId] = { ...record, endedAt: new Date().toISOString() };
+    this.persist();
   }
 
   findByArtifactRevision(artifactId: string, revision: string): SessionRecord | undefined {
     this.records = this.load();
-    return Object.values(this.records).find(
+    return this.liveRecords().find(
       (record) => record.artifactId === artifactId && record.revision === revision
     );
   }
 
   findByArtifact(artifactId: string): SessionRecord | undefined {
     this.records = this.load();
-    return Object.values(this.records)
+    return this.liveRecords()
       .filter((record) => record.artifactId === artifactId)
       .sort((a, b) => (a.sessionId < b.sessionId ? 1 : -1))[0];
   }
@@ -68,6 +80,10 @@ export class SessionRecords {
       return undefined;
     }
     return record;
+  }
+
+  private liveRecords(): SessionRecord[] {
+    return Object.values(this.records).filter((record) => !record.endedAt);
   }
 
   private load(): Record<string, SessionRecord> {

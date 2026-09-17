@@ -4,7 +4,9 @@
 
 **Blocked by:** 02 (Detection reporting), 03 (Content-verified registration), 04 (Transport selection), 05 (Status mode).
 
-**Status:** ready-for-human
+**Status:** deferred
+
+**Trigger:** the Verification Run of `.scratch/several-targets-and-relations/`, the first feature spec after `.scratch/truth-and-sync/`, plus maintainer time for the parts only a human can do — 2026-09-17
 
 - [ ] All four Harnesses are detected on a machine that has all four, with the report naming each
 - [ ] A Harness configured under a non-default configuration home is detected
@@ -16,3 +18,5 @@
 ## Comments
 
 Start from the machine and release involved in the original report: record the setup version line alongside the evidence, so a stale installation and a detection gap stay distinguishable.
+
+Deferred 2026-09-17: live detection on a multi-Harness machine is parked until the next spec's Verification Run plus maintainer time. No box is ticked by the deferral.

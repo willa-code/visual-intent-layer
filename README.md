@@ -4,11 +4,14 @@ A local-first **Visual Direction Loop**: open a review surface on an
 agent-produced interface, point at visible targets, compose **Annotations**, and
 verify the result by hand. No prose location descriptions, no lost context.
 
-The **Annotation** is the unit of work. A Builder-Reviewer points at one or
-more visible targets, drafts a note in a card anchored to the target, attaches
-reference images, and queues the result. Sending delivers one **Visual Intent
-Envelope** carrying each Annotation with its own identity. Each Annotation is
-verified on its own.
+The **Annotation** is the unit of work. A Builder-Reviewer points at a visible
+target, drafts a note in a card anchored to it, attaches reference images, and
+queues the result. Sending delivers one **Visual Intent Envelope** carrying each
+Annotation with its own identity. Each Annotation is verified on its own.
+
+The Annotation and the envelope carry one or more targets; the surface composes
+one target per selection today, until `.scratch/several-targets-and-relations/`
+restores the set gesture.
 
 ## Install
 
@@ -118,9 +121,11 @@ writing.
   relationships, but this iteration's surface expresses no relation.
 - Unsent text survives a surface reload, a service restart and a browser
   restart. Nothing discards a note silently.
-- Several targets can be gathered into one Annotation; a drawn Area records the
+- One selection composes one Annotation today; a drawn Area records the
   revision and scroll position it was drawn at and reports the elements it
-  encloses.
+  encloses. Gathering several targets into one Annotation is deferred to
+  `.scratch/several-targets-and-relations/`, and the Annotation and the envelope
+  still carry a target set.
 - Every Target carries Runtime State Evidence: the address the artifact was
   showing when it was pointed at, recorded relative to the artifact's own base
   so it means the same thing whether the artifact is served directly or through
