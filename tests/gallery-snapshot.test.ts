@@ -141,24 +141,29 @@ describe('design gallery scripted pass', () => {
         );
       }
       const difference = pixelDifference(readFileSync(baselinePath), buffer);
-      if (difference > TOLERANCE) {
+      if (difference.ratio > TOLERANCE) {
         const actualPath = join(root, '.scratch', `gallery-${theme}.actual.png`);
         mkdirSync(dirname(actualPath), { recursive: true });
         writeFileSync(actualPath, buffer);
       }
       expect(
-        difference,
-        `the ${theme} gallery drifted by ${(difference * 100).toFixed(2)}% (limit ${(TOLERANCE * 100).toFixed(1)}%). Inspect the actual screenshot and update the baseline only when the change is intended.`
+        difference.ratio,
+        `the ${theme} gallery drifted by ${(difference.ratio * 100).toFixed(2)}% (limit ${(TOLERANCE * 100).toFixed(1)}%). The baseline renders ${difference.baselineSize} and this run renders ${difference.actualSize}. Inspect the actual screenshot and update the baseline only when the change is intended.`
       ).toBeLessThanOrEqual(TOLERANCE);
     });
   }
 });
 
-function pixelDifference(expected: Buffer, actual: Buffer): number {
+function pixelDifference(
+  expected: Buffer,
+  actual: Buffer
+): { ratio: number; baselineSize: string; actualSize: string } {
   const a = PNG.sync.read(expected);
   const b = PNG.sync.read(actual);
+  const baselineSize = `${a.width}x${a.height}`;
+  const actualSize = `${b.width}x${b.height}`;
   if (a.width !== b.width || a.height !== b.height) {
-    return 1;
+    return { ratio: 1, baselineSize, actualSize };
   }
   let differing = 0;
   const pixels = a.width * a.height;
@@ -172,5 +177,5 @@ function pixelDifference(expected: Buffer, actual: Buffer): number {
       differing += 1;
     }
   }
-  return differing / pixels;
+  return { ratio: differing / pixels, baselineSize, actualSize };
 }

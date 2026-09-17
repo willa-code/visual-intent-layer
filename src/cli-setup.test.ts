@@ -42,6 +42,7 @@ function options(overrides: Partial<SetupOptions> = {}): SetupOptions {
     printOnly: false,
     withSkill: true,
     pathEnv: fakeBinaryDir('visual-intent'),
+    env: {},
     ...overrides
   };
 }
@@ -115,7 +116,7 @@ describe('setup detection and filtering', () => {
     writeFileSync(join(projectDir, 'opencode.json'), '{}');
     const pathEnv = fakeBinaryDir('claude', 'pi');
 
-    expect(detectHarnesses({ homeDir, projectDir, pathEnv })).toEqual([
+    expect(detectHarnesses({ homeDir, projectDir, pathEnv, env: {} })).toEqual([
       'pi',
       'codex',
       'claude-code',
@@ -126,7 +127,7 @@ describe('setup detection and filtering', () => {
   it('detects nothing on an empty machine', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'vil-home-'));
     const projectDir = mkdtempSync(join(tmpdir(), 'vil-proj-'));
-    expect(detectHarnesses({ homeDir, projectDir, pathEnv: '' })).toEqual([]);
+    expect(detectHarnesses({ homeDir, projectDir, pathEnv: '', env: {} })).toEqual([]);
   });
 
   it('restricts the matrix with an explicit harness filter', () => {
