@@ -1,7 +1,7 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AnnotationStore } from './store.js';
 import type { AnnotationTarget } from './model.js';
 import type { ResolutionCandidate } from '../resolution/resolve.js';
@@ -39,6 +39,25 @@ function candidate(nodeId: string): ResolutionCandidate {
 
 function dataDir(): string {
   return mkdtempSync(join(tmpdir(), 'vil-annotations-'));
+}
+
+function dropPositions(dir: string): void {
+  const file = join(dir, 'annotations.json');
+  const raw = JSON.parse(readFileSync(file, 'utf8')) as {
+    sequence?: number;
+    passes: Record<string, { sequence?: number }>;
+    annotations: Record<string, { history: Array<{ sequence?: number }> }>;
+  };
+  delete raw.sequence;
+  for (const pass of Object.values(raw.passes)) {
+    delete pass.sequence;
+  }
+  for (const annotation of Object.values(raw.annotations)) {
+    for (const event of annotation.history) {
+      delete event.sequence;
+    }
+  }
+  writeFileSync(file, JSON.stringify(raw));
 }
 
 describe('Annotation store', () => {
@@ -166,5 +185,45 @@ describe('Annotation store', () => {
     const acknowledged = store.get(annotation.annotationId)!;
     expect(acknowledged.state).toBe('acknowledged');
     expect(acknowledged.verification).toBeUndefined();
+  });
+
+  it('orders a store written before Passes carried a position', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const dir = dataDir();
+      const store = new AnnotationStore(dir);
+      vi.setSystemTime(new Date('2026-01-01T00:00:01.000Z'));
+      const annotation = store.createDraft({
+        artifactId: 'a',
+        writtenRevision: 'rev-1',
+        targets: [target()]
+      });
+      vi.setSystemTime(new Date('2026-01-01T00:00:02.000Z'));
+      const first = store.markDelivered([annotation.annotationId], {
+        host: 'test',
+        intent: 'next-pass',
+        artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+      });
+      vi.setSystemTime(new Date('2026-01-01T00:00:03.000Z'));
+      const replacement = store.amend(annotation.annotationId, { note: 'after' });
+      vi.setSystemTime(new Date('2026-01-01T00:00:04.000Z'));
+      const second = store.markDelivered([replacement.annotationId], {
+        host: 'test',
+        intent: 'steering',
+        artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+      });
+
+      dropPositions(dir);
+      const reopened = new AnnotationStore(dir);
+      const amended = reopened
+        .get(replacement.annotationId)!
+        .history.find((event) => event.type === 'amended')!;
+
+      expect(reopened.getPass(first.passId)!.sequence).toBeLessThan(amended.sequence!);
+      expect(amended.sequence!).toBeLessThan(reopened.getPass(second.passId)!.sequence);
+      expect(reopened.sequenceNow()).toBe(reopened.getPass(second.passId)!.sequence);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

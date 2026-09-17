@@ -408,11 +408,12 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
   function checkIn(sessionId: string, options: { cursor?: string; agentId?: string } = {}): CheckInResult {
     const session = requireSession(sessionId);
     const checkedInAt = new Date().toISOString();
-    const since = options.cursor ?? null;
+    const previous = options.cursor ?? null;
+    const since = positionOf(previous);
     const passes = annotations
       .listPasses()
       .filter((pass) => pass.artifactId === session.artifactId)
-      .filter((pass) => since === null || pass.at > since);
+      .filter((pass) => since === null || pass.sequence > since);
     const interruption = checkIns.pendingInterruption(sessionId);
     if (interruption) {
       checkIns.collectInterruption(sessionId, interruption.interruptionId);
@@ -426,13 +427,16 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
       .filter((annotation) => annotation.replaces !== undefined)
       .filter(
         (annotation) =>
-          since === null || annotation.history.some((event) => event.type === 'amended' && event.at > since)
+          since === null ||
+          annotation.history.some(
+            (event) => event.type === 'amended' && (event.sequence ?? 0) > since
+          )
       )
       .map((annotation) => ({ replacedId: annotation.replaces!, replacementId: annotation.annotationId }));
     return {
       checkedInAt,
-      since,
-      cursor: checkedInAt,
+      since: previous,
+      cursor: String(annotations.sequenceNow()),
       deliveries: passes.map((pass) => ({
         envelopeId: pass.envelopeId,
         intent: pass.intent,
@@ -600,7 +604,7 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
           type: 'object',
           properties: {
             sessionId: { type: 'string', description: 'The session to check in with. Omit to check the most recently opened session.' },
-            cursor: { type: 'string', description: 'The cursor returned by your previous check-in. Omit to read everything not yet collected.' },
+            cursor: { type: 'string', description: 'The cursor returned by your previous check-in. Omit to read everything not yet collected. A cursor this build does not recognise reads everything rather than less, so direction is never dropped.' },
             agentId: { type: 'string', description: 'Identifies the implementing agent.' }
           }
         }
@@ -658,6 +662,14 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     dataDir,
     waitMs
   };
+}
+
+function positionOf(cursor: string | null): number | null {
+  if (cursor === null) {
+    return null;
+  }
+  const position = Number(cursor);
+  return Number.isInteger(position) && position >= 0 ? position : null;
 }
 
 function statusOf(annotations: Annotation[]): string {

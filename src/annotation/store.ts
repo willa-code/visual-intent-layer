@@ -44,6 +44,7 @@ export type Pass = {
   host: string;
   intent: Exclude<DeliveryIntent, 'draft'>;
   envelope: Envelope;
+  sequence: number;
   at: string;
 };
 
@@ -55,6 +56,7 @@ type PersistedState = {
   passes: Record<string, Pass>;
   byIdempotencyKey: Record<string, string>;
   migration: MigrationReport;
+  sequence: number;
 };
 
 export type CreateDraftInput = {
@@ -174,7 +176,12 @@ export class AnnotationStore {
       });
       return this.mutate(successor.annotationId, (annotation) => {
         annotation.replaces = annotationId;
-        annotation.history.push({ type: 'amended', at: now(), detail: annotationId });
+        annotation.history.push({
+          type: 'amended',
+          at: now(),
+          sequence: this.nextSequence(),
+          detail: annotationId
+        });
         return annotation;
       });
     }
@@ -281,6 +288,7 @@ export class AnnotationStore {
       host: input.host,
       intent: input.intent,
       envelope,
+      sequence: this.nextSequence(),
       at
     };
     for (const annotation of annotations) {
@@ -417,6 +425,7 @@ export class AnnotationStore {
       host,
       intent: envelope.delivery.intent,
       envelope,
+      sequence: this.nextSequence(),
       at
     };
     this.state.passes[pass.passId] = pass;
@@ -436,6 +445,10 @@ export class AnnotationStore {
 
   listPasses(): Pass[] {
     return Object.values(this.state.passes).sort((a, b) => (a.openedAt < b.openedAt ? -1 : a.openedAt > b.openedAt ? 1 : 0));
+  }
+
+  sequenceNow(): number {
+    return this.state.sequence;
   }
 
   listPassesOfArtifact(artifactId: string): Pass[] {
@@ -508,6 +521,11 @@ export class AnnotationStore {
     return existing.reduce((max, annotation) => Math.max(max, annotation.order + 1), 0);
   }
 
+  private nextSequence(): number {
+    this.state.sequence += 1;
+    return this.state.sequence;
+  }
+
   private mutate(annotationId: string, apply: (annotation: Annotation) => Annotation): Annotation {
     const current = this.state.annotations[annotationId];
     if (!current) {
@@ -539,7 +557,8 @@ export class AnnotationStore {
       annotations: {},
       passes: {},
       byIdempotencyKey: {},
-      migration: emptyMigrationReport()
+      migration: emptyMigrationReport(),
+      sequence: 0
     };
     if (!existsSync(this.legacyFile)) {
       return fresh;
@@ -644,8 +663,46 @@ function normalizePersistedState(raw: Record<string, unknown>): PersistedState {
     annotations,
     passes,
     byIdempotencyKey: (raw['byIdempotencyKey'] as Record<string, string>) ?? {},
-    migration: (raw['migration'] as MigrationReport) ?? emptyMigrationReport()
+    migration: (raw['migration'] as MigrationReport) ?? emptyMigrationReport(),
+    sequence: assignMissingSequences(annotations, passes, raw['sequence'])
   };
+}
+
+function assignMissingSequences(
+  annotations: Record<string, Annotation>,
+  passes: Record<string, Pass>,
+  stored: unknown
+): number {
+  let highest = typeof stored === 'number' && Number.isInteger(stored) && stored >= 0 ? stored : 0;
+  const unstamped: Array<{ at: string; stamp: (sequence: number) => void }> = [];
+  for (const pass of Object.values(passes)) {
+    if (typeof pass.sequence !== 'number') {
+      unstamped.push({
+        at: pass.at,
+        stamp: (sequence) => {
+          pass.sequence = sequence;
+        }
+      });
+    }
+  }
+  for (const annotation of Object.values(annotations)) {
+    for (const event of annotation.history) {
+      if (event.type === 'amended' && typeof event.sequence !== 'number') {
+        unstamped.push({
+          at: event.at,
+          stamp: (sequence) => {
+            event.sequence = sequence;
+          }
+        });
+      }
+    }
+  }
+  unstamped.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+  for (const item of unstamped) {
+    highest += 1;
+    item.stamp(highest);
+  }
+  return highest;
 }
 
 function keptOriginalEvidence(annotation: Annotation, resolution: TargetResolutionRecord): boolean {

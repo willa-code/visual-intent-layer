@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { representativeEnvelope } from '../envelope/fixtures.js';
 import { createReviewService, type ReviewService } from './service.js';
 import { computeRevision } from '../artifact/revision.js';
@@ -311,6 +311,49 @@ describe('check-in and interruption', () => {
     expect(next.amendments).toEqual(
       expect.arrayContaining([{ replacedId: original.annotationId, replacementId: amended.successor.annotationId }])
     );
+  });
+
+  it('keeps a replacement delivered in the same millisecond as the previous check-in', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    try {
+      const service = setup();
+      const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+      const original = seed(service, opened, 'before');
+      service.deliverAnnotations(opened.sessionId, {
+        annotationIds: [original.annotationId],
+        intent: 'next-pass'
+      });
+      const cursor = service.checkIn(opened.sessionId).cursor;
+      const amended = service.amendAnnotation(opened.sessionId, original.annotationId, { note: 'after' });
+
+      const next = service.checkIn(opened.sessionId, { cursor });
+
+      expect(next.since).toBe(cursor);
+      expect(next.deliveries.map((entry) => entry.intent)).toContain('steering');
+      expect(next.amendments).toEqual(
+        expect.arrayContaining([
+          { replacedId: original.annotationId, replacementId: amended.successor.annotationId }
+        ])
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reads everything rather than dropping direction when the cursor is from an older build', async () => {
+    const service = setup();
+    const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+    const annotation = seed(service, opened, 'written before the cursor was a position');
+    service.deliverAnnotations(opened.sessionId, {
+      annotationIds: [annotation.annotationId],
+      intent: 'next-pass'
+    });
+    const first = service.checkIn(opened.sessionId);
+
+    const reread = service.checkIn(opened.sessionId, { cursor: first.checkedInAt });
+
+    expect(reread.deliveries).toHaveLength(1);
   });
 
   it('carries a stop request session-scoped, never in an envelope', async () => {

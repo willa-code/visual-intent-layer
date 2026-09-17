@@ -37,6 +37,7 @@ export type AnnotationEvent = {
     | 'amended'
     | 'replaced';
   at: string;
+  sequence?: number;
   detail?: string;
 };
 
