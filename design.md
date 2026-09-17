@@ -120,11 +120,11 @@ its own; a token pair is not licensed for a use it was not checked against.
 
 | Role surface | Light surface / ink | Dark surface / ink |
 | --- | --- | --- |
-| `attention` | `#FFF2CC` / `#6B4A00` | `#3A2F14` / `#F0D089` |
+| `attention` | `#FFF2CC` / `#6B4A00` | `#3A2E15` / `#F0D089` |
 | `progress` | `#E9EAFE` / `#37358F` | `#232449` / `#B9BCF5` |
-| `success` | `#E6EFE2` / `#2E4A28` | `#1F2E1D` / `#A9C9A0` |
-| `closed` | `#F0EEEC` / `#57535E` | `#252329` / `#A9A5B4` |
-| `destructive` | `#FFEDE6` / `#7E3A28` | `#3A231C` / `#F0B49F` |
+| `success` | `#E6EFE2` / `#2E4A28` | `#212E1D` / `#A9C9A0` |
+| `closed` | `#F0EEEC` / `#57535E` | `#262220` / `#B3ACA4` |
+| `destructive` | `#FFEDE6` / `#7E3A28` | `#3A241B` / `#F0B49F` |
 
 `canvas` and `surface` are roles as well as primitives, and no component may
 leave one of them without a consumer. The rail's material is `canvas`; a raised
@@ -617,3 +617,31 @@ separately. `design.md` deliberately lists no component this iteration does not
 build: the previous iteration's `RelationGuide` entry was a contract promising
 something no surface path could reach, and removing it was part of the
 correction.
+### 2026-09-16 — The dark semantic pairs are corrected to the shipped warm values
+
+Reason: a palette audit against the selected reference, **Luminous Native** from
+the Shared Intent UI/UX contract (`canvas.warmWhite #FBFAF8`, `surface.default
+#FFFFFF`, `ink.primary #20202A`, `ink.secondary #676674`, `ink.muted #76727C`,
+`line.default #E9E5E5`, `line.strong #D4CED1`, cobalt `#2B5FD7`), found the light
+primitives and light semantic pairs accurate to the letter, but the dark semantic
+table stale. The previous iteration deliberately warmed the dark counterpart in
+code (`14a73a1`, "Operator-chosen theme with a warm dark counterpart") and the
+table was not re-cut, so all five dark rows disagreed with the shipped
+`tokens.css`; `closed` still carried a cool lavender-grey that contradicted this
+document's own warm-family rule. One dark row has also been brought back to the
+light counterpart's hue: `progress` is the counterpart of the light blue-violet
+`#E9EAFE` / `#37358F`, so its dark tint is blue-violet `#232449` rather than the
+navy it had drifted to.
+
+Replaces:
+
+- §3's dark half of the semantic surface-pair table, with the values the code
+  already ships and the §9 gallery pins: `attention #3A2E15 / #F0D089`,
+  `progress #232449 / #B9BCF5`, `success #212E1D / #A9C9A0`,
+  `closed #262220 / #B3ACA4`, `destructive #3A241B / #F0B49F`.
+
+Unchanged: every light primitive and semantic value, every dark primitive, the
+`canvas`/`surface`/`surface.sunken` role assignment, and the rule that the
+artifact is served on its own white and never samples chrome. The dark base
+remains the warm near-black canvas, elevated charcoal surfaces and light ink the
+reference asks for; each dark semantic pair clears 4.5:1.
