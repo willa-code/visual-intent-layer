@@ -1,6 +1,6 @@
 # Reach within the class: shadow roots, same-origin frames and rendered rows
 
-Status: ready-for-agent
+Status: done
 
 Scope accepted, and every question that gated the tickets is decided (see **Decided
 already**). This file exists because the shipped artifact class is wider than the
