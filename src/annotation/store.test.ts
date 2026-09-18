@@ -433,4 +433,78 @@ describe('Annotation store', () => {
 
     expect(() => store.amend(annotation.annotationId, { note: 'x' })).toThrow(/cannot be amended/i);
   });
+
+  it('opens a new Pass carrying the open members and closing the old one', () => {
+    const store = new AnnotationStore(dataDir());
+    const annotations = ['t-a', 't-b', 't-c'].map((targetId) =>
+      store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [{ ...target(), targetId }] })
+    );
+    const source = store.markDelivered(
+      annotations.map((annotation) => annotation.annotationId),
+      { host: 'test', intent: 'next-pass', artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' } }
+    );
+    for (const annotation of annotations) {
+      store.recordResolutions(
+        annotation.annotationId,
+        [resolveTarget(annotation.targets[0]!, [candidate(`n-${annotation.annotationId}`)])],
+        'rev-2'
+      );
+    }
+    const frozenOutcome = store.getPass(source.passId)!.outcome;
+    store.verify(annotations[0]!.annotationId, 'approve');
+    store.verify(annotations[1]!.annotationId, 'not-fixed');
+
+    const next = store.anotherPass(source.passId, {
+      host: 'test',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-2' }
+    });
+
+    expect(store.getPass(source.passId)?.state).toBe('closed');
+    expect(store.getPass(source.passId)?.outcome).toEqual(frozenOutcome);
+    expect(store.getPass(source.passId)?.annotationIds).toHaveLength(3);
+    expect(next.intent).toBe('next-pass');
+    expect(next.fromRevision).toBe('rev-2');
+    expect(next.idempotencyKey).not.toBe(source.idempotencyKey);
+    expect([...next.annotationIds].sort()).toEqual(
+      [annotations[1]!.annotationId, annotations[2]!.annotationId].sort()
+    );
+    expect(store.get(annotations[0]!.annotationId)?.state).toBe('verified');
+    expect(store.get(annotations[0]!.annotationId)?.passId).toBe(source.passId);
+
+    const carried = store.get(annotations[1]!.annotationId)!;
+    expect(carried.passId).toBe(next.passId);
+    expect(carried.state).toBe('delivered');
+    expect(carried.verification).toBeUndefined();
+    expect(carried.resolutions).toEqual([]);
+  });
+
+  it('refuses Another Pass when every member is accepted or abandoned', () => {
+    const store = new AnnotationStore(dataDir());
+    const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });
+    const pass = store.markDelivered([annotation.annotationId], {
+      host: 'test',
+      intent: 'next-pass',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+    });
+    store.verify(annotation.annotationId, 'approve');
+
+    expect(() =>
+      store.anotherPass(pass.passId, { host: 'test', artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' } })
+    ).toThrow(/nothing to attempt again/i);
+  });
+
+  it('refuses Another Pass on a closed Pass', () => {
+    const store = new AnnotationStore(dataDir());
+    const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });
+    const pass = store.markDelivered([annotation.annotationId], {
+      host: 'test',
+      intent: 'next-pass',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+    });
+    store.closePass(pass.passId);
+
+    expect(() =>
+      store.anotherPass(pass.passId, { host: 'test', artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' } })
+    ).toThrow(/already closed/i);
+  });
 });

@@ -8,14 +8,16 @@ export type BatchEnvelopeInput = {
   annotations: Annotation[];
   intent: Exclude<DeliveryIntent, 'draft'>;
   requestedAt?: string;
+  idempotencyKeySalt?: string;
 };
 
-export function batchIdempotencyKey(annotations: Annotation[]): string {
+export function batchIdempotencyKey(annotations: Annotation[], salt?: string): string {
   const ids = annotations
     .map((annotation) => annotation.annotationId)
     .sort()
     .join(',');
-  return `idem-${sha256(ids).slice(0, 32)}`;
+  const preimage = salt ? `${ids}|${salt}` : ids;
+  return `idem-${sha256(preimage).slice(0, 32)}`;
 }
 
 export function batchEnvelopeId(idempotencyKey: string): string {
@@ -32,7 +34,7 @@ export function buildBatchEnvelope(input: BatchEnvelopeInput): Envelope {
     }
   }
   const stamped = input.requestedAt ?? new Date().toISOString();
-  const idempotencyKey = batchIdempotencyKey(input.annotations);
+  const idempotencyKey = batchIdempotencyKey(input.annotations, input.idempotencyKeySalt);
   return {
     schemaVersion: '0.3',
     envelopeId: batchEnvelopeId(idempotencyKey),

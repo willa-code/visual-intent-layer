@@ -109,6 +109,7 @@ export type ReviewService = {
     request: { annotationIds: string[]; intent: Exclude<DeliveryIntent, 'draft'>; host?: string }
   ): DeliveryResult;
   sendQueue(sessionId: string, options?: { host?: string; intent?: 'next-pass' | 'draft' }): DeliveryOutcome;
+  anotherPass(sessionId: string, passId: string): DeliveryResult;
   amendAnnotation(
     sessionId: string,
     annotationId: string,
@@ -342,6 +343,23 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     const pass = annotations.markDelivered(request.annotationIds, {
       host,
       intent: request.intent,
+      artifact: {
+        id: session.artifactId,
+        kind: session.kind as 'saved-html' | 'react-vite-app',
+        revision: session.adoptedRevision ?? session.revision,
+        displayName: session.displayName
+      }
+    });
+    const signal: DeliverySignal = { pass };
+    const holding = (waiters.get(sessionId)?.length ?? 0) > 0;
+    resolveWaiters(sessionId, signal);
+    return { pass, channel: holding ? 'held-call' : 'next-check-in', holding };
+  }
+
+  function anotherPass(sessionId: string, passId: string): DeliveryResult {
+    const session = requireSession(sessionId);
+    const pass = annotations.anotherPass(passId, {
+      host: 'browser',
       artifact: {
         id: session.artifactId,
         kind: session.kind as 'saved-html' | 'react-vite-app',
@@ -659,6 +677,7 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     requestInterruption,
     pendingInterruption,
     checkIn,
+    anotherPass,
     mostRecentSessionId,
     waitForSend,
     waitForDelivery,

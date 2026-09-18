@@ -185,6 +185,10 @@ export class Api {
     await this.json(this.url(`/api/passes/${passId}/close`), { method: 'POST' });
   }
 
+  async anotherPass(passId: string): Promise<void> {
+    await this.json(this.url(`/api/passes/${passId}/another`), { method: 'POST' });
+  }
+
   async verify(annotationId: string, verdict: string): Promise<Annotation> {
     const result = await this.json<{ annotation: Annotation }>(this.url(`/api/annotations/${annotationId}/verify`), {
       method: 'POST',

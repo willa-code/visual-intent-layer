@@ -181,6 +181,11 @@ describe('Review Surface (primary seam: a real browser engine)', () => {
       (count) => count === 1,
       'the rail renders one Pass header in the ready state'
     );
+    await expectLater(
+      () => page.locator('.pass-header[data-state="ready"] [data-action="another-pass"]').count(),
+      (count) => count === 1,
+      'a ready Pass offers Another Pass'
+    );
     expect(await page.locator('.annotation-row[data-state="replaced"]').count()).toBe(0);
 
     await expectLater(

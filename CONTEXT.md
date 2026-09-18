@@ -53,7 +53,7 @@ The single verdict that the revision under review does not satisfy an Annotation
 _Avoid_: Another pass, request changes, retry, failed, rejected
 
 **Another Pass**:
-The act of asking the agent to attempt the open Annotations of the current Pass again, carrying those Annotations rather than new direction. It is delivered as Next-Pass Intent.
+The act of asking the agent to attempt the open Annotations of the current Pass again, carrying those Annotations rather than new direction. It is delivered as Next-Pass Intent and opens a new Pass; the Pass it answered closes with its outcome and result revision frozen.
 _Avoid_: Regenerate, rerun, retry, request changes, continue
 
 **Artifact**:

@@ -145,6 +145,10 @@ export function isAmendable(state: AnnotationState): boolean {
   return state === 'delivered' || state === 'resolved' || state === 'acknowledged' || state === 'not-fixed';
 }
 
+export function isAttemptable(state: AnnotationState): boolean {
+  return state === 'delivered' || state === 'resolved' || state === 'acknowledged' || state === 'not-fixed';
+}
+
 export function approvalBlockers(
   annotation: Annotation,
   stateFor?: (resolution: TargetResolutionRecord) => RuntimeStateContext

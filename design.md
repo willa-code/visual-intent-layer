@@ -283,7 +283,7 @@ gallery in §9 renders them.
 | `AnchoredCard` | positioned left/right/flipped, clamped to viewport, dismissed |
 | `AnnotationCard` | drafting; with attachment; with relation, showing the `RelationSentence`. Its target line is a kind icon plus what was pointed at, never the bare kind word, and an Area carries the drawn-boundary glyph. `Queue` is the only worded action, with attach and delete as icons. No instruction copy anywhere in the card: the placeholder carries the question and the attach control explains itself through its accessible name |
 | `AttachmentChip` | uploading, ready, failed, removed |
-| `PassLedger` | empty; one Pass open; several Passes. Rows grouped by Pass, where the state pill carries the difference so sending never moves an Annotation out of view; actionable Annotations first, and Replaced and obsolete rows behind one toggle rather than deleted, while a decided row stays visible because its decision can still be changed; a Pass header states its state and its outcome counts, and members left undecided when it was closed read as never decided |
+| `PassLedger` | empty; one Pass open; several Passes. Rows grouped by Pass, where the state pill carries the difference so sending never moves an Annotation out of view; actionable Annotations first, and Replaced and obsolete rows behind one toggle rather than deleted, while a decided row stays visible because its decision can still be changed; a Pass header states its state and its outcome counts, offers **Try again** while it is ready, and states how many members it carried on; members left undecided when it was closed read as never decided |
 | `AnnotationPill` | draft, queued, delivered, acknowledged, resolved, verified, rejected, not-fixed, replaced, obsolete |
 | `Composer` | empty, typing, over threshold, disabled |
 | `SendAction` | one verb, with no intent selector to choose from; disabled with the reason stated; the agent's position and whether it is holding the call are stated beside it |
@@ -783,3 +783,20 @@ not hidden behind the closed toggle, which now holds only Replaced and obsolete
 rows; hiding it would hide the act of changing it. Closing freezes a Pass's
 outcome, its result revision and its decisions, and close and reopen are recorded
 as events rather than one overwritten timestamp. ADR-0025 records the decision.
+
+### 2026-09-18 — Another Pass opens a new Pass
+
+Reason: `CONTEXT.md` defines Another Pass as the act of attempting the open
+Annotations again, but the surface had no such act and the store offered only
+`closePass`. Saying what a revision answered requires each attempt to be its own
+Pass with its own revision range, so re-delivering one Pass would reset the counts
+the previous attempt already earned.
+
+Replaces:
+
+- §6's `PassLedger` entry, which offered no Another Pass control.
+
+A ready Pass offers **Try again**. It carries every member that has not been
+accepted and not been abandoned into a new Pass delivered as Next-Pass Intent,
+closes the Pass it answered with its outcome and result revision frozen, and states
+on that Pass how many members it carried on. ADR-0026 records the decision.

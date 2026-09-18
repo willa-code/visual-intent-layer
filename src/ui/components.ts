@@ -492,6 +492,8 @@ export function passHeader(options: {
   number: number;
   outstanding: number;
   onClose: () => void;
+  onAnotherPass?: () => void;
+  carriedAway?: number;
 }): HTMLElement {
   const { pass } = options;
   const header = h('header', {
@@ -521,12 +523,29 @@ export function passHeader(options: {
       text: `${pass.outcome.changed} changed · ${pass.outcome.same} same · ${pass.outcome.notFound} not found`
     })
   );
+  if (options.carriedAway && options.carriedAway > 0) {
+    header.appendChild(
+      h('p', {
+        class: 'hint',
+        text: `${options.carriedAway} carried into a later Pass`
+      })
+    );
+  }
+  const actions = h('div', { class: 'chips' });
+  if (pass.state === 'ready' && options.onAnotherPass) {
+    const again = button('Try again', { variant: 'primary', onClick: options.onAnotherPass });
+    again.dataset['action'] = 'another-pass';
+    actions.appendChild(again);
+  }
   if (pass.state !== 'closed') {
     const close = button(`Close Pass ${options.number}`, { variant: 'ghost', onClick: options.onClose });
     close.dataset['action'] = 'close-pass';
-    header.appendChild(close);
+    actions.appendChild(close);
   } else if (pass.closedAt) {
     header.appendChild(h('p', { class: 'hint', text: `Closed ${relativeTime(pass.closedAt)}` }));
+  }
+  if (actions.childElementCount > 0) {
+    header.appendChild(actions);
   }
   return header;
 }

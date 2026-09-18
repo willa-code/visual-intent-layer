@@ -464,6 +464,28 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     return;
   }
 
+  const anotherMatch = /^\/api\/passes\/([^/]+)\/another$/.exec(path);
+  if (method === 'POST' && anotherMatch) {
+    const passId = decodeURIComponent(anotherMatch[1]!);
+    const pass = review.annotations.getPass(passId);
+    if (!pass) {
+      sendText(response, 404, `Unknown Pass ${passId}`);
+      return;
+    }
+    const session = sessions.findByArtifact(pass.artifactId);
+    if (!session || !authorize(context, session.sessionId, url)) {
+      sendText(response, 401, 'Unauthorized');
+      return;
+    }
+    try {
+      const result = review.anotherPass(session.sessionId, passId);
+      sendJson(response, 200, { pass: result.pass, channel: result.channel, holding: result.holding });
+    } catch (error) {
+      sendText(response, 409, error instanceof Error ? error.message : 'another pass refused');
+    }
+    return;
+  }
+
   const agentMatch = /^\/api\/sessions\/([^/]+)\/agent$/.exec(path);
   if (method === 'GET' && agentMatch) {
     const session = authorizedOrRefuse(context, agentMatch[1]!, url);

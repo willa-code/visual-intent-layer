@@ -15,6 +15,7 @@ import type { DeliveryIntent } from '../host/capabilities.js';
 import {
   anchorOutcome,
   isAmendable,
+  isAttemptable,
   isInQueue,
   relationsAmong,
   verificationRefusedReason,
@@ -541,6 +542,66 @@ export class AnnotationStore {
     pass.state = 'ready';
     delete pass.closedAt;
     pass.history.push({ type: 'reopened', at });
+    this.persist();
+    return pass;
+  }
+
+  anotherPass(passId: string, input: { host: string; artifact: Pass['envelope']['artifact'] }): Pass {
+    const source = this.state.passes[passId];
+    if (!source) {
+      throw new Error(`Unknown Pass ${passId}`);
+    }
+    if (source.state === 'closed') {
+      throw new Error(`Pass ${passId} is already closed, so there is nothing to attempt again.`);
+    }
+    const members = this.annotationsOfPass(passId).filter((annotation) => isAttemptable(annotation.state));
+    if (members.length === 0) {
+      throw new Error(
+        'Every Annotation in this Pass has been accepted or abandoned, so there is nothing to attempt again.'
+      );
+    }
+    const key = batchIdempotencyKey(members, passId);
+    const existing = this.state.byIdempotencyKey[key];
+    if (existing && this.state.passes[existing]) {
+      return this.state.passes[existing]!;
+    }
+    this.closePass(passId);
+    const envelope = buildBatchEnvelope({
+      artifact: input.artifact,
+      annotations: members,
+      intent: 'next-pass',
+      idempotencyKeySalt: passId
+    });
+    const at = now();
+    const pass: Pass = {
+      passId: envelope.envelopeId,
+      artifactId: input.artifact.id,
+      fromRevision: input.artifact.revision,
+      annotationIds: members.map((annotation) => annotation.annotationId),
+      state: 'in-flight',
+      outcome: { changed: 0, same: 0, notFound: 0 },
+      history: [{ type: 'opened', at }],
+      openedAt: at,
+      envelopeId: envelope.envelopeId,
+      idempotencyKey: key,
+      host: input.host,
+      intent: 'next-pass',
+      envelope,
+      sequence: this.nextSequence(),
+      at
+    };
+    for (const annotation of members) {
+      annotation.state = 'delivered';
+      delete annotation.verification;
+      delete annotation.resolvedRevision;
+      annotation.resolutions = [];
+      annotation.passId = pass.passId;
+      annotation.sentAt = at;
+      annotation.history.push({ type: 'delivered', at, detail: input.host });
+      annotation.updatedAt = at;
+    }
+    this.state.passes[pass.passId] = pass;
+    this.state.byIdempotencyKey[key] = pass.passId;
     this.persist();
     return pass;
   }

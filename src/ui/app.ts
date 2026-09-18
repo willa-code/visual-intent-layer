@@ -300,6 +300,10 @@ class App {
         .filter((annotation) => annotation.passId === pass.passId)
         .sort((a, b) => a.order - b.order);
       const outstanding = members.filter((annotation) => !isVerification(annotation.state)).length;
+      const carriedAway = pass.annotationIds.filter((id) => {
+        const annotation = this.snapshot.annotations.find((entry) => entry.annotationId === id);
+        return annotation !== undefined && annotation.passId !== undefined && annotation.passId !== pass.passId;
+      }).length;
       const group = h(
         'section',
         { class: 'pass-group', dataset: { state: pass.state }, attrs: { 'data-state': pass.state, 'data-pass': pass.passId } },
@@ -307,7 +311,9 @@ class App {
           pass,
           number: passNumber(passes, pass),
           outstanding,
-          onClose: () => void this.closePass(pass.passId)
+          onClose: () => void this.closePass(pass.passId),
+          ...(outstanding > 0 ? { onAnotherPass: () => void this.anotherPass(pass.passId) } : {}),
+          ...(carriedAway > 0 ? { carriedAway } : {})
         }),
         this.annotationList(members, { hideClosed: this.closedHidden })
       );
@@ -1219,6 +1225,15 @@ class App {
   private async closePass(passId: string): Promise<void> {
     try {
       await this.api.closePass(passId);
+      await this.refresh();
+    } catch (error) {
+      this.showNotice(messageOf(error));
+    }
+  }
+
+  private async anotherPass(passId: string): Promise<void> {
+    try {
+      await this.api.anotherPass(passId);
       await this.refresh();
     } catch (error) {
       this.showNotice(messageOf(error));
