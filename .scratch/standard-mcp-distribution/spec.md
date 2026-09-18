@@ -322,3 +322,26 @@ suite, recorded in `.scratch/flaky-browser-suite/spec.md`.
   invalid and removed" because they are written `./dist/…`; the published tarball keeps
   them unchanged, so this is npm normalising the leading `./`, not a defect. It is the
   same in 0.3.0.
+
+**2026-09-18 (later) — the listing now retries, and a hand dispatch is not a free re-publish.**
+
+The listing workflow retries `mcp-publisher publish` while the registry answers that
+the version is missing, for up to eight attempts 30 seconds apart, and fails at once on
+any other answer. That covers the case that failed on 0.3.1: npm's packument carried the
+version about eighty seconds after `npm publish` returned, so the automatic attempt and
+the first hand dispatch both saw a 404.
+
+Two limits of the manual path are now recorded because they were measured, not assumed.
+The registry refuses a version it already lists —
+
+```
+invalid version: cannot publish duplicate version
+```
+
+— so a hand dispatch after a green listing always fails, and dispatching by hand
+re-publishes after editing `server.json` only when that edit moved the version. Moving
+the listing onto the `Publish` workflow's completion instead was tried and then dropped:
+it couples the listing to a publish that succeeded, but whether `workflow_run` fires for
+a run triggered by `release: published` could not be checked without cutting another
+version, and if it did not fire the listing would stop running silently. Retrying on the
+existing trigger is the smaller fix and it is the part that was actually failing.

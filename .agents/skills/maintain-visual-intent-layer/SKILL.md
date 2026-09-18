@@ -112,7 +112,16 @@ The official MCP Registry hosts metadata only, and it verifies that the npm pack
 points at declares the same name, so the listing can only be published once the release
 exists. The `Registry listing` workflow does it: it triggers on `release: published`,
 authenticates as this repository over GitHub OIDC, validates `server.json` and publishes
-it. Dispatch it by hand to re-publish after editing `server.json`.
+it. Both triggers start together, so the listing reaches the registry while `npm publish`
+is still running and the registry reports the version as a 404; the workflow retries that
+specific answer for up to four minutes and fails immediately on anything else, so a real
+auth or validation error is not hidden. A green automatic run is the expected outcome and
+does not need a hand dispatch.
+
+Dispatch it by hand only when the version being listed has never been published — after
+a listing has succeeded, the registry refuses a repeat with `invalid version: cannot
+publish duplicate version`. So a hand dispatch re-publishes after editing `server.json`
+only if that edit moved the version.
 
 Bump `server.json` in the same step as `package.json`, or the listing names a version
 the package does not have.
