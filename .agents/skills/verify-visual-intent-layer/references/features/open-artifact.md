@@ -2,6 +2,10 @@
 
 A Builder-Reviewer opens a saved-HTML Artifact and gets a faithful rendering of it in the Review Surface, or opens a running local application and gets the same surface over the live app. Before driving, the agent can check that the instance is alive, is the run's own, reflects the working tree, and still authorises the session.
 
+_Partly driven live: the recipes below carry their expected outcomes. `open-no-browser` is
+not covered by a drive, because a Lever run suppresses the automatic browser and its host
+always has one._
+
 ## Sub-features
 
 - `open-html` opens a saved-HTML Artifact by filesystem path and mints its review URL.

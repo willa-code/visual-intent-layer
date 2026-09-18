@@ -49,3 +49,20 @@ Tests: `src/service/browser.test.ts` is new (5 cases: platform spec, missing ope
 synchronous throw, success plus unref, suppression parsing); `service.test.ts` gained
 the three-state assertion; `protocol.test.ts` gained the end-to-end check that the
 tool text contains the sentence. Full suite 423 passed, 31 files.
+
+**Second review, 2026-09-18.** The Standards axis raised two notes. The first was a
+coverage marker on `open-artifact.md`, fixed there: the file carried no marker, and
+although the skill sanctions "none", it now admits a sub-feature with no drive, so it
+leads with `_Partly driven live:_` and names `open-no-browser` as the gap.
+
+The second was that the opener promise has no timeout, so a child that somehow emitted
+neither `'spawn'` nor `'error'` would hang `openArtifact`. Left as it is, deliberately:
+Node documents those two events as mutually exclusive and exhaustive for a spawn
+attempt, `resolve` is idempotent so a double fire is harmless, and a timer would turn a
+slow opener into a false failure — a worse error than the one it guards. Recorded here
+so it is a decision rather than an oversight.
+
+The Spec axis reported one verification gap: it had no shell, so it could not re-run
+`npm pack --dry-run --json` and could only check that the tarball arithmetic was
+self-consistent. The numbers were re-run directly at HEAD when the change landed — 209
+files to 181, and 0 of the 28 dev-tooling files — so that gap is closed.
