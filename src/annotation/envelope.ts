@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Envelope } from '../envelope/validate.js';
 import type { DeliveryIntent } from '../host/capabilities.js';
-import type { Annotation } from './model.js';
+import { declaredMissingNow, type Annotation } from './model.js';
 
 export type BatchEnvelopeInput = {
   artifact: { id: string; kind: 'saved-html' | 'react-vite-app'; revision: string; displayName?: string };
@@ -47,7 +47,10 @@ export function buildBatchEnvelope(input: BatchEnvelopeInput): Envelope {
     annotations: input.annotations.map((annotation) => ({
       annotationId: annotation.annotationId,
       note: annotation.note,
-      targets: annotation.targets,
+      targets: annotation.targets.map((target) => {
+        const declaration = declaredMissingNow(annotation, target.targetId);
+        return declaration ? { ...target, declaredMissing: { at: declaration.at, revision: declaration.revision } } : target;
+      }),
       relationships: annotation.relationships,
       references: annotation.references,
       attachments: annotation.attachments,

@@ -204,6 +204,14 @@ export class Api {
     return result.annotation;
   }
 
+  async declareMissing(annotationId: string, targetId: string): Promise<Annotation> {
+    const result = await this.json<{ annotation: Annotation }>(
+      this.url(`/api/annotations/${annotationId}/declare-missing`),
+      { method: 'POST', body: JSON.stringify({ targetId }) }
+    );
+    return result.annotation;
+  }
+
   async uploadAttachment(annotationId: string, file: File): Promise<Annotation> {
     const result = await this.json<{ annotation: Annotation }>(
       this.url(`/api/annotations/${annotationId}/attachments?name=${encodeURIComponent(file.name)}`),

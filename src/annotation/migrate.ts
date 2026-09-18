@@ -99,6 +99,7 @@ function mapRecord(record: LegacyRecord, startOrder: number, at: string): Annota
       references: [],
       attachments: [],
       resolutions: mapResolutions(record),
+      declaredMissing: [],
       ...(record.successorId ? { replacedBy: record.successorId } : {}),
       ...(verificationOf(record) ? { verification: verificationOf(record)! } : {}),
       history: mapHistory(record, createdAt),

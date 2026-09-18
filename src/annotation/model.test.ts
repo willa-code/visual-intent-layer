@@ -40,6 +40,7 @@ function annotation(overrides: Partial<Annotation> = {}): Annotation {
     references: [],
     attachments: [],
     resolutions: [],
+    declaredMissing: [],
     history: [],
     createdAt: '',
     updatedAt: '',

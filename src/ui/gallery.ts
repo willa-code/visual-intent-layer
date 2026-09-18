@@ -121,6 +121,7 @@ function sampleAnnotation(state: Annotation['state'], overrides: Partial<Annotat
     references: [],
     attachments: [],
     resolutions: [],
+    declaredMissing: [],
     history: [],
     createdAt: '',
     updatedAt: '',

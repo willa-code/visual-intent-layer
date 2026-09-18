@@ -20,6 +20,8 @@ export type AnnotationState =
 
 export type VerificationVerdict = 'approve' | 'not-fixed' | 'obsolete';
 
+export type DeclaredMissing = { targetId: string; at: string; revision: string };
+
 export type AnchorOutcome = 'changed' | 'same' | 'not-found';
 
 export function anchorOutcome(annotation: Annotation, resolution: TargetResolutionRecord): AnchorOutcome {
@@ -67,6 +69,7 @@ export type AnnotationEvent = {
     | 'acknowledged'
     | 'verified'
     | 'reopened'
+    | 'declared-missing'
     | 'amended'
     | 'replaced';
   at: string;
@@ -87,6 +90,7 @@ export type Annotation = {
   references: AnnotationReference[];
   attachments: AnnotationAttachment[];
   resolutions: TargetResolutionRecord[];
+  declaredMissing: DeclaredMissing[];
   resolvedRevision?: string;
   passId?: string;
   verification?: { verdict: VerificationVerdict; at: string; successorId?: string };
@@ -160,6 +164,9 @@ export function approvalBlockers(
     }
     const label = labelFor(annotation, resolution.targetId);
     if (resolution.candidates.length === 0) {
+      if (declaredMissingNow(annotation, resolution.targetId)) {
+        continue;
+      }
       const state = stateFor?.(resolution);
       if (deriveResolutionLabel(resolution, state) === 'state-only') {
         blockers.push(`${label} may exist only in a state no longer on screen, so approval is blocked.`);
@@ -171,6 +178,15 @@ export function approvalBlockers(
     blockers.push(`${label} could not be matched in this revision, so approval is blocked.`);
   }
   return blockers;
+}
+
+export function declaredMissingNow(annotation: Annotation, targetId: string): DeclaredMissing | undefined {
+  return annotation.declaredMissing.find(
+    (declaration) =>
+      declaration.targetId === targetId &&
+      annotation.resolvedRevision !== undefined &&
+      declaration.revision === annotation.resolvedRevision
+  );
 }
 
 export function verificationRefusedReason(

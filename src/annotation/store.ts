@@ -123,6 +123,7 @@ export class AnnotationStore {
       references: [],
       attachments: [],
       resolutions: [],
+      declaredMissing: [],
       history: [{ type: 'created', at }],
       createdAt: at,
       updatedAt: at
@@ -148,6 +149,8 @@ export class AnnotationStore {
       }
       if (patch.targets !== undefined) {
         annotation.targets = patch.targets;
+        const present = new Set(patch.targets.map((target) => target.targetId));
+        annotation.declaredMissing = annotation.declaredMissing.filter((entry) => present.has(entry.targetId));
       }
       if (patch.relationships !== undefined) {
         annotation.relationships = patch.relationships;
@@ -343,7 +346,34 @@ export class AnnotationStore {
       annotation.targets = targets;
       annotation.relationships = relationships ?? relationsAmong(annotation.relationships, targets).relationships;
       annotation.resolutions = [];
+      annotation.declaredMissing = [];
       annotation.history.push({ type: 'repointed', at: now() });
+      return annotation;
+    });
+  }
+
+  declareMissing(annotationId: string, targetId: string): Annotation {
+    const current = this.get(annotationId);
+    if (!current) {
+      throw new Error(`Unknown Annotation ${annotationId}`);
+    }
+    const resolution = current.resolutions.find((entry) => entry.targetId === targetId);
+    if (!resolution) {
+      throw new Error(`Annotation ${annotationId} has no resolution for target ${targetId}.`);
+    }
+    if (resolution.match !== 'unresolved' || resolution.candidates.length > 0) {
+      throw new Error(
+        'A target can be declared missing only where it could not be found and has no candidates; re-point it instead.'
+      );
+    }
+    const revision = current.resolvedRevision ?? current.writtenRevision;
+    const at = now();
+    return this.mutate(annotationId, (annotation) => {
+      annotation.declaredMissing = [
+        ...annotation.declaredMissing.filter((entry) => entry.targetId !== targetId),
+        { targetId, at, revision }
+      ];
+      annotation.history.push({ type: 'declared-missing', at, detail: targetId });
       return annotation;
     });
   }
@@ -448,6 +478,7 @@ export class AnnotationStore {
         references: incoming.references ?? [],
         attachments: incoming.attachments ?? [],
         resolutions: [],
+        declaredMissing: [],
         passId: envelope.envelopeId,
         history: [
           { type: 'created', at },
@@ -746,6 +777,7 @@ function normalizeAnnotation(raw: Record<string, unknown>): Annotation {
   return {
     ...(rest as Annotation),
     state: normalizeAnnotationState(annotation.state),
+    declaredMissing: annotation.declaredMissing ?? [],
     ...(supersedes ? { replaces: supersedes } : {}),
     ...(supersededBy ? { replacedBy: supersededBy } : {}),
     ...(annotation.verification

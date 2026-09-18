@@ -140,6 +140,10 @@ _Avoid_: Best guess, likely file
 The act of locating the same intended target in another artifact revision. A resolution reports whether the target was matched exactly, recovered on weaker evidence, or left unresolved, and never chooses an uncertain target: an unresolved target carries its candidates, and one without candidates is deleted. Whether an Annotation was written against the revision being compared is a separate, Annotation-level fact.
 _Avoid_: Selector match, reattachment, best guess
 
+**Declared Missing**:
+The Builder-Reviewer's own act asserting that a target no longer exists, offered only where Target Resolution found no candidate for it and stamped with the result revision it was made against. It is stored on the Annotation, reads in the Builder-Reviewer's own words, clears that target's approval blocker, and travels in the next envelope so the agent is told. It never shares a word with the derived vocabulary the product uses when it simply could not find a target.
+_Avoid_: Deleted, removed, gone, auto-resolved
+
 **Relational Intent**:
 Intent expressed through a relationship among targets, such as alignment, ordering, spacing, containment, or equivalence. It is expressed by manipulating targets directly: a modifier extends a selection into a set, and a drag beginning on a target already in that set infers one relation, shown as one sentence before it is recorded.
 _Avoid_: Multiple annotations, grouped feedback

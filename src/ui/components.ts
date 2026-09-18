@@ -87,7 +87,8 @@ export function resolutionItem(
   record: TargetResolutionRecord,
   label: string,
   state?: RuntimeStateContext,
-  outcome?: AnchorOutcome
+  outcome?: AnchorOutcome,
+  declared = false
 ): HTMLElement {
   const derived = deriveResolutionLabel(record, state);
   const cueName: IconName =
@@ -103,7 +104,8 @@ export function resolutionItem(
   cue.appendChild(icon(cueName, { size: 14 }));
   const comparison =
     outcome && (derived === 'matched' || derived === 'recovered') ? ` · ${anchorOutcomeText(outcome)}` : '';
-  item.append(cue, h('span', { text: `${label}: ${resolutionLabelText(derived)}${comparison}` }));
+  const text = declared ? `${label}: Declared missing by you` : `${label}: ${resolutionLabelText(derived)}${comparison}`;
+  item.append(cue, h('span', { text }));
   return item;
 }
 
@@ -323,6 +325,23 @@ export function repointAction(annotation: Annotation, options: { active: boolean
   control.dataset['annotation'] = annotation.annotationId;
   control.append(options.active ? '…' : '');
   control.prepend(icon('point', { size: 14 }));
+  return control;
+}
+
+export function declareMissingAction(
+  annotation: Annotation,
+  targetId: string,
+  options: { onDeclare: () => void }
+): HTMLElement {
+  const control = button('Declare missing', {
+    variant: 'ghost',
+    title: 'You have checked, and this target no longer exists in the artifact.',
+    onClick: options.onDeclare
+  });
+  control.dataset['action'] = 'declare-missing';
+  control.dataset['target'] = targetId;
+  control.dataset['annotation'] = annotation.annotationId;
+  control.prepend(icon('deleted', { size: 14 }));
   return control;
 }
 

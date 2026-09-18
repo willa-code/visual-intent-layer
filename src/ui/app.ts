@@ -1,5 +1,5 @@
 import type { Annotation } from '../annotation/model.js';
-import { anchorOutcome, approvalBlockers, isAmendable, isAttemptable, isInQueue, isVerification, missingRelationTargets, relationsAmong, targetName } from '../annotation/model.js';
+import { anchorOutcome, approvalBlockers, declaredMissingNow, isAmendable, isAttemptable, isInQueue, isVerification, missingRelationTargets, relationsAmong, targetName } from '../annotation/model.js';
 import { relationSentence } from '../annotation/relations.js';
 import { deriveResolutionLabel, type RuntimeStateContext } from '../resolution/model.js';
 import type { ResolutionCandidate, TargetResolutionRecord } from '../resolution/resolve.js';
@@ -8,6 +8,7 @@ import {
   agentDisclosure,
   attachmentChips,
   coachmark,
+  declareMissingAction,
   describeEvidence,
   disclosureList,
   drawer,
@@ -425,7 +426,10 @@ class App {
     for (const resolution of annotation.resolutions) {
       const target = annotation.targets.find((entry) => entry.targetId === resolution.targetId);
       const label = target?.label ?? target?.renderedGrounding.accessibleName ?? target?.kind ?? resolution.targetId;
-      targets.appendChild(resolutionItem(resolution, label, stateFor(resolution), anchorOutcome(annotation, resolution)));
+      const declared = declaredMissingNow(annotation, resolution.targetId) !== undefined;
+      targets.appendChild(
+        resolutionItem(resolution, label, stateFor(resolution), anchorOutcome(annotation, resolution), declared)
+      );
     }
     if (annotation.resolutions.length > 0) {
       row.appendChild(targets);
@@ -434,15 +438,28 @@ class App {
       if (resolution.match !== 'unresolved') {
         continue;
       }
+      if (declaredMissingNow(annotation, resolution.targetId)) {
+        continue;
+      }
       const target = annotation.targets.find((entry) => entry.targetId === resolution.targetId);
       const label = target?.label ?? resolution.targetId;
       row.appendChild(h('p', { class: 'hint', text: unresolvedSentence(label, resolution, stateFor(resolution)) }));
-      row.appendChild(
+      const unresolvedActions = h(
+        'div',
+        { class: 'chips' },
         repointAction(annotation, {
           active: this.repointFor === annotation.annotationId,
           onRepoint: () => this.startRepoint(annotation.annotationId)
         })
       );
+      if (resolution.candidates.length === 0 && this.repointFor !== annotation.annotationId) {
+        unresolvedActions.appendChild(
+          declareMissingAction(annotation, resolution.targetId, {
+            onDeclare: () => void this.declareMissing(annotation.annotationId, resolution.targetId)
+          })
+        );
+      }
+      row.appendChild(unresolvedActions);
     }
 
     if (isDecidable(annotation.state)) {
@@ -1218,6 +1235,16 @@ class App {
       if (removed > 0) {
         this.showNotice(removedRelationsNotice(removed));
       }
+    } catch (error) {
+      this.showNotice(messageOf(error));
+    }
+  }
+
+  private async declareMissing(annotationId: string, targetId: string): Promise<void> {
+    try {
+      await this.api.declareMissing(annotationId, targetId);
+      this.repointFor = undefined;
+      await this.refresh();
     } catch (error) {
       this.showNotice(messageOf(error));
     }

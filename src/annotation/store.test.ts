@@ -507,4 +507,111 @@ describe('Annotation store', () => {
       store.anotherPass(pass.passId, { host: 'test', artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' } })
     ).toThrow(/already closed/i);
   });
+
+  it('declares a target missing, clears its approval wall, and carries it to the agent', () => {
+    const store = new AnnotationStore(dataDir());
+    const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });
+    const pass = store.markDelivered([annotation.annotationId], {
+      host: 'test',
+      intent: 'next-pass',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+    });
+    const unresolved = resolveTarget(target(), [
+      {
+        nodeId: 'n-decoy',
+        selectors: ['footer a.help'],
+        tag: 'a',
+        semanticRole: 'link',
+        accessibleName: 'Help',
+        text: 'Help'
+      }
+    ]);
+    expect(unresolved.match).toBe('unresolved');
+    expect(unresolved.candidates).toHaveLength(0);
+    store.recordResolutions(annotation.annotationId, [unresolved], 'rev-2');
+    expect(() => store.verify(annotation.annotationId, 'approve')).toThrow(/approval is blocked/i);
+
+    const declared = store.declareMissing(annotation.annotationId, 't-1');
+
+    expect(declared.declaredMissing).toEqual([{ targetId: 't-1', at: expect.any(String), revision: 'rev-2' }]);
+    expect(declared.history.some((event) => event.type === 'declared-missing')).toBe(true);
+    expect(store.verify(annotation.annotationId, 'approve').state).toBe('verified');
+  });
+
+  it('carries a declared missing target to the agent in the next envelope', () => {
+    const store = new AnnotationStore(dataDir());
+    const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });
+    const pass = store.markDelivered([annotation.annotationId], {
+      host: 'test',
+      intent: 'next-pass',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+    });
+    const unresolved = resolveTarget(target(), [
+      {
+        nodeId: 'n-decoy',
+        selectors: ['footer a.help'],
+        tag: 'a',
+        semanticRole: 'link',
+        accessibleName: 'Help',
+        text: 'Help'
+      }
+    ]);
+    store.recordResolutions(annotation.annotationId, [unresolved], 'rev-2');
+    store.declareMissing(annotation.annotationId, 't-1');
+    store.markPassesReady('a', 'rev-2');
+
+    const next = store.anotherPass(pass.passId, {
+      host: 'test',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-2' }
+    });
+
+    expect(next.envelope.annotations[0]?.targets[0]?.declaredMissing).toEqual({
+      at: expect.any(String),
+      revision: 'rev-2'
+    });
+  });
+
+  it('reads a declaration made against another revision as stale', () => {
+    const store = new AnnotationStore(dataDir());
+    const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });
+    store.markDelivered([annotation.annotationId], {
+      host: 'test',
+      intent: 'next-pass',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+    });
+    const unresolved = resolveTarget(target(), [
+      {
+        nodeId: 'n-decoy',
+        selectors: ['footer a.help'],
+        tag: 'a',
+        semanticRole: 'link',
+        accessibleName: 'Help',
+        text: 'Help'
+      }
+    ]);
+    store.recordResolutions(annotation.annotationId, [unresolved], 'rev-2');
+    store.declareMissing(annotation.annotationId, 't-1');
+    expect(store.verify(annotation.annotationId, 'approve').state).toBe('verified');
+
+    store.reopenVerdict(annotation.annotationId);
+    store.recordResolutions(annotation.annotationId, [unresolved], 'rev-3');
+
+    expect(store.get(annotation.annotationId)?.declaredMissing[0]?.revision).toBe('rev-2');
+    expect(() => store.verify(annotation.annotationId, 'approve')).toThrow(/approval is blocked/i);
+  });
+
+  it('refuses to declare a target missing while it still has candidates', () => {
+    const store = new AnnotationStore(dataDir());
+    const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });
+    store.markDelivered([annotation.annotationId], {
+      host: 'test',
+      intent: 'next-pass',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+    });
+    const ambiguous = resolveTarget(target(), [candidate('n-a'), candidate('n-b')]);
+    expect(ambiguous.candidates.length).toBeGreaterThan(0);
+    store.recordResolutions(annotation.annotationId, [ambiguous], 'rev-2');
+
+    expect(() => store.declareMissing(annotation.annotationId, 't-1')).toThrow(/re-point it instead/i);
+  });
 });

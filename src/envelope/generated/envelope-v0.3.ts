@@ -19,6 +19,13 @@ export type Target = {
      */
     address?: string;
   };
+  /**
+   * The Builder-Reviewer's own act declaring that this Target no longer exists, stamped with the result revision it was made against. It never shares a word with Target Resolution's derived vocabulary: the product may only fail to find a Target, while the Builder-Reviewer may know it is gone.
+   */
+  declaredMissing?: {
+    at: string;
+    revision: string;
+  };
 } & {
   targetId: string;
   kind: "element" | "text-range" | "region";
@@ -35,6 +42,13 @@ export type Target = {
      * Address of the artifact relative to its own base, including query and fragment. Absent when the artifact was at its base.
      */
     address?: string;
+  };
+  /**
+   * The Builder-Reviewer's own act declaring that this Target no longer exists, stamped with the result revision it was made against. It never shares a word with Target Resolution's derived vocabulary: the product may only fail to find a Target, while the Builder-Reviewer may know it is gone.
+   */
+  declaredMissing?: {
+    at: string;
+    revision: string;
   };
 };
 

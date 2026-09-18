@@ -1051,6 +1051,24 @@ describe('Review Surface: Runtime State Evidence, one document, and a proxied ap
         'the Target is unresolved rather than silently matched'
       );
 
+      const unresolvedRow = statePage.locator('.annotation-row').first();
+      await expectLater(
+        () => unresolvedRow.getByRole('button', { name: 'Declare missing' }).count(),
+        (count) => count === 1,
+        'a target with no candidate offers Declare missing'
+      );
+      await unresolvedRow.getByRole('button', { name: 'Declare missing' }).click();
+      await expectLater(
+        () => statePage.locator('.annotation-row .resolution').first().innerText(),
+        (text) => /Declared missing by you/.test(text),
+        'the row states the declaration in its own words, not the derived Deleted'
+      );
+      await expectLater(
+        () => statePage.getByRole('button', { name: 'Approve' }).first().isDisabled(),
+        (disabled) => disabled === false,
+        'the declaration clears the approval wall'
+      );
+
       await frame.locator('#off-doc').click();
       await expectLater(
         () => statePage.locator('.notice').innerText(),

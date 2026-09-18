@@ -293,6 +293,7 @@ gallery in §9 renders them.
 | `AnnotationRow` | matched, recovered, ambiguous, deleted, advanced; states which revision its result came from |
 | `CandidateMark` | none, several, one chosen; drawn on the artifact, never presented as a ranked list; carries no evidence figure |
 | `RepointAction` | offered on an Annotation whose target could not be matched: the next selection re-points that Annotation rather than composing a new one |
+| `DeclareMissingAction` | offered beside `RepointAction`, and only where the target found no candidate: records the Builder-Reviewer's own declaration, which reads as theirs and clears that target's approval blocker |
 | `VerdictControls` | enabled, blocked with reason, recorded; `Approve` and `Not Fixed` are visible, obsolete sits behind one overflow on that row, and the decision already recorded is marked on its own control so choosing another changes it in one act |
 | `Drawer` | open, closed, scrollable body |
 | `DisclosureList` | populated, empty |
@@ -800,3 +801,21 @@ A ready Pass offers **Try again**. It carries every member that has not been
 accepted and not been abandoned into a new Pass delivered as Next-Pass Intent,
 closes the Pass it answered with its outcome and result revision frozen, and states
 on that Pass how many members it carried on. ADR-0026 records the decision.
+
+### 2026-09-18 — A declared missing target is the Builder-Reviewer's act
+
+Reason: §5 already told the Builder-Reviewer to "re-point the Annotation, or
+declares it missing", and §10 forbade approximating a missing target rather than
+showing it as missing, but no such act existed. The surface could only derive
+*Deleted* from finding no candidate, which states as a fact something the product
+cannot know.
+
+Replaces:
+
+- §6's component inventory, which had no declare action beside `RepointAction`.
+
+The act is offered only where the target found no candidate, stamped with the
+result revision it was made against, and it clears that target's approval blocker.
+It reads in the Builder-Reviewer's own words, distinct from the derived `Deleted`,
+and it travels in the next envelope so the agent is told the target is gone.
+ADR-0027 records the decision.

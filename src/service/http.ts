@@ -569,6 +569,36 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     return;
   }
 
+  const declareMissingMatch = /^\/api\/annotations\/([^/]+)\/declare-missing$/.exec(path);
+  if (method === 'POST' && declareMissingMatch) {
+    const annotationId = decodeURIComponent(declareMissingMatch[1]!);
+    const annotation = review.annotations.get(annotationId);
+    if (!annotation) {
+      sendText(response, 404, `Unknown Annotation ${annotationId}`);
+      return;
+    }
+    const session = sessions.findByArtifact(annotation.artifactId);
+    if (!session || !authorize(context, session.sessionId, url)) {
+      sendText(response, 401, 'Unauthorized');
+      return;
+    }
+    const body = await readJsonBody(request, response);
+    if (body === undefined) {
+      return;
+    }
+    const targetId = (body as { targetId?: unknown }).targetId;
+    if (typeof targetId !== 'string' || targetId.length === 0) {
+      sendText(response, 400, 'Expected { targetId: string }');
+      return;
+    }
+    try {
+      sendJson(response, 200, { annotation: review.annotations.declareMissing(annotationId, targetId) });
+    } catch (error) {
+      sendText(response, 409, error instanceof Error ? error.message : 'declaration refused');
+    }
+    return;
+  }
+
   const verifyMatch = /^\/api\/annotations\/([^/]+)\/verify$/.exec(path);
   if (method === 'POST' && verifyMatch) {
     const annotationId = decodeURIComponent(verifyMatch[1]!);
