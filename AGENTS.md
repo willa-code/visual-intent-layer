@@ -31,3 +31,9 @@ This repository uses the single-context layout. See `docs/agents/domain.md`.
 
 ## coding standard
 **No comments by default:** Prefer refactoring unclear code over explaining it with comments.
+
+## commit standard
+**Conventional Commits:** `type(scope): imperative subject`, lowercase, with a body that
+says why. `commitlint.config.mjs` holds the enforced types and scopes. The `commit-msg`
+hook checks every commit at the keyboard and CI re-checks the change; `npm run
+lint:commits` checks `HEAD`.

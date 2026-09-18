@@ -73,7 +73,7 @@ Run Docs sync first, then the CI gate on the release commit. A red preflight sto
 the release.
 
 ```sh
-npm run typecheck && node scripts/check-records.js && npm test && npm run build && npm run benchmark
+npm run typecheck && node scripts/check-records.js && npm run lint:commits && npm test && npm run build && npm run benchmark
 node scripts/check-bins.js
 npm install -g --prefix /tmp/vil-ci . && /tmp/vil-ci/bin/visual-intent --help
 ```
@@ -97,7 +97,7 @@ Completion: `git diff` shows version fields only, and `package.json` and `server
 
 ## Publish
 
-1. Commit `Release X.Y.Z`, then `git push origin main`.
+1. Commit `chore(release): X.Y.Z`, then `git push origin main`.
 2. `gh release create vX.Y.Z --notes-start-tag <last stable tag> --generate-notes --title "…"`.
 
 The push is what lets Publish fire: the workflow triggers on `release: published`, and it refuses a GitHub pre-release rather than publishing it, because every published version is an official release. `--notes-start-tag` should name the last *stable* release, so an upgrading reader gets the whole story rather than the distance from the last pre-release.
