@@ -82,7 +82,7 @@ the release.
 ```sh
 npm run typecheck && node scripts/check-records.js && npm run lint:commits && npm test && npm run build && npm run benchmark
 node scripts/check-bins.js
-npm pack --dry-run --ignore-scripts | grep -q "docs/guide.md"   # the README links it, so it must ship
+npm pack --dry-run --ignore-scripts 2>&1 | grep -q "docs/guide.md"   # the README links it, so it must ship
 npm install -g --prefix /tmp/vil-ci . && /tmp/vil-ci/bin/visual-intent --help
 ```
 
