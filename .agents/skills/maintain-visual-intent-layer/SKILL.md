@@ -66,6 +66,7 @@ verification feature map under `.agents/skills/verify-visual-intent-layer/refere
 Rules:
 
 - Keep one source of truth: a doc states the behaviour, the environment holds the value. Delete a lookup the agent can re-read.
+- A link in `README.md` resolves for every reader, including one reading the installed package: what the README points at ships, so it is named in `package.json`'s `files`. `docs/` ships as one file, not the tree.
 - Keep ADRs, `docs/background/` research and `.scratch/` records as history. When one asserts behaviour that changed, mark it superseded or corrected; never rewrite the record.
 - Every feature file keeps its four sections and a truthful coverage marker (`Not yet driven.`, `Partly driven live`, or none), and no internal doc link breaks.
 
@@ -81,10 +82,12 @@ the release.
 ```sh
 npm run typecheck && node scripts/check-records.js && npm run lint:commits && npm test && npm run build && npm run benchmark
 node scripts/check-bins.js
+npm pack --dry-run --ignore-scripts | grep -q "docs/guide.md"   # the README links it, so it must ship
 npm install -g --prefix /tmp/vil-ci . && /tmp/vil-ci/bin/visual-intent --help
 ```
 
-Completion: every command exits 0, and `check-bins` reports both bin shebangs.
+Completion: every command exits 0, `check-bins` reports both bin shebangs, and the
+tarball carries the manual the README links.
 
 `node scripts/stdio-smoke.js` opens a stdio MCP client against `dist/mcp/stdio.js`,
 lists the four tools, and opens `fixtures/gallery.html` over the real transport. It
@@ -156,8 +159,10 @@ npm pack visual-intent-layer@<version>   # in a temp dir
 ```
 
 `latest` names the released version. The tarball carries no dev tooling — no
-`dist/benchmark`, `dist/eval` or `dist/instrumentation` — and a session opened from it
-reports the released version in its `open_visual_review` result.
+`dist/benchmark`, `dist/eval` or `dist/instrumentation` — and it carries
+`docs/guide.md`, because the README links it and someone reading the installed
+package has no repository to fall back on. A session opened from the tarball reports
+the released version in its `open_visual_review` result.
 
 Completion: `latest`, the tarball contents and the version the server reports all agree.
 

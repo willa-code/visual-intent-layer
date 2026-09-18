@@ -227,6 +227,7 @@ flight.
 | **D6** | One guide file, not a `docs/guide/` tree. A split is anticipated, not done. |
 | **D7** | The troubleshooting section leads with the by-hand command, which was run and prints the service line, and keeps one no-agent recovery command. |
 | **D8** | `Layout` moves whole. The gallery-procedure paragraph and the module list both say things the file tree does not, so neither is trimmed in this change. |
+| **D9** | `docs/guide.md` ships in the package: `package.json`'s `files` names it, so the README's Documentation link resolves for someone reading the installed tarball, who has no repository to fall back on. `docs/` still ships as one file, not the tree. |
 
 **D1 clarified, not rewritten.** D1 says the judgment sentence "no prose location
 descriptions, no lost context" is dropped. It is dropped from the front door and
@@ -260,3 +261,17 @@ commit rather than an amendment, because the reviewed revision is a record.
   config is not a file the guide can name without asserting something unverified.
 - **The maintain skill's outside-facts rule extends to the guide's removal section**,
   not only the README, so Docs sync still covers what the product does not own.
+
+**2026-09-18 (later) — the manual ships, because the link was dead without it.**
+Asked whether the version moves: it does not. No shipped behaviour changed, and a
+release is a deliberate act here, so `0.3.1` stands until a release is cut. But the
+question surfaced a real gap: `npm pack --dry-run` showed 179 files with no `docs/`
+entry, so the README's Documentation link was dead for anyone reading the installed
+package, and npm's page keeps the previous README until the next publish, since
+`README.md` always travels in the tarball.
+
+D9 was taken in response: `package.json`'s `files` now names `docs/guide.md`, the
+tarball is 180 files carrying exactly one `docs/` entry, and the maintain skill's
+Preflight asserts it (`npm pack --dry-run --ignore-scripts | grep -q
+"docs/guide.md"`) with Docs sync holding the rule behind it: what the README points
+at ships.

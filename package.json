@@ -26,7 +26,8 @@
     "!dist/benchmark",
     "!dist/eval",
     "!dist/instrumentation",
-    "schema"
+    "schema",
+    "docs/guide.md"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/build-ui.js",
