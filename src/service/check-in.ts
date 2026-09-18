@@ -34,10 +34,12 @@ export class CheckInStore {
   }
 
   lastContact(sessionId: string): string | undefined {
+    this.reload();
     return this.session(sessionId).lastContactAt;
   }
 
   recordContact(sessionId: string, at = new Date().toISOString()): string {
+    this.reload();
     const session = this.session(sessionId);
     session.lastContactAt = at;
     this.persist();
@@ -45,6 +47,7 @@ export class CheckInStore {
   }
 
   requestInterruption(sessionId: string, options: { requestedBy?: string } = {}): InterruptionRecord {
+    this.reload();
     const record: InterruptionRecord = {
       interruptionId: `int-${randomUUID()}`,
       sessionId,
@@ -57,10 +60,12 @@ export class CheckInStore {
   }
 
   pendingInterruption(sessionId: string): InterruptionRecord | undefined {
+    this.reload();
     return this.session(sessionId).interruptions.find((entry) => entry.collectedAt === undefined);
   }
 
   collectInterruption(sessionId: string, interruptionId: string): InterruptionRecord | undefined {
+    this.reload();
     const record = this.session(sessionId).interruptions.find((entry) => entry.interruptionId === interruptionId);
     if (!record) {
       return undefined;
@@ -71,7 +76,12 @@ export class CheckInStore {
   }
 
   listInterruptions(sessionId: string): InterruptionRecord[] {
+    this.reload();
     return [...this.session(sessionId).interruptions];
+  }
+
+  private reload(): void {
+    this.state = this.load();
   }
 
   private session(sessionId: string): SessionAgentState {

@@ -688,3 +688,33 @@ describe('Annotation store', () => {
     expect(store.repoint(annotation.annotationId, [target()]).resolutions).toEqual([]);
   });
 });
+describe('AnnotationStore, two instances over one data directory', () => {
+  it('reports a draft another instance created', () => {
+    const shared = dataDir();
+    const serving = new AnnotationStore(shared);
+    const agent = new AnnotationStore(shared);
+    expect(agent.list()).toHaveLength(0);
+
+    const created = serving.createDraft({ artifactId: 'artifact-shared', writtenRevision: 'blake3:one', targets: [target()] });
+
+    expect(agent.get(created.annotationId)?.annotationId).toBe(created.annotationId);
+    expect(agent.list()).toHaveLength(1);
+  });
+
+  it('reports a queued Annotation another instance wrote', () => {
+    const shared = dataDir();
+    const serving = new AnnotationStore(shared);
+    const agent = new AnnotationStore(shared);
+    const created = serving.createDraft({
+      artifactId: 'artifact-shared',
+      writtenRevision: 'blake3:one',
+      targets: [target()],
+      note: 'Make it impossible to miss.'
+    });
+    expect(agent.get(created.annotationId)?.state).toBe('draft');
+
+    serving.queue(created.annotationId);
+
+    expect(agent.get(created.annotationId)?.state).toBe('queued');
+  });
+});

@@ -91,22 +91,27 @@ export class AnnotationStore {
   }
 
   migrationReport(): MigrationReport {
+    this.reload();
     return this.state.migration;
   }
 
   list(): Annotation[] {
-    return Object.values(this.state.annotations).sort((a, b) => a.order - b.order);
+    this.reload();
+    return this.readAll();
   }
 
   listArtifact(artifactId: string): Annotation[] {
-    return this.list().filter((annotation) => annotation.artifactId === artifactId);
+    this.reload();
+    return this.readArtifact(artifactId);
   }
 
   get(annotationId: string): Annotation | undefined {
+    this.reload();
     return this.state.annotations[annotationId];
   }
 
   createDraft(input: CreateDraftInput): Annotation {
+    this.reload();
     if (input.targets.length === 0) {
       throw new Error('An Annotation needs at least one target');
     }
@@ -139,6 +144,7 @@ export class AnnotationStore {
     annotationId: string,
     patch: Partial<Pick<Annotation, 'note' | 'targets' | 'relationships' | 'revisionRelation'>>
   ): Annotation {
+    this.reload();
     return this.mutate(annotationId, (annotation) => {
       if (!isInQueue(annotation.state)) {
         throw new Error(
@@ -170,6 +176,7 @@ export class AnnotationStore {
     annotationId: string,
     input: { note?: string; targets?: AnnotationTarget[]; relationships?: AnnotationRelation[] }
   ): Annotation {
+    this.reload();
     const original = this.get(annotationId);
     if (!original) {
       throw new Error(`Unknown Annotation ${annotationId}`);
@@ -205,6 +212,7 @@ export class AnnotationStore {
   }
 
   addAttachment(annotationId: string, attachment: AnnotationAttachment): Annotation {
+    this.reload();
     return this.mutate(annotationId, (annotation) => {
       annotation.attachments = [
         ...annotation.attachments.filter((entry) => entry.attachmentId !== attachment.attachmentId),
@@ -216,6 +224,7 @@ export class AnnotationStore {
   }
 
   removeAttachment(annotationId: string, attachmentId: string): Annotation {
+    this.reload();
     return this.mutate(annotationId, (annotation) => {
       annotation.attachments = annotation.attachments.filter((entry) => entry.attachmentId !== attachmentId);
       annotation.history.push({ type: 'attachment-removed', at: now(), detail: attachmentId });
@@ -224,6 +233,7 @@ export class AnnotationStore {
   }
 
   delete(annotationId: string): void {
+    this.reload();
     if (!this.state.annotations[annotationId]) {
       throw new Error(`Unknown Annotation ${annotationId}`);
     }
@@ -232,7 +242,8 @@ export class AnnotationStore {
   }
 
   reorder(artifactId: string, orderedIds: string[]): Annotation[] {
-    const current = this.listArtifact(artifactId);
+    this.reload();
+    const current = this.readArtifact(artifactId);
     const known = new Set(current.map((annotation) => annotation.annotationId));
     const next = orderedIds.filter((id) => known.has(id));
     for (const annotation of current) {
@@ -244,10 +255,11 @@ export class AnnotationStore {
       this.state.annotations[annotationId]!.order = index;
     });
     this.persist();
-    return this.listArtifact(artifactId);
+    return this.readArtifact(artifactId);
   }
 
   queue(annotationId: string): Annotation {
+    this.reload();
     return this.mutate(annotationId, (annotation) => {
       if (annotation.state === 'draft') {
         annotation.state = 'queued';
@@ -258,19 +270,22 @@ export class AnnotationStore {
   }
 
   queueAllDrafts(artifactId: string): Annotation[] {
-    return this.listArtifact(artifactId)
+    this.reload();
+    return this.readArtifact(artifactId)
       .filter((annotation) => annotation.state === 'draft')
       .map((annotation) => this.queue(annotation.annotationId));
   }
 
   queueOf(artifactId: string): Annotation[] {
-    return this.listArtifact(artifactId).filter((annotation) => isInQueue(annotation.state));
+    this.reload();
+    return this.readArtifact(artifactId).filter((annotation) => isInQueue(annotation.state));
   }
 
   markDelivered(
     annotationIds: string[],
     input: { host: string; intent: Exclude<DeliveryIntent, 'draft'>; artifact: Pass['envelope']['artifact'] }
   ): Pass {
+    this.reload();
     const annotations = annotationIds.map((id) => {
       const annotation = this.state.annotations[id];
       if (!annotation) {
@@ -333,6 +348,7 @@ export class AnnotationStore {
   }
 
   recordResolutions(annotationId: string, resolutions: TargetResolutionRecord[], revision?: string): Annotation {
+    this.reload();
     const updated = this.mutate(annotationId, (annotation) => {
       annotation.resolutions = resolutions;
       if (revision) {
@@ -352,6 +368,7 @@ export class AnnotationStore {
   }
 
   repoint(annotationId: string, targets: AnnotationTarget[], relationships?: AnnotationRelation[]): Annotation {
+    this.reload();
     if (targets.length === 0) {
       throw new Error('An Annotation needs at least one target');
     }
@@ -373,6 +390,7 @@ export class AnnotationStore {
   }
 
   declareMissing(annotationId: string, targetId: string): Annotation {
+    this.reload();
     const current = this.get(annotationId);
     if (!current) {
       throw new Error(`Unknown Annotation ${annotationId}`);
@@ -399,6 +417,7 @@ export class AnnotationStore {
   }
 
   acknowledge(annotationId: string, agentId: string): Annotation {
+    this.reload();
     return this.mutate(annotationId, (annotation) => {
       if (annotation.state === 'delivered' || annotation.state === 'resolved') {
         annotation.state = 'acknowledged';
@@ -411,6 +430,7 @@ export class AnnotationStore {
   }
 
   verify(annotationId: string, verdict: VerificationVerdict, options: { successorId?: string } = {}): Annotation {
+    this.reload();
     const existing = this.get(annotationId);
     if (!existing) {
       throw new Error(`Unknown Annotation ${annotationId}`);
@@ -431,6 +451,7 @@ export class AnnotationStore {
   }
 
   reopenVerdict(annotationId: string): Annotation {
+    this.reload();
     const current = this.get(annotationId);
     if (!current) {
       throw new Error(`Unknown Annotation ${annotationId}`);
@@ -459,8 +480,9 @@ export class AnnotationStore {
   }
 
   noteRevisionAdvance(artifactId: string, currentRevision: string): Annotation[] {
+    this.reload();
     const touched: Annotation[] = [];
-    for (const annotation of this.listArtifact(artifactId)) {
+    for (const annotation of this.readArtifact(artifactId)) {
       if (annotation.writtenRevision !== currentRevision && annotation.revisionRelation !== 'advanced') {
         annotation.revisionRelation = 'advanced';
         annotation.updatedAt = now();
@@ -474,6 +496,7 @@ export class AnnotationStore {
   }
 
   importEnvelope(envelope: Envelope, host: string): Pass {
+    this.reload();
     const existingId = this.state.byIdempotencyKey[envelope.delivery.idempotencyKey];
     if (existingId && this.state.passes[existingId]) {
       return this.state.passes[existingId]!;
@@ -535,41 +558,55 @@ export class AnnotationStore {
   }
 
   getPass(passId: string): Pass | undefined {
+    this.reload();
     return this.state.passes[passId];
   }
 
   findPassByIdempotencyKey(key: string): Pass | undefined {
+    this.reload();
     const id = this.state.byIdempotencyKey[key];
     return id ? this.state.passes[id] : undefined;
   }
 
   listPasses(): Pass[] {
+    this.reload();
+    return this.readPasses();
+  }
+
+  private readPasses(): Pass[] {
     return Object.values(this.state.passes).sort((a, b) => (a.openedAt < b.openedAt ? -1 : a.openedAt > b.openedAt ? 1 : 0));
   }
 
   sequenceNow(): number {
+    this.reload();
     return this.state.sequence;
   }
 
   revisionNow(): number {
+    this.reload();
     return this.revision;
   }
 
   listPassesOfArtifact(artifactId: string): Pass[] {
-    return this.listPasses().filter((pass) => pass.artifactId === artifactId);
+    this.reload();
+    return this.readPassesOfArtifact(artifactId);
+  }
+
+  private readPassesOfArtifact(artifactId: string): Pass[] {
+    return this.readPasses().filter((pass) => pass.artifactId === artifactId);
   }
 
   annotationsOfPass(passId: string): Annotation[] {
-    const pass = this.state.passes[passId];
-    if (!pass) {
-      return [];
-    }
-    return pass.annotationIds
-      .map((id) => this.state.annotations[id])
-      .filter((annotation): annotation is Annotation => annotation !== undefined);
+    this.reload();
+    return this.readAnnotationsOfPass(passId);
   }
 
   closePass(passId: string): Pass {
+    this.reload();
+    return this.closePassRecord(passId);
+  }
+
+  private closePassRecord(passId: string): Pass {
     const pass = this.state.passes[passId];
     if (!pass) {
       throw new Error(`Unknown Pass ${passId}`);
@@ -586,6 +623,7 @@ export class AnnotationStore {
   }
 
   reopenPass(passId: string): Pass {
+    this.reload();
     const pass = this.state.passes[passId];
     if (!pass) {
       throw new Error(`Unknown Pass ${passId}`);
@@ -602,6 +640,7 @@ export class AnnotationStore {
   }
 
   collectPass(passId: string): Pass | undefined {
+    this.reload();
     const pass = this.state.passes[passId];
     if (!pass || pass.collectedAt) {
       return pass;
@@ -612,6 +651,7 @@ export class AnnotationStore {
   }
 
   withdrawPass(passId: string): Pass {
+    this.reload();
     const pass = this.state.passes[passId];
     if (!pass) {
       throw new Error(`Unknown Pass ${passId}`);
@@ -624,7 +664,7 @@ export class AnnotationStore {
         'The agent has already collected this Pass, so it cannot be taken back; a Replacement is the act that changes it.'
       );
     }
-    const members = this.annotationsOfPass(passId);
+    const members = this.readAnnotationsOfPass(passId);
     if (members.some((annotation) => annotation.verification)) {
       throw new Error('A judged Annotation cannot be taken back; reopen its decision first.');
     }
@@ -646,6 +686,7 @@ export class AnnotationStore {
   }
 
   anotherPass(passId: string, input: { host: string; artifact: Pass['envelope']['artifact'] }): Pass {
+    this.reload();
     const source = this.state.passes[passId];
     if (!source) {
       throw new Error(`Unknown Pass ${passId}`);
@@ -656,7 +697,7 @@ export class AnnotationStore {
     if (source.state === 'withdrawn') {
       throw new Error(`Pass ${passId} was taken back, so there is nothing to attempt again.`);
     }
-    const members = this.annotationsOfPass(passId).filter((annotation) => isAttemptable(annotation.state));
+    const members = this.readAnnotationsOfPass(passId).filter((annotation) => isAttemptable(annotation.state));
     if (members.length === 0) {
       throw new Error(
         'Every Annotation in this Pass has been accepted or abandoned, so there is nothing to attempt again.'
@@ -667,7 +708,7 @@ export class AnnotationStore {
     if (existing && this.state.passes[existing]) {
       return this.state.passes[existing]!;
     }
-    this.closePass(passId);
+    this.closePassRecord(passId);
     const envelope = buildBatchEnvelope({
       artifact: input.artifact,
       annotations: members,
@@ -709,8 +750,9 @@ export class AnnotationStore {
   }
 
   markPassesReady(artifactId: string, toRevision: string): Pass[] {
+    this.reload();
     const touched: Pass[] = [];
-    for (const pass of this.listPassesOfArtifact(artifactId)) {
+    for (const pass of this.readPassesOfArtifact(artifactId)) {
       if (pass.state === 'open' || pass.state === 'in-flight') {
         pass.state = 'ready';
         pass.toRevision = toRevision;
@@ -729,7 +771,7 @@ export class AnnotationStore {
       return;
     }
     const outcome: PassOutcome = { changed: 0, same: 0, notFound: 0 };
-    for (const annotation of this.annotationsOfPass(passId)) {
+    for (const annotation of this.readAnnotationsOfPass(passId)) {
       for (const resolution of annotation.resolutions) {
         outcome[outcomeKey(anchorOutcome(annotation, resolution))] += 1;
       }
@@ -741,8 +783,30 @@ export class AnnotationStore {
   }
 
   private nextOrder(artifactId: string): number {
-    const existing = this.listArtifact(artifactId);
+    const existing = this.readArtifact(artifactId);
     return existing.reduce((max, annotation) => Math.max(max, annotation.order + 1), 0);
+  }
+
+  private readAll(): Annotation[] {
+    return Object.values(this.state.annotations).sort((a, b) => a.order - b.order);
+  }
+
+  private readArtifact(artifactId: string): Annotation[] {
+    return this.readAll().filter((annotation) => annotation.artifactId === artifactId);
+  }
+
+  private readAnnotationsOfPass(passId: string): Annotation[] {
+    const pass = this.state.passes[passId];
+    if (!pass) {
+      return [];
+    }
+    return pass.annotationIds
+      .map((id) => this.state.annotations[id])
+      .filter((annotation): annotation is Annotation => annotation !== undefined);
+  }
+
+  private reload(): void {
+    this.state = this.load();
   }
 
   private nextSequence(): number {
