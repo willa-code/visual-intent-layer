@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.willa-code/visual-intent-layer",
-  "description": "Point at visible targets in an agent-built interface, compose Annotations, and deliver them as a versioned Visual Intent Envelope for an agent to act on.",
+  "description": "Point at visible targets in an agent-built interface, and deliver grounded Annotations.",
   "repository": {
     "url": "https://github.com/willa-code/visual-intent-layer",
     "source": "github"
