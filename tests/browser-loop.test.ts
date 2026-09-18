@@ -149,6 +149,11 @@ describe('Review Surface (primary seam: a real browser engine)', () => {
       (text) => /in flight/.test(text) && !/working/.test(text),
       'the status line names the in-flight Pass and never reads as working'
     );
+    await expectLater(
+      () => page.getByRole('button', { name: /Take back this send/ }).count(),
+      (count) => count === 1,
+      'an unread send offers Take back'
+    );
 
     const passOne = (await snapshot()).passes[0]!;
     await fetch(`${service.baseUrl}/api/intents/${passOne.envelopeId}/acknowledge?${auth}`, {
@@ -160,6 +165,11 @@ describe('Review Surface (primary seam: a real browser engine)', () => {
       () => page.locator('.status-line').innerText(),
       (text) => /Agent's turn · Pass 1 in flight/.test(text),
       'an acknowledged Pass reads as the agent\u2019s turn'
+    );
+    await expectLater(
+      () => page.getByRole('button', { name: /Take back this send/ }).count(),
+      (count) => count === 0,
+      'a send the agent has read can no longer be taken back'
     );
 
     writeFileSync(artifactPath, ARTIFACT_AMBIGUOUS, 'utf8');

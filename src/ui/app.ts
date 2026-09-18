@@ -42,6 +42,7 @@ class App {
   private readonly config: ShellConfig = readConfig();
   private readonly api = new Api(this.config.sessionId, this.config.capability);
   private snapshot!: SessionSnapshot;
+  private ledgerRevision = -1;
   private policy?: Policy;
   private mode: LayerTool = 'operate';
   private selection: LayerTarget[] = [];
@@ -378,6 +379,10 @@ class App {
     }
     row.appendChild(head);
 
+    const pass = annotation.passId
+      ? this.snapshot.passes.find((entry) => entry.passId === annotation.passId)
+      : undefined;
+
     if (annotation.replaces) {
       const predecessor = this.snapshot.annotations.find((entry) => entry.annotationId === annotation.replaces);
       row.appendChild(
@@ -441,6 +446,9 @@ class App {
       if (declaredMissingNow(annotation, resolution.targetId)) {
         continue;
       }
+      if (annotation.verification) {
+        continue;
+      }
       const target = annotation.targets.find((entry) => entry.targetId === resolution.targetId);
       const label = target?.label ?? resolution.targetId;
       row.appendChild(h('p', { class: 'hint', text: unresolvedSentence(label, resolution, stateFor(resolution)) }));
@@ -464,6 +472,9 @@ class App {
 
     if (isDecidable(annotation.state)) {
       row.appendChild(this.verdictBlock(annotation));
+    }
+    if (pass?.collectedAt && !isInQueue(annotation.state)) {
+      row.appendChild(h('p', { class: 'hint', text: `The agent read this ${relativeTime(pass.collectedAt)}.` }));
     }
     if (annotation.attachments.length > 0) {
       row.appendChild(
@@ -490,6 +501,11 @@ class App {
       actions.appendChild(iconButton('Move up', 'move-up', () => void this.move(annotation.annotationId, -1)));
       actions.appendChild(iconButton('Move down', 'move-down', () => void this.move(annotation.annotationId, 1)));
       actions.appendChild(iconButton(`Delete Annotation ${annotation.annotationId}`, 'delete', () => void this.deleteAnnotation(annotation.annotationId)));
+    }
+    if (isDelivered(annotation.state) && pass && !pass.collectedAt) {
+      actions.appendChild(
+        iconButton('Take back this send, which the agent has not read', 'delete', () => void this.withdrawPass(pass.passId))
+      );
     }
     row.appendChild(actions);
     row.addEventListener('click', (event) => {
@@ -549,7 +565,8 @@ class App {
     return verdictControls(annotation, {
       blocked,
       ...(annotation.verification ? { recorded: annotation.verification.verdict } : {}),
-      onVerdict: (verdict) => void this.verdict(annotation.annotationId, verdict)
+      onVerdict: (verdict) => void this.verdict(annotation.annotationId, verdict),
+      onReopen: () => void this.reopenVerdict(annotation.annotationId)
     });
   }
 
@@ -1250,6 +1267,24 @@ class App {
     }
   }
 
+  private async reopenVerdict(annotationId: string): Promise<void> {
+    try {
+      await this.api.reopenVerdict(annotationId);
+      await this.refresh();
+    } catch (error) {
+      this.showNotice(messageOf(error));
+    }
+  }
+
+  private async withdrawPass(passId: string): Promise<void> {
+    try {
+      await this.api.withdrawPass(passId);
+      await this.refresh();
+    } catch (error) {
+      this.showNotice(messageOf(error));
+    }
+  }
+
   private async closePass(passId: string): Promise<void> {
     try {
       await this.api.closePass(passId);
@@ -1559,6 +1594,10 @@ class App {
         this.renderBanner(status);
       } else if (!this.banner.hidden) {
         this.banner.hidden = true;
+      }
+      if (status.ledgerRevision !== undefined && status.ledgerRevision !== this.ledgerRevision) {
+        this.ledgerRevision = status.ledgerRevision;
+        await this.refresh();
       }
       const agent = await this.api.agent();
       this.snapshot.agent = agent;

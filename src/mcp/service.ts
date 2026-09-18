@@ -289,6 +289,7 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     for (const id of targets) {
       annotations.acknowledge(id, agentId);
     }
+    annotations.collectPass(envelopeId);
     const pass = annotations.getPass(envelopeId);
     const session = pass ? sessions.findByArtifact(pass.envelope.artifact.id) : undefined;
     if (session) {
@@ -302,6 +303,7 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     if (!pass) {
       throw new Error(`Unknown envelope ${envelopeId}`);
     }
+    annotations.collectPass(envelopeId);
     const owned = annotations.annotationsOfPass(envelopeId);
     const session = sessions.findByArtifact(pass.envelope.artifact.id);
     if (session) {
@@ -352,6 +354,9 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     });
     const signal: DeliverySignal = { pass };
     const holding = (waiters.get(sessionId)?.length ?? 0) > 0;
+    if (holding) {
+      annotations.collectPass(pass.passId);
+    }
     resolveWaiters(sessionId, signal);
     return { pass, channel: holding ? 'held-call' : 'next-check-in', holding };
   }
@@ -369,6 +374,9 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     });
     const signal: DeliverySignal = { pass };
     const holding = (waiters.get(sessionId)?.length ?? 0) > 0;
+    if (holding) {
+      annotations.collectPass(pass.passId);
+    }
     resolveWaiters(sessionId, signal);
     return { pass, channel: holding ? 'held-call' : 'next-check-in', holding };
   }
@@ -437,6 +445,9 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
       .listPasses()
       .filter((pass) => pass.artifactId === session.artifactId)
       .filter((pass) => since === null || pass.sequence > since);
+    for (const pass of passes) {
+      annotations.collectPass(pass.passId);
+    }
     const interruption = checkIns.pendingInterruption(sessionId);
     if (interruption) {
       checkIns.collectInterruption(sessionId, interruption.interruptionId);

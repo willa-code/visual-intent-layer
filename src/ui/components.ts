@@ -175,6 +175,8 @@ export function passStateLabel(state: SessionPass['state']): string {
       return 'Ready';
     case 'closed':
       return 'Closed';
+    case 'withdrawn':
+      return 'Taken back';
   }
 }
 
@@ -347,7 +349,7 @@ export function declareMissingAction(
 
 export function verdictControls(
   annotation: Annotation,
-  options: { blocked: string[]; recorded?: VerificationVerdict; onVerdict: (verdict: string) => void }
+  options: { blocked: string[]; recorded?: VerificationVerdict; onVerdict: (verdict: string) => void; onReopen?: () => void }
 ): HTMLElement {
   const approveBlocked = options.blocked.length > 0;
   const group = h('div', { class: 'chips', attrs: { role: 'group', 'aria-label': 'Decision' } });
@@ -379,6 +381,11 @@ export function verdictControls(
   overflow.appendChild(overflowBody);
   group.appendChild(overflow);
   const wrapper = h('div', { class: 'section' }, group);
+  if (options.recorded && options.onReopen) {
+    const reopen = button('Undo decision', { variant: 'ghost', onClick: options.onReopen });
+    reopen.dataset['action'] = 'undo-decision';
+    wrapper.appendChild(reopen);
+  }
   if (approveBlocked) {
     wrapper.appendChild(h('p', { class: 'hint', text: `Approval is blocked: ${options.blocked.join(' ')}` }));
   }
@@ -556,11 +563,12 @@ export function passHeader(options: {
     again.dataset['action'] = 'another-pass';
     actions.appendChild(again);
   }
-  if (pass.state !== 'closed') {
+  if (pass.state !== 'closed' && pass.state !== 'withdrawn') {
     const close = button(`Close Pass ${options.number}`, { variant: 'ghost', onClick: options.onClose });
     close.dataset['action'] = 'close-pass';
     actions.appendChild(close);
-  } else if (pass.closedAt) {
+  }
+  if (pass.state === 'closed' && pass.closedAt) {
     header.appendChild(h('p', { class: 'hint', text: `Closed ${relativeTime(pass.closedAt)}` }));
   }
   if (actions.childElementCount > 0) {
@@ -577,6 +585,7 @@ function passTone(state: SessionPass['state']): Tone {
     case 'ready':
       return 'attention';
     case 'closed':
+    case 'withdrawn':
       return 'closed';
   }
 }

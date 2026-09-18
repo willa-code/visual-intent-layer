@@ -614,4 +614,58 @@ describe('Annotation store', () => {
 
     expect(() => store.declareMissing(annotation.annotationId, 't-1')).toThrow(/re-point it instead/i);
   });
+
+  it('takes back a send the agent has not collected and returns the note to the queue', () => {
+    const store = new AnnotationStore(dataDir());
+    const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });
+    const pass = store.markDelivered([annotation.annotationId], {
+      host: 'test',
+      intent: 'next-pass',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+    });
+
+    const withdrawn = store.withdrawPass(pass.passId);
+
+    expect(withdrawn.state).toBe('withdrawn');
+    expect(withdrawn.history.map((event) => event.type)).toEqual(['opened', 'withdrawn']);
+    const returned = store.get(annotation.annotationId)!;
+    expect(returned.state).toBe('queued');
+    expect(returned.passId).toBeUndefined();
+    expect(returned.history.some((event) => event.type === 'dequeued')).toBe(true);
+    expect(store.queueOf('a').map((entry) => entry.annotationId)).toEqual([annotation.annotationId]);
+  });
+
+  it('refuses to take back a send the agent has already collected', () => {
+    const store = new AnnotationStore(dataDir());
+    const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });
+    const pass = store.markDelivered([annotation.annotationId], {
+      host: 'test',
+      intent: 'next-pass',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+    });
+    store.collectPass(pass.passId);
+    expect(store.getPass(pass.passId)?.collectedAt).toEqual(expect.any(String));
+    const collectedAt = store.getPass(pass.passId)!.collectedAt;
+    store.collectPass(pass.passId);
+    expect(store.getPass(pass.passId)?.collectedAt).toBe(collectedAt);
+
+    expect(() => store.withdrawPass(pass.passId)).toThrow(/already collected/i);
+  });
+
+  it('re-points a decided note only after its decision is reopened', () => {
+    const store = new AnnotationStore(dataDir());
+    const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });
+    store.markDelivered([annotation.annotationId], {
+      host: 'test',
+      intent: 'next-pass',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+    });
+    store.recordResolutions(annotation.annotationId, [resolveTarget(target(), [candidate('n-a')])], 'rev-2');
+    store.verify(annotation.annotationId, 'approve');
+
+    expect(() => store.repoint(annotation.annotationId, [target()])).toThrow(/reopening the decision/i);
+
+    store.reopenVerdict(annotation.annotationId);
+    expect(store.repoint(annotation.annotationId, [target()]).resolutions).toEqual([]);
+  });
 });

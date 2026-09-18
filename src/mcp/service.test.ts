@@ -57,6 +57,7 @@ describe('batch delivery', () => {
     expect(submitted.status).toBe('host-accepted');
     const status = service.getBatchStatus(envelope.envelopeId);
     expect(status.annotations.map((annotation) => annotation.annotationId)).toEqual(['ann-01', 'ann-02']);
+    expect(service.annotations.getPass(envelope.envelopeId)?.collectedAt).toEqual(expect.any(String));
   });
 
   it('rejects malformed envelopes with actionable errors', async () => {

@@ -285,7 +285,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     if (!session) {
       return;
     }
-    sendJson(response, 200, await sessionStatus(session));
+    sendJson(response, 200, { ...(await sessionStatus(session)), ledgerRevision: review.annotations.revisionNow() });
     return;
   }
 
@@ -482,6 +482,27 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
       sendJson(response, 200, { pass: result.pass, channel: result.channel, holding: result.holding });
     } catch (error) {
       sendText(response, 409, error instanceof Error ? error.message : 'another pass refused');
+    }
+    return;
+  }
+
+  const withdrawMatch = /^\/api\/passes\/([^/]+)\/withdraw$/.exec(path);
+  if (method === 'POST' && withdrawMatch) {
+    const passId = decodeURIComponent(withdrawMatch[1]!);
+    const pass = review.annotations.getPass(passId);
+    if (!pass) {
+      sendText(response, 404, `Unknown Pass ${passId}`);
+      return;
+    }
+    const session = sessions.findByArtifact(pass.artifactId);
+    if (!session || !authorize(context, session.sessionId, url)) {
+      sendText(response, 401, 'Unauthorized');
+      return;
+    }
+    try {
+      sendJson(response, 200, { pass: review.annotations.withdrawPass(passId) });
+    } catch (error) {
+      sendText(response, 409, error instanceof Error ? error.message : 'withdraw refused');
     }
     return;
   }
@@ -865,6 +886,7 @@ function annotationSnapshot(review: ReviewService, session: SessionRecord): Reco
       outcome: pass.outcome,
       intent: pass.intent,
       openedAt: pass.openedAt,
+      ...(pass.collectedAt ? { collectedAt: pass.collectedAt } : {}),
       ...(pass.closedAt ? { closedAt: pass.closedAt } : {})
     }))
   };

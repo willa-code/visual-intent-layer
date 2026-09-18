@@ -78,6 +78,7 @@ Usage:
   lever closed-rows
   lever close-pass [--row <n>]
   lever another-pass [--row <n>]
+  lever withdraw-pass
   lever measure
   lever unreachable --command <text> --precondition <text>
 
@@ -1657,6 +1658,24 @@ async function commandClosedRows(flags) {
   output({ ok: true, command: 'closed-rows', before: hidden.count, after: shown.count, screenshot: shot.path });
 }
 
+async function commandWithdrawPass(flags) {
+  const runDir = resolveRun(flags.run);
+  const secret = await assertHealthy(runDir);
+  if (flags['dry-run']) {
+    output({ dryRun: true, would: { withdrawPass: true } });
+    return;
+  }
+  const host = hostCall(secret);
+  await host('/click', {
+    target: { role: 'button', name: 'Take back this send, which the agent has not read' }
+  });
+  await sleep(300);
+  const shot = await host('/screenshot', { name: `withdraw-pass-${Date.now()}` });
+  recordEvidence(runDir, { kind: 'screenshot', name: 'withdraw-pass', path: shot.path });
+  recordCoverage(runDir, 'annotate-and-send', 'driven', 'took back an unread send', ['withdraw-send']);
+  output({ ok: true, command: 'withdraw-pass', screenshot: shot.path });
+}
+
 async function commandClosePass(flags) {
   const runDir = resolveRun(flags.run);
   const secret = await assertHealthy(runDir);
@@ -1948,6 +1967,7 @@ async function main() {
     'closed-rows': commandClosedRows,
     'close-pass': commandClosePass,
     'another-pass': commandAnotherPass,
+    'withdraw-pass': commandWithdrawPass,
     measure: commandMeasure,
     unreachable: commandUnreachable,
     state: commandState,

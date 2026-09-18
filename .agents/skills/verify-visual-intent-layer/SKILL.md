@@ -99,6 +99,7 @@ $LEVER repoint --row 0 --target "h1"                           # re-point a targ
 $LEVER decide --verdict approve --row 0                               # not-fixed, obsolete; another verdict changes the decision
 $LEVER close-pass                                                      # close the Pass; undecided members then read never decided
 $LEVER another-pass                                                    # open a new Pass carrying the open members
+$LEVER withdraw-pass                                                   # take back a send the agent has not collected
 $LEVER closed-rows                                                     # one toggle for replaced and obsolete rows
 ```
 

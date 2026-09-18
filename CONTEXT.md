@@ -41,7 +41,7 @@ The ordered set of Annotations a Builder-Reviewer has composed but not yet sent.
 _Avoid_: Cart, basket, backlog, inbox
 
 **Pass**:
-One delivery of Annotations and the artifact revision that answers it. A Pass has a state (open, in flight, ready, closed) and a set of member Annotations, and only the Builder-Reviewer closes it. Closing it is a record: its outcome and its decisions freeze, and a Builder-Reviewer changing a decision on one of its Annotations reopens it.
+One delivery of Annotations and the artifact revision that answers it. A Pass has a state (open, in flight, ready, closed) and a set of member Annotations, and only the Builder-Reviewer closes it. Closing it is a record: its outcome and its decisions freeze, and a Builder-Reviewer changing a decision on one of its Annotations reopens it. A Pass the agent has not collected may be taken back instead.
 _Avoid_: Round, batch, iteration, cycle, review cycle
 
 **Replacement**:
@@ -55,6 +55,10 @@ _Avoid_: Another pass, request changes, retry, failed, rejected
 **Another Pass**:
 The act of asking the agent to attempt the open Annotations of the current Pass again, carrying those Annotations rather than new direction. It is delivered as Next-Pass Intent and opens a new Pass; the Pass it answered closes with its outcome and result revision frozen.
 _Avoid_: Regenerate, rerun, retry, request changes, continue
+
+**Take Back**:
+The Builder-Reviewer's act of cancelling a delivery the agent has not yet collected, returning its Annotations to the queue. It is offered only while no member of the Pass has been read; once the agent has collected the delivery, a Replacement is the act that changes it, and a delivered Annotation is never deleted.
+_Avoid_: Undo, recall, retract, delete, unsend
 
 **Artifact**:
 Visible work that a Builder-Reviewer can direct and verify, whatever produces it. Every Artifact participates in the same Visual Direction Loop; artifact types differ only in how much evidence their targets can carry and in how their revision is identified, never in the loop they participate in.

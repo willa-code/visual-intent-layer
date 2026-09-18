@@ -29,9 +29,9 @@ import {
   type VerificationVerdict
 } from './model.js';
 
-export type PassState = 'open' | 'in-flight' | 'ready' | 'closed';
+export type PassState = 'open' | 'in-flight' | 'ready' | 'closed' | 'withdrawn';
 
-export type PassEvent = { type: 'opened' | 'closed' | 'reopened'; at: string };
+export type PassEvent = { type: 'opened' | 'closed' | 'reopened' | 'withdrawn'; at: string };
 
 export type PassOutcome = { changed: number; same: number; notFound: number };
 
@@ -45,6 +45,7 @@ export type Pass = {
   outcome: PassOutcome;
   history: PassEvent[];
   openedAt: string;
+  collectedAt?: string;
   closedAt?: string;
   envelopeId: string;
   idempotencyKey: string;
@@ -80,6 +81,7 @@ export class AnnotationStore {
   private readonly file: string;
   private readonly legacyFile: string;
   private state: PersistedState;
+  private revision = 0;
 
   constructor(dataDir: string) {
     mkdirSync(dataDir, { recursive: true });
@@ -342,6 +344,13 @@ export class AnnotationStore {
     if (targets.length === 0) {
       throw new Error('An Annotation needs at least one target');
     }
+    const current = this.get(annotationId);
+    if (!current) {
+      throw new Error(`Unknown Annotation ${annotationId}`);
+    }
+    if (current.verification) {
+      throw new Error(`${annotationId} has been decided, so re-point it only after reopening the decision.`);
+    }
     return this.mutate(annotationId, (annotation) => {
       annotation.targets = targets;
       annotation.relationships = relationships ?? relationsAmong(annotation.relationships, targets).relationships;
@@ -531,6 +540,10 @@ export class AnnotationStore {
     return this.state.sequence;
   }
 
+  revisionNow(): number {
+    return this.revision;
+  }
+
   listPassesOfArtifact(artifactId: string): Pass[] {
     return this.listPasses().filter((pass) => pass.artifactId === artifactId);
   }
@@ -577,6 +590,50 @@ export class AnnotationStore {
     return pass;
   }
 
+  collectPass(passId: string): Pass | undefined {
+    const pass = this.state.passes[passId];
+    if (!pass || pass.collectedAt) {
+      return pass;
+    }
+    pass.collectedAt = now();
+    this.persist();
+    return pass;
+  }
+
+  withdrawPass(passId: string): Pass {
+    const pass = this.state.passes[passId];
+    if (!pass) {
+      throw new Error(`Unknown Pass ${passId}`);
+    }
+    if (pass.state === 'closed' || pass.state === 'withdrawn') {
+      throw new Error(`Pass ${passId} is ${pass.state}, so there is nothing to take back.`);
+    }
+    if (pass.collectedAt) {
+      throw new Error(
+        'The agent has already collected this Pass, so it cannot be taken back; a Replacement is the act that changes it.'
+      );
+    }
+    const members = this.annotationsOfPass(passId);
+    if (members.some((annotation) => annotation.verification)) {
+      throw new Error('A judged Annotation cannot be taken back; reopen its decision first.');
+    }
+    const at = now();
+    for (const annotation of members) {
+      if (isInQueue(annotation.state)) {
+        continue;
+      }
+      annotation.state = 'queued';
+      delete annotation.passId;
+      delete annotation.sentAt;
+      annotation.history.push({ type: 'dequeued', at });
+      annotation.updatedAt = at;
+    }
+    pass.state = 'withdrawn';
+    pass.history.push({ type: 'withdrawn', at });
+    this.persist();
+    return pass;
+  }
+
   anotherPass(passId: string, input: { host: string; artifact: Pass['envelope']['artifact'] }): Pass {
     const source = this.state.passes[passId];
     if (!source) {
@@ -584,6 +641,9 @@ export class AnnotationStore {
     }
     if (source.state === 'closed') {
       throw new Error(`Pass ${passId} is already closed, so there is nothing to attempt again.`);
+    }
+    if (source.state === 'withdrawn') {
+      throw new Error(`Pass ${passId} was taken back, so there is nothing to attempt again.`);
     }
     const members = this.annotationsOfPass(passId).filter((annotation) => isAttemptable(annotation.state));
     if (members.length === 0) {
@@ -741,6 +801,7 @@ export class AnnotationStore {
   }
 
   private persist(): void {
+    this.revision += 1;
     writeJsonAtomic(this.file, this.state);
   }
 }

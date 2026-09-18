@@ -15,6 +15,7 @@ export type SessionPass = {
   outcome: PassOutcome;
   intent: string;
   openedAt: string;
+  collectedAt?: string;
   closedAt?: string;
 };
 
@@ -37,6 +38,7 @@ export type SessionStatus = {
   revisionBasis: 'document' | 'files';
   changed: boolean;
   unreadable?: boolean;
+  ledgerRevision?: number;
 };
 
 export type Policy = {
@@ -187,6 +189,10 @@ export class Api {
 
   async anotherPass(passId: string): Promise<void> {
     await this.json(this.url(`/api/passes/${passId}/another`), { method: 'POST' });
+  }
+
+  async withdrawPass(passId: string): Promise<void> {
+    await this.json(this.url(`/api/passes/${passId}/withdraw`), { method: 'POST' });
   }
 
   async verify(annotationId: string, verdict: string): Promise<Annotation> {

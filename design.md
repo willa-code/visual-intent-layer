@@ -294,6 +294,7 @@ gallery in §9 renders them.
 | `CandidateMark` | none, several, one chosen; drawn on the artifact, never presented as a ranked list; carries no evidence figure |
 | `RepointAction` | offered on an Annotation whose target could not be matched: the next selection re-points that Annotation rather than composing a new one |
 | `DeclareMissingAction` | offered beside `RepointAction`, and only where the target found no candidate: records the Builder-Reviewer's own declaration, which reads as theirs and clears that target's approval blocker |
+| `TakeBackAction` | icon-only, offered on a delivered Annotation whose Pass the agent has not collected: returns it to the queue and marks the Pass taken back. Absent once the Pass is collected, where a Replacement is the act, and a read delivery is never deleted |
 | `VerdictControls` | enabled, blocked with reason, recorded; `Approve` and `Not Fixed` are visible, obsolete sits behind one overflow on that row, and the decision already recorded is marked on its own control so choosing another changes it in one act |
 | `Drawer` | open, closed, scrollable body |
 | `DisclosureList` | populated, empty |
@@ -819,3 +820,23 @@ result revision it was made against, and it clears that target's approval blocke
 It reads in the Builder-Reviewer's own words, distinct from the derived `Deleted`,
 and it travels in the next envelope so the agent is told the target is gone.
 ADR-0027 records the decision.
+
+### 2026-09-18 — A send the agent has not read can be taken back
+
+Reason: the rule that what the agent was told is a record left no inverse for a
+send made in error. Withdrawing a delivery the agent has not collected is not
+editing that record; it is cancelling a delivery that has not happened yet. It
+needs the moment of **collection** named rather than the optional acknowledgement,
+because an agent can read a delivery through `check_in` or a status read and never
+acknowledge it.
+
+Replaces:
+
+- §6's component inventory, which had no take-back action.
+
+A Pass records the moment the agent collects it — a held call, a check-in or a
+status read — and `TakeBackAction` returns its Annotations to the queue while that
+moment is absent. Once collected, the action is gone and a Replacement is the only
+act; a delivered Annotation is never deleted. Re-pointing a target is offered only
+on an undecided Annotation, or after its decision is reopened, so a judgement is
+never silently re-aimed. ADR-0028 records the decision.
