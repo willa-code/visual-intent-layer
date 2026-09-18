@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { representativeEnvelope } from '../envelope/fixtures.js';
 import { createMcpServer } from './server.js';
 import { createReviewService } from './service.js';
+import { packageVersion } from '../version.js';
 
 process.env['VISUAL_INTENT_NO_OPEN'] = '1';
 
@@ -27,6 +28,20 @@ describe('MCP protocol contract', () => {
     expect(entry).toBeDefined();
     expect(entry!.description).toMatch(/Visual Direction Loop/);
     expect(entry!.inputSchema).toMatchObject({ type: 'object' });
+  });
+
+  it('carries the triggers that reach for the loop, and the running version', async () => {
+    const client = await connected();
+    const tools = await client.listTools();
+    const entry = tools.tools.find((tool) => tool.name === 'open_visual_review');
+    expect(entry!.description).toContain('name a visible thing by location');
+    expect(entry!.description).toContain('prose-only correction already missed its target');
+    const result = await client.callTool({
+      name: 'open_visual_review',
+      arguments: { kind: 'saved-html', path: 'fixtures/gallery.html', waitMs: 0 }
+    });
+    const payload = JSON.parse(toolText(result)) as { serverVersion?: string };
+    expect(payload.serverVersion).toBe(packageVersion());
   });
 
   it('opens an artifact through the entry tool call and hands back the batch or a stepped-away status', async () => {

@@ -5,10 +5,11 @@ import {
   type CallToolResult
 } from '@modelcontextprotocol/sdk/types.js';
 import { autoOpenSuppressed } from '../service/browser.js';
+import { packageVersion } from '../version.js';
 import type { ReviewService } from './service.js';
 
 export const SERVER_NAME = 'visual-intent-layer';
-export const SERVER_VERSION = '0.3.0-next.0';
+export const SERVER_VERSION = packageVersion();
 
 export function createMcpServer(service: ReviewService): Server {
   const server = new Server(
@@ -70,6 +71,7 @@ async function openVisualReview(service: ReviewService, args: Record<string, unk
       : '';
   return {
     reviewUrl: opened.reviewUrl,
+    serverVersion: SERVER_VERSION,
     artifact: opened.artifact,
     reused: opened.reused,
     status: batch ? 'sent' : 'stepped-away',

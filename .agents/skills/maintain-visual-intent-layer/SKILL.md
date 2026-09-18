@@ -1,25 +1,25 @@
 ---
 name: maintain-visual-intent-layer
-description: Maintain this package. Use when dogfooding a build, cutting a stable or pre-release version, publishing to npm, promoting a validated pre-release, deprecating a bad release, or doing periodic upkeep.
+description: Maintain this package. Use when dogfooding a build, cutting a release, publishing to npm, updating the MCP Registry listing, deprecating a bad release, or doing periodic upkeep.
 ---
 
 # Maintain visual-intent-layer
 
-Lay out the paths, recommend one, and wait for an explicit **ok** naming the version and channel. Then execute. Repo facts — `.github/workflows/`, `package.json` scripts, `scripts/check-bins.js` — live in the environment; read them there.
+Lay out the paths, recommend one, and wait for an explicit **ok** naming the version. Then execute. Repo facts — `.github/workflows/`, `package.json` scripts, `scripts/check-bins.js` — live in the environment; read them there.
 
 ## Paths
 
 | Path | Use when | Push + publish |
 | --- | --- | --- |
 | Dogfood locally | Feel the current tree before releasing anything | No |
-| Pre-release to `next` | Hand out an installable build to dogfood | Yes |
-| Promote | A `next` pre-release validated | Yes |
-| Stable direct | A small fix not worth a pre-release | Yes |
+| Release | Anything that should reach users | Yes |
 | Fix a bad release | A released version is wrong | Yes |
 
-State the path, the target version, the channel, and the changes since the last tag (`git log <last-tag>..HEAD --oneline`). Recommend one. Wait for the ok.
+Every published version is an official release. There is no pre-release channel and no promotion step: a build either ships or it does not.
 
-Completion: the human replied "ok" to a summary naming the path, version, and channel.
+State the path, the target version, and the changes since the last tag (`git log <last-tag>..HEAD --oneline`). Recommend one. Wait for the ok.
+
+Completion: the human replied "ok" to a summary naming the path and version.
 
 ## Dogfood locally
 
@@ -44,16 +44,18 @@ Docs are a cache of the environment, so a sync runs code → docs: read the ship
 Read the surface from its own sources, not from the docs:
 
 - `visual-intent --help` and `src/cli.ts` — commands, flags, environment variables
-- `createReviewService().listTools()` — the MCP tool names, descriptions and input schemas
+- `createReviewService().listTools()` — the MCP tool names, descriptions and input schemas, including the four triggers that reach for the loop
 - the route patterns in `src/service/http.ts` — what a caller can actually reach
-- `harness-registry.ts` and `cli-setup.ts` — detected harnesses, scopes, transports, Skill install
-- `schema/`, `package.json` (`bin`, `files`, `scripts`) and `src/host/capabilities.ts`
+- `schema/`, `package.json` (`bin`, `files`, `mcpName`, `scripts`), `server.json` and `src/host/capabilities.ts`
 - `src/ui/` — the modes, keys and surfaces a Builder-Reviewer sees
 
+The install table in `README.md` is the one doc whose facts come from outside this
+repository: verify each command against that Harness's own CLI (`<harness> mcp add
+--help`) rather than trusting the table, since the Harness owns the syntax.
+
 Then correct the current docs that claim otherwise: `README.md`, `CONTEXT.md`,
-`design.md`, `SECURITY.md`, `skills/visual-intent/`, `docs/pi-validation.md`, and
-the verification feature map under
-`.agents/skills/verify-visual-intent-layer/references/features/`.
+`design.md`, `SECURITY.md`, `docs/pi-validation.md`, and the verification feature
+map under `.agents/skills/verify-visual-intent-layer/references/features/`.
 
 Rules:
 
@@ -76,7 +78,7 @@ node scripts/check-bins.js
 npm install -g --prefix /tmp/vil-ci . && /tmp/vil-ci/bin/visual-intent --help
 ```
 
-Completion: every command exits 0.
+Completion: every command exits 0, and `check-bins` reports both bin shebangs.
 
 `node scripts/stdio-smoke.js` opens a stdio MCP client against `dist/mcp/stdio.js`,
 lists the four tools, and opens `fixtures/gallery.html` over the real transport. It
@@ -86,23 +88,37 @@ is a manual check and not part of the gate: it opens a browser and holds
 
 ## Bump
 
-- First pre-release of a target: `npm version preminor --preid next --no-git-tag-version` (`0.2.1` → `0.3.0-next.0`).
-- Later pre-release of the same target: `npm version prerelease --preid next --no-git-tag-version` (→ `.1`).
-- Stable: `npm version <target> --no-git-tag-version`.
-- Set the same version in `mcp.json`; `check-bins` reads the two against each other.
+- `npm version <target> --no-git-tag-version`. Feature = minor, fix = patch, breaking = minor while on `0.x`.
+- Set the same version in `server.json`, in both the top-level `version` and the npm package entry.
+- `package.json`'s `mcpName` must equal `server.json`'s `name`; the registry rejects the listing otherwise.
 - `npm version` rewrites `package.json` formatting; restore the compact arrays so the diff stays version-only.
 
-Completion: `git diff` shows version fields only, and `check-bins` prints the new pin.
+Completion: `git diff` shows version fields only, and `package.json` and `server.json` name the same version.
 
 ## Publish
 
 1. Commit `Release X.Y.Z`, then `git push origin main`.
-2. Pre-release: `gh release create vX.Y.Z-next.N --prerelease --generate-notes --title "…"`.
-3. Stable: `gh release create vX.Y.Z --generate-notes --title "…"`.
+2. `gh release create vX.Y.Z --generate-notes --title "…"`.
 
-The push is what lets Publish fire: the workflow triggers on `release: published` and routes a pre-release to `--tag next` and a stable release to `latest`. Release notes come from `--generate-notes` off the commit history; there is no separate changelog.
+The push is what lets Publish fire: the workflow triggers on `release: published`, and it refuses a GitHub pre-release rather than publishing it, because every published version is an official release. Release notes come from `--generate-notes` off the commit history; there is no separate changelog.
 
 Completion: `gh run watch` reports the Publish run success.
+
+## Registry listing
+
+The official MCP Registry hosts metadata only, and it verifies that the npm package it
+points at declares the same name. So the listing is published after the release, never
+before.
+
+```sh
+mcp-publisher validate        # reads server.json
+mcp-publisher login github
+mcp-publisher publish
+```
+
+Completion: `mcp-publisher publish` names the server and the released version, and
+`curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.willa-code/visual-intent-layer"`
+returns it.
 
 ## Verify
 
@@ -111,15 +127,11 @@ npm view visual-intent-layer dist-tags
 npm pack visual-intent-layer@<version>   # in a temp dir
 ```
 
-A pre-release moves `next` and leaves `latest`; a stable release moves `latest`. The tarball's `mcp.json` pins `<version>`.
+`latest` names the released version. The tarball carries no dev tooling — no
+`dist/benchmark`, `dist/eval` or `dist/instrumentation` — and a session opened from it
+reports the released version in its `open_visual_review` result.
 
-Completion: the dist-tag and the tarball snippet both name the released version.
-
-## Promote
-
-Publish the stable version from the same commit as the validated pre-release (`0.3.0-next.1` → `0.3.0`). Leave `latest` pointing at stable: plain ranges exclude pre-releases, so `npm dist-tag add … latest` on a pre-release makes install and update disagree.
-
-Completion: `latest` names the stable version, promoted from the validated `next` commit.
+Completion: `latest`, the tarball contents and the version the server reports all agree.
 
 ## Fix a bad release
 
@@ -132,7 +144,7 @@ Versions are immutable; a released `name@version` is never republished. Remedies
 
 ## Version policy
 
-Feature = minor, fix = patch, breaking = minor while on `0.x`, which semver defines as unstable. Pre-releases are `0.X.Y-next.N`; reserve `-rc.N` for a candidate byte-identical to the intended stable. Go `1.0.0` when the envelope and MCP surface are something others can depend on.
+Feature = minor, fix = patch, breaking = minor while on `0.x`, which semver defines as unstable. Go `1.0.0` when the envelope and MCP surface are something others can depend on. The running server reads its version from `package.json` (`src/version.ts`), so the version a review reports is always the released one.
 
 ## Upkeep
 

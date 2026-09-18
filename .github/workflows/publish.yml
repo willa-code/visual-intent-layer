@@ -19,9 +19,11 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm install -g npm@latest
-      - name: Publish pre-release to next
+      - name: Refuse a pre-release
         if: ${{ github.event.release.prerelease }}
-        run: npm publish --provenance --access public --tag next
-      - name: Publish stable to latest
+        run: |
+          echo "Pre-releases are retired: every published version is an official release."
+          exit 1
+      - name: Publish the release to latest
         if: ${{ !github.event.release.prerelease }}
         run: npm publish --provenance --access public
