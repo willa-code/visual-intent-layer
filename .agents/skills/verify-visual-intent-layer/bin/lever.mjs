@@ -76,6 +76,8 @@ Usage:
   lever repoint --row <n> --target <css>
   lever compare --mode before|after [--row <n>]
   lever closed-rows
+  lever close-pass [--row <n>]
+  lever another-pass [--row <n>]
   lever measure
   lever unreachable --command <text> --precondition <text>
 
@@ -1655,6 +1657,47 @@ async function commandClosedRows(flags) {
   output({ ok: true, command: 'closed-rows', before: hidden.count, after: shown.count, screenshot: shot.path });
 }
 
+async function commandClosePass(flags) {
+  const runDir = resolveRun(flags.run);
+  const secret = await assertHealthy(runDir);
+  const rowIndex = typeof flags.row === 'string' ? Number(flags.row) : 0;
+  if (flags['dry-run']) {
+    output({ dryRun: true, would: { closePass: rowIndex } });
+    return;
+  }
+  const host = hostCall(secret);
+  await host('/click', { target: { selector: '[data-action="close-pass"]', nth: rowIndex } });
+  await sleep(300);
+  const closed = await host('/count', { target: { selector: '.pass-header[data-state="closed"]' } });
+  const undecided = await host('/count', { target: { selector: '.pass-header__outstanding', text: 'never decided' } });
+  const shot = await host('/screenshot', { name: `close-pass-${Date.now()}` });
+  recordEvidence(runDir, { kind: 'screenshot', name: 'close-pass', path: shot.path });
+  recordCoverage(runDir, 'verify-each-annotation', 'driven', 'closed a Pass', ['pass-close']);
+  output({ ok: true, command: 'close-pass', closed: closed.count, neverDecided: undecided.count, screenshot: shot.path });
+}
+
+async function commandAnotherPass(flags) {
+  const runDir = resolveRun(flags.run);
+  const secret = await assertHealthy(runDir);
+  const rowIndex = typeof flags.row === 'string' ? Number(flags.row) : 0;
+  if (flags['dry-run']) {
+    output({ dryRun: true, would: { anotherPass: rowIndex } });
+    return;
+  }
+  const host = hostCall(secret);
+  const before = await host('/count', { target: { selector: '.pass-header' } });
+  await host('/click', { target: { selector: '[data-action="another-pass"]', nth: rowIndex } });
+  await sleep(400);
+  const after = await host('/count', { target: { selector: '.pass-header' } });
+  const shot = await host('/screenshot', { name: `another-pass-${Date.now()}` });
+  recordEvidence(runDir, { kind: 'screenshot', name: 'another-pass', path: shot.path });
+  if (after.count <= before.count) {
+    fail(EXIT.unreachable, 'Another Pass did not open a new Pass.', 'The Pass may not be ready or may have no open members; read `lever state`.');
+  }
+  recordCoverage(runDir, 'verify-each-annotation', 'driven', 'Another Pass opened a new Pass', ['another-pass']);
+  output({ ok: true, command: 'another-pass', passesBefore: before.count, passesAfter: after.count, screenshot: shot.path });
+}
+
 async function commandState(flags) {
   const runDir = resolveRun(flags.run);
   const secret = await assertHealthy(runDir);
@@ -1903,6 +1946,8 @@ async function main() {
     repoint: commandRepoint,
     compare: commandCompare,
     'closed-rows': commandClosedRows,
+    'close-pass': commandClosePass,
+    'another-pass': commandAnotherPass,
     measure: commandMeasure,
     unreachable: commandUnreachable,
     state: commandState,

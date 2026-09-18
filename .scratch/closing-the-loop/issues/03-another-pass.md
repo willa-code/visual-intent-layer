@@ -39,3 +39,16 @@ counts and revision, and states how many members it carried on, and the box now 
 that. The browser loop asserts the ready Pass offers Another Pass; it does not click
 it, because the flow after that point closes the first Pass by position, so the
 full drive is left to the Verification Run.
+
+**Verification Run, 2026-09-18.** Run
+`.visual-intent-verify/runs/2026-09-18_00-22-03-closing-the-loop` ended `changed`:
+it drove the outcome words, the three verdicts, changing a decision in one act,
+adding to a Not Fixed note, closing a Pass with an undecided member, and changing
+a decision on a closed Pass — and found a defect in this ticket's surface gate.
+`Try again` was offered only while a Pass had members still to decide, so a Pass
+whose only open member was Not Fixed — the exact member Another Pass exists to
+carry — showed no control at all. The gate now counts the members that can be
+attempted. The same run found the harness had no way to close a Pass or ask for
+Another Pass, so the Lever gained `close-pass` and `another-pass`. Run
+`.visual-intent-verify/runs/2026-09-18_00-25-25-closing-the-loop-clean` then ended
+`clean` on the fix. Both runs worked from a dirty tree.

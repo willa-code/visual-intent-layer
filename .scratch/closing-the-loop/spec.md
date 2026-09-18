@@ -138,3 +138,19 @@ decisions are in `.scratch/closing-the-loop/advisors/`. Two consequences worth
 naming: the Pass outcome vocabulary is amended away from `answered` because the
 product cannot know a note was satisfied, and `Reject` retires in favour of
 `Not Fixed`, which `CONTEXT.md` already defines and which no longer auto-delivers.
+
+2026-09-18 — Verification Run. Run
+`.visual-intent-verify/runs/2026-09-18_00-22-03-closing-the-loop` ended `changed`.
+It drove the evidence words (`changed` and `same`), `Approve`, `Not Fixed` and
+`Mark obsolete`, changing a decision in one act, adding to a Not Fixed note,
+Another Pass opening a new Pass and freezing the one it answered, closing a Pass
+with an undecided member reading `never decided`, and changing a decision on a
+closed Pass reopening it. The defect it found: `Try again` was offered only for
+members still to decide, so a Pass whose only open member was Not Fixed showed no
+control, and Not Fixed is exactly the request for another attempt. Fixed, and the
+Lever gained `close-pass` and `another-pass`, which the harness lacked. Run
+`.visual-intent-verify/runs/2026-09-18_00-25-25-closing-the-loop-clean` then ended
+`clean`. The fixture's own missing `thumb-*.png` images produce three 404s in both
+runs; that is pre-existing fixture noise, not this iteration. Both runs worked from
+a dirty tree, and only the darwin gallery baselines are recorded here; the Linux
+pair comes from CI's `gallery-actual`.

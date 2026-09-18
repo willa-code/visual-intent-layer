@@ -1,5 +1,5 @@
 import type { Annotation } from '../annotation/model.js';
-import { anchorOutcome, approvalBlockers, isAmendable, isInQueue, isVerification, missingRelationTargets, relationsAmong, targetName } from '../annotation/model.js';
+import { anchorOutcome, approvalBlockers, isAmendable, isAttemptable, isInQueue, isVerification, missingRelationTargets, relationsAmong, targetName } from '../annotation/model.js';
 import { relationSentence } from '../annotation/relations.js';
 import { deriveResolutionLabel, type RuntimeStateContext } from '../resolution/model.js';
 import type { ResolutionCandidate, TargetResolutionRecord } from '../resolution/resolve.js';
@@ -300,6 +300,7 @@ class App {
         .filter((annotation) => annotation.passId === pass.passId)
         .sort((a, b) => a.order - b.order);
       const outstanding = members.filter((annotation) => !isVerification(annotation.state)).length;
+      const attemptable = members.filter((annotation) => isAttemptable(annotation.state)).length;
       const carriedAway = pass.annotationIds.filter((id) => {
         const annotation = this.snapshot.annotations.find((entry) => entry.annotationId === id);
         return annotation !== undefined && annotation.passId !== undefined && annotation.passId !== pass.passId;
@@ -312,7 +313,7 @@ class App {
           number: passNumber(passes, pass),
           outstanding,
           onClose: () => void this.closePass(pass.passId),
-          ...(outstanding > 0 ? { onAnotherPass: () => void this.anotherPass(pass.passId) } : {}),
+          ...(attemptable > 0 ? { onAnotherPass: () => void this.anotherPass(pass.passId) } : {}),
           ...(carriedAway > 0 ? { carriedAway } : {})
         }),
         this.annotationList(members, { hideClosed: this.closedHidden })

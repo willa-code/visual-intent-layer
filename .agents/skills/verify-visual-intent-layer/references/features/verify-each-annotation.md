@@ -10,6 +10,8 @@ An Annotation is decided on its own row, in the one ledger grouped by Pass: appr
 - `verify-not-fixed` marks one Annotation Not Fixed: the revision does not satisfy it and another attempt is wanted.
 - `verify-obsolete` marks one Annotation obsolete.
 - `verify-change` changes an already-recorded decision in one act, reopening a closed Pass.
+- `pass-close` closes a Pass; members left undecided read as never decided, and the closed Pass's counts and result revision freeze.
+- `another-pass` opens a new Pass carrying the members that have not been accepted and not been abandoned, and closes the Pass it answered.
 - `verify-blocked` states the reason approval is refused.
 - `verify-amend` Replaces a sent Annotation and delivers its Replacement with Steering Intent.
 - `closed-toggle` hides and reveals Replaced and obsolete rows behind one control. A decided row stays in the ledger, because its decision can still be changed.
@@ -39,6 +41,8 @@ Preconditions:
 - **Mark obsolete.** Run `… lever.mjs decide --verdict obsolete --match "…"`. `state` shows `obsolete`.
 - **Replace by amending.** Run `… lever.mjs amend --note "Clearer wording." --match "…"`. Exit `0`; `state` shows the original `replaced` with a `replacedBy`, the Replacement carrying `replaces`, and a Pass with intent `steering`.
 - **Hide the closed rows.** Run `… lever.mjs closed-rows`. Exit `0`; the visible row count changes and the toggle states how many are hidden. A verified row is not hidden, because its decision can be changed.
+- **Close a Pass.** With a Pass ready or in flight, run `… lever.mjs close-pass [--row <n>]`. Exit `0`; `state` shows the Pass `closed`, and a member left undecided reads as never decided in the Pass header.
+- **Ask for another Pass.** With a ready Pass that has an open member, run `… lever.mjs another-pass [--row <n>]`. Exit `0`; the Pass it answered is `closed` with its outcome and result revision frozen, and a new Pass carries that member, re-delivered, as Next-Pass Intent. The command exits `4` when no Pass offers the act.
 - **Blocked verdict.** Give one target an unresolved resolution, then run `… lever.mjs decide --verdict approve --match "…"`. The command reports the refusal reason; the Annotation stays undecided.
 - **Proof.** Run `… lever.mjs state` and `… lever.mjs screenshot --name verify-decided`. The state carries each verdict and timestamp; the screenshot shows the decided rows.
 
@@ -50,3 +54,5 @@ Preconditions:
 - `obsolete` settles the Annotation without accepting it; do not read it as approval. A Replacement is reached only through `Amend`.
 - A verdict on one Annotation never decides another. Assert the `annotationId`, not the count.
 - The per-row comparison appears only when the row has a result from a different revision. Without a changed artifact there is nothing to compare and the drive reports exit `4`.
+- **Try again is offered for open members, not undecided ones.** A Pass whose only open member is Not Fixed still offers Another Pass, because Not Fixed is a request for another attempt. Gate on the members that can be attempted, never on the count still to decide.
+- **Reload the surface after a rebuild.** The Review Surface page holds the bundle it was served; a change to the shell needs `reload-surface` before a drive, or the page will not show it.
