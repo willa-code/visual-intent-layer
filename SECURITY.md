@@ -48,8 +48,14 @@ that is not audited by this product.
 - File access is confined to the artifact directory by canonical path. Symlinks
   that resolve outside are refused. Request bodies are capped at 1MB; served
   artifacts and assets are capped at 5MB; attachments are capped at 5MB.
-- The default data plane is local. Nothing uploads implicitly. The review UI
-  discloses exactly which evidence an envelope carries before delivery.
+- The default data plane is local. Nothing uploads implicitly, and nothing
+  leaves the machine until the Builder-Reviewer sends. The review UI discloses
+  exactly which evidence an envelope carries before delivery, and the
+  Builder-Reviewer holds the exits: an unsent Annotation stays private, Take
+  Back returns a delivery the agent has not collected to the queue, and an
+  attachment can be removed. There is no redaction, crop or mask affordance;
+  disclosure plus those exits are the whole mitigation, stated rather than
+  implied.
 
 **Remote-origin policy for a saved HTML artifact.** A saved HTML artifact keeps
 its own relative and root-relative assets and may load the remote stylesheet,

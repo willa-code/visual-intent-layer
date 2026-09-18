@@ -174,3 +174,5 @@ Verification Runs cover the shadow roots, the frame interior, the unrendered row
 and the walk bound. The truncation fact is now recorded on the resolution
 (`TargetResolutionRecord.truncated`), so `state` reads it back rather than only the
 row stating it. All eight tickets are `done`.
+
+2026-09-18 — the two references above to `.scratch/backlog.md` are left as written, and that file is retired: what it held now lives in `.scratch/backlog-triage/spec.md` under **Further Notes**. One of the two changed in the triage: the tldraw experiment is no longer unrun business, it is withdrawn, because tldraw-class shapes belong to the canvas class the strategy's completion boundary does not carry.

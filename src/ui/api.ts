@@ -98,10 +98,10 @@ export class Api {
     return this.json<AgentPositionReport>(this.url(`/api/sessions/${this.sessionId}/agent`));
   }
 
-  async createAnnotation(targets: LayerTarget[]): Promise<Annotation> {
+  async createAnnotation(targets: LayerTarget[], appliedRevision: string): Promise<Annotation> {
     const result = await this.json<{ annotation: Annotation }>(
       this.url(`/api/sessions/${this.sessionId}/annotations`),
-      { method: 'POST', body: JSON.stringify({ targets }) }
+      { method: 'POST', body: JSON.stringify({ targets, appliedRevision }) }
     );
     return result.annotation;
   }

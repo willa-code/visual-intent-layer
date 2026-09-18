@@ -605,12 +605,17 @@ function passTone(state: SessionPass['state']): Tone {
 export function describeEvidence(annotation: Annotation): Array<{ title: string; body: string }> {
   return annotation.targets.map((target, index) => {
     const grounding = target.renderedGrounding;
+    const scroll = grounding.boundingBox.scrollX !== undefined && grounding.boundingBox.scrollY !== undefined
+      ? `Scroll: ${Math.round(grounding.boundingBox.scrollX)},${Math.round(grounding.boundingBox.scrollY)}`
+      : undefined;
     const evidence = [
       target.label ? `Label: ${target.label}` : undefined,
       grounding.semanticRole ? `Role: ${grounding.semanticRole}` : undefined,
       grounding.accessibleName ? `Name: ${grounding.accessibleName}` : undefined,
       grounding.selectors?.[0] ? `Selector: ${grounding.selectors[0]}` : undefined,
-      `Box: ${Math.round(grounding.boundingBox.x)},${Math.round(grounding.boundingBox.y)} ${Math.round(grounding.boundingBox.width)}×${Math.round(grounding.boundingBox.height)}`
+      `Box: ${Math.round(grounding.boundingBox.x)},${Math.round(grounding.boundingBox.y)} ${Math.round(grounding.boundingBox.width)}×${Math.round(grounding.boundingBox.height)}`,
+      target.runtimeState?.address ? `Address: ${target.runtimeState.address}` : undefined,
+      scroll
     ]
       .filter(Boolean)
       .join(' · ');

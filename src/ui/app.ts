@@ -1165,7 +1165,7 @@ class App {
       }
     } else {
       try {
-        const annotation = await this.api.createAnnotation(targets);
+        const annotation = await this.api.createAnnotation(targets, this.adoptedRevision);
         this.activeAnnotationId = annotation.annotationId;
         this.selectedRowId = annotation.annotationId;
         await this.refresh();
@@ -1716,9 +1716,6 @@ class App {
       const status = await this.api.status();
       if (status.currentRevision) {
         this.currentRevision = status.currentRevision;
-      }
-      if (status.adoptedRevision) {
-        this.adoptedRevision = status.adoptedRevision;
       }
       if (status.revisionBasis) {
         this.revisionBasis = status.revisionBasis;

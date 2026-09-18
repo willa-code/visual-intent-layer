@@ -333,9 +333,13 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
         return;
       }
       try {
+        const appliedRevision = (body as { appliedRevision?: unknown }).appliedRevision;
         const annotation = review.annotations.createDraft({
           artifactId: session.artifactId,
-          writtenRevision: session.adoptedRevision ?? session.revision,
+          writtenRevision:
+            typeof appliedRevision === 'string' && appliedRevision.length > 0
+              ? appliedRevision
+              : session.adoptedRevision ?? session.revision,
           targets: normalizeTargets(targets),
           ...(typeof (body as { note?: unknown }).note === 'string' ? { note: (body as { note: string }).note } : {})
         });
@@ -464,7 +468,9 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     const current = typeof status['currentRevision'] === 'string' ? status['currentRevision'] : session.revision;
     sessions.put({ ...session, adoptedRevision: current });
     saveAdoptedSnapshot(review, session, current);
-    review.annotations.markPassesReady(session.artifactId, current);
+    if ((session.adoptedRevision ?? session.revision) !== current) {
+      review.annotations.markPassesReady(session.artifactId, current);
+    }
     const reloaded = sessions.get(session.sessionId)!;
     sendJson(response, 200, await sessionStatus(reloaded));
     return;

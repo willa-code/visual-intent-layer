@@ -900,6 +900,197 @@ describe('Review Surface (primary seam: a real browser engine)', () => {
     );
     await dying.close();
   }, 60000);
+
+  it('keeps a tab reporting the revision it is showing when a second tab adopts a newer one', async () => {
+    writeFileSync(artifactPath, ARTIFACT_V1, 'utf8');
+    const opened = await service.openSession({ kind: 'saved-html', path: artifactPath });
+    const held = opened.artifact.revision;
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const stored = () =>
+      fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`).then((response) =>
+        response.json()
+      ) as Promise<{ annotations: Array<{ annotationId: string; writtenRevision: string }> }>;
+    const sessionStatus = () =>
+      fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}?${auth}`).then((response) => response.json()) as Promise<{
+        adoptedRevision: string;
+      }>;
+
+    const tabA = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const tabB = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    try {
+      await tabA.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+      const frameA = tabA.frameLocator('iframe.artifact-frame');
+      await expectLater(() => frameA.locator('button.checkout-submit').count(), (count) => count === 1, 'tab A renders the first revision');
+      await expectLater(
+        () => tabA.locator('.rail__revision .revision-chip').getAttribute('title'),
+        (title) => title === `Revision ${held}`,
+        'tab A reports the revision it is holding'
+      );
+
+      writeFileSync(artifactPath, ARTIFACT_AMBIGUOUS, 'utf8');
+      await tabA.locator('.banner').waitFor({ state: 'visible' });
+
+      await tabB.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+      const frameB = tabB.frameLocator('iframe.artifact-frame');
+      await expectLater(() => frameB.locator('button.checkout-submit').count(), (count) => count === 2, 'tab B renders the second revision');
+      await expectLater(
+        async () => (await sessionStatus()).adoptedRevision,
+        (revision) => revision !== held,
+        'tab B records the second revision on the shared session'
+      );
+
+      await tabA.waitForTimeout(3500);
+      await expectLater(
+        () => tabA.locator('.rail__revision .revision-chip').getAttribute('title'),
+        (title) => title === `Revision ${held}`,
+        'tab A still reports the revision it is showing, a poll interval after the other tab moved'
+      );
+
+      await tabA.getByRole('button', { name: /Point at things/ }).click();
+      const gotIt = tabA.getByRole('button', { name: 'Got it' });
+      if ((await gotIt.count()) > 0) {
+        await gotIt.click();
+      }
+      const known = new Set((await stored()).annotations.map((entry) => entry.annotationId));
+      await frameA.locator('button.checkout-submit').first().click();
+      await expectLater(
+        async () => (await stored()).annotations.find((entry) => !known.has(entry.annotationId))?.writtenRevision,
+        (revision) => revision === held,
+        'the Annotation tab A composes is stamped with the revision it is showing'
+      );
+    } finally {
+      await tabA.close();
+      await tabB.close();
+    }
+  }, 120000);
+
+  it('marks a Pass ready only when a reload actually brings a new revision', async () => {
+    writeFileSync(artifactPath, ARTIFACT_V1, 'utf8');
+    const opened = await service.openSession({ kind: 'saved-html', path: artifactPath });
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const passes = () =>
+      fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`).then((response) =>
+        response.json()
+      ) as Promise<{ passes: Array<{ passId: string; state: string }> }>;
+
+    const tab = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    try {
+      await tab.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+      const frame = tab.frameLocator('iframe.artifact-frame');
+      await expectLater(() => frame.locator('button.checkout-submit').count(), (count) => count === 1, 'the artifact renders');
+
+      await tab.getByRole('button', { name: /Point at things/ }).click();
+      const gotIt = tab.getByRole('button', { name: 'Got it' });
+      if ((await gotIt.count()) > 0) {
+        await gotIt.click();
+      }
+      await frame.locator('button.checkout-submit').first().click();
+      const card = tab.locator('.anchored-card');
+      await card.locator('textarea').fill('Make the Place order button impossible to miss.');
+      await card.locator('textarea').press('Enter');
+      const known = new Set((await passes()).passes.map((entry) => entry.passId));
+      await tab.getByRole('button', { name: 'Send the queue' }).click();
+      const passState = async () => (await passes()).passes.find((entry) => !known.has(entry.passId))?.state;
+      await expectLater(
+        passState,
+        (state) => state === 'open' || state === 'in-flight',
+        'sending opens a Pass and the agent collects it'
+      );
+
+      await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/reload?${auth}`, { method: 'POST' });
+      await expectLater(
+        passState,
+        (state) => state !== 'ready',
+        'a reload that brings no new revision leaves the Pass unready'
+      );
+
+      writeFileSync(artifactPath, ARTIFACT_AMBIGUOUS, 'utf8');
+      await tab.locator('.banner').waitFor({ state: 'visible' });
+      await tab.getByRole('button', { name: 'Reload artifact' }).click();
+      await expectLater(
+        passState,
+        (state) => state === 'ready',
+        'a reload onto a new revision marks the Pass ready'
+      );
+    } finally {
+      await tab.close();
+    }
+  }, 120000);
+
+  it('names the state evidence among what the drawer says will leave the machine', async () => {
+    writeFileSync(artifactPath, ARTIFACT_V1, 'utf8');
+    const opened = await service.openSession({ kind: 'saved-html', path: artifactPath });
+    const tab = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    try {
+      await tab.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+      const frame = tab.frameLocator('iframe.artifact-frame');
+      await expectLater(() => frame.locator('button.checkout-submit').count(), (count) => count === 1, 'the artifact renders');
+
+      await tab.getByRole('button', { name: /Point at things/ }).click();
+      const gotIt = tab.getByRole('button', { name: 'Got it' });
+      if ((await gotIt.count()) > 0) {
+        await gotIt.click();
+      }
+      await frame.locator('button.checkout-submit').first().click();
+      const card = tab.locator('.anchored-card');
+      await card.locator('textarea').fill('Make the Place order button impossible to miss.');
+      await card.locator('textarea').press('Enter');
+
+      await tab.getByRole('button', { name: 'More actions' }).click();
+      await tab.getByRole('menuitem', { name: 'Open the disclosure' }).click();
+
+      const disclosure = tab.locator('.drawer .disclosure-list');
+      await expectLater(
+        () => disclosure.innerText(),
+        (text) => /Scroll: \d+,\d+/.test(text),
+        'the disclosure names the scroll the envelope will carry'
+      );
+      expect(await disclosure.innerText()).not.toMatch(/undefined/);
+    } finally {
+      await tab.close();
+    }
+  }, 120000);
+
+  it('names the address a Target recorded among the evidence the drawer says will leave', async () => {
+    const dev = await startDevServer({ routed: true });
+    const tab = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    try {
+      const opened = await service.openSession({ kind: 'react-vite-app', url: dev.url });
+      await tab.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+      const frame = tab.frameLocator('iframe.artifact-frame');
+      await expectLater(() => frame.locator('.app-root').count(), (count) => count === 1, 'the application renders');
+
+      await frame.locator('.app-detail').click();
+      await expectLater(
+        () => frame.locator('.app-root').count(),
+        (count) => count === 1,
+        'the application navigates within itself to its own route'
+      );
+
+      await tab.getByRole('button', { name: /Point at things/ }).click();
+      const gotIt = tab.getByRole('button', { name: 'Got it' });
+      if ((await gotIt.count()) > 0) {
+        await gotIt.click();
+      }
+      await frame.locator('.app-action').click();
+      const card = tab.locator('.anchored-card');
+      await card.locator('textarea').fill('Ship the order after the filter applies.');
+      await card.locator('textarea').press('Enter');
+
+      await tab.getByRole('button', { name: 'More actions' }).click();
+      await tab.getByRole('menuitem', { name: 'Open the disclosure' }).click();
+
+      const disclosure = tab.locator('.drawer .disclosure-list');
+      await expectLater(
+        () => disclosure.innerText(),
+        (text) => /Address: detail/.test(text),
+        'the disclosure names the address the Target recorded'
+      );
+    } finally {
+      await tab.close();
+      await dev.stop();
+    }
+  }, 120000);
 });
 
 async function expectLater<T>(
@@ -993,6 +1184,11 @@ const APP_FRAMED_HTML = APP_HTML.replace(
   '<button class="app-plain" type="button">Plain</button>\n      <iframe id="widget" title="Widget" src="/widget"></iframe>'
 );
 
+const APP_ROUTED_HTML = APP_HTML.replace(
+  '<button class="app-plain" type="button">Plain</button>',
+  '<button class="app-plain" type="button">Plain</button>\n      <a class="app-detail" href="/detail">Order details</a>'
+);
+
 const APP_WIDGET_HTML = `<!doctype html>
 <html lang="en">
   <head><meta charset="utf-8" /><title>Embedded widget</title></head>
@@ -1001,7 +1197,7 @@ const APP_WIDGET_HTML = `<!doctype html>
   </body>
 </html>`;
 
-async function startDevServer(options: { framed?: boolean } = {}): Promise<{
+async function startDevServer(options: { framed?: boolean; routed?: boolean } = {}): Promise<{
   url: string;
   requests: Array<{ method: string; url: string; body: string }>;
   advancedRevision: string;
@@ -1026,7 +1222,9 @@ async function startDevServer(options: { framed?: boolean } = {}): Promise<{
         response.end(APP_WIDGET_HTML);
         return;
       }
-      response.end(options.framed === true ? APP_FRAMED_HTML : APP_HTML);
+      response.end(
+        options.framed === true ? APP_FRAMED_HTML : options.routed === true ? APP_ROUTED_HTML : APP_HTML
+      );
     });
   });
   server.on('upgrade', (request, socket) => {
@@ -1721,7 +1919,23 @@ describe('Review Surface: Runtime State Evidence, one document, and a proxied ap
       const widget = artifact.frameLocator('iframe#widget');
       await expectLater(() => widget.locator('.widget-action').count(), (count) => count === 1, 'the embedded document renders');
 
+      await expectLater(
+        async () =>
+          (
+            (await (
+              await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}?${auth}`)
+            ).json()) as { adoptedRevision: string }
+          ).adoptedRevision,
+        (revision) => revision === dev.advancedRevision,
+        'the application update channel has settled before the box drag begins'
+      );
+
       await areaPage.getByRole('button', { name: /Box an area/ }).click();
+      await expectLater(
+        () => artifact.locator('body').getAttribute('style'),
+        (style) => (style ?? '').includes('crosshair'),
+        'the layer is armed for boxing before the drag begins'
+      );
       const button = await widget.locator('.widget-action').boundingBox();
       const x1 = (button?.x ?? 0) - 8;
       const y1 = (button?.y ?? 0) - 8;

@@ -248,3 +248,5 @@ by `check-records.js` and by reading the corrected records against the shipped s
 Landed 2026-09-17: `Status: done`. Every correction in this iteration is in the tree and `scripts/check-records.js` passes, which is this iteration's own proof. No Verification Run was performed.
 
 The nineteen `surface-refinement` tickets keep their criteria text and argument. Shipped acceptance boxes were corrected to `[x]` against the shipped surface — what `## Solution` calls "every box to its evidence" — and every remaining gap is named in a `Deferred confirmation:` where it could not be driven. `06` is `superseded` by `.scratch/surface-refinement-pass-a/spec.md` and its boxes are left unticked, because the shape it describes is no longer the shipped one.
+
+2026-09-18 — the sentence above places the ideas with no owner in `.scratch/backlog.md`. That file is retired; its remaining content, the parked list, every trigger and the withdrawn ideas now live in `.scratch/backlog-triage/spec.md` under **Further Notes**. The reference is left as written.

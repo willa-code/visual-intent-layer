@@ -14,6 +14,10 @@ selection into one Annotation's set, and dragging a target already in that set
 expresses one relation — ordering, alignment, equal spacing, containment, shared
 property or comparative size — shown as one sentence before it is recorded.
 
+The product reviews a browser-rendered surface: a saved or generated HTML
+document, or a local running web application. A mobile build, a native desktop
+window, a design file and a PDF are outside it by decision rather than omission.
+
 ## Install
 
 Requires Node 20+. No Rust toolchain, no hosted account.
@@ -162,7 +166,9 @@ never asserts it. Whether an Annotation was written before the revision now on
 screen is a separate, Annotation-level fact shown as such. Provenance
 Confidence — exact source span, inferred, or unavailable — is a separate axis
 and never shares the word "exact" with target resolution; `exact` is claimed
-only where an instrumented artifact stamped a source location, per Target.
+only where an instrumented artifact stamped a source location, per Target — a
+stamp read from `data-vis-source`, or from `data-insp-path` written by
+`code-inspector-plugin` as one way to produce it.
 
 Every Annotation is stamped with the **Adopted Revision**: the revision the
 artifact reported it was holding, not the revision a source currently offers.
