@@ -71,12 +71,18 @@ Run Docs sync first, then the CI gate on the release commit. A red preflight sto
 the release.
 
 ```sh
-npm run typecheck && npm test && npm run build && npm run benchmark
+npm run typecheck && node scripts/check-records.js && npm test && npm run build && npm run benchmark
 node scripts/check-bins.js
 npm install -g --prefix /tmp/vil-ci . && /tmp/vil-ci/bin/visual-intent --help
 ```
 
 Completion: every command exits 0.
+
+`node scripts/stdio-smoke.js` opens a stdio MCP client against `dist/mcp/stdio.js`,
+lists the four tools, and opens `fixtures/gallery.html` over the real transport. It
+is a manual check and not part of the gate: it opens a browser and holds
+`open_visual_review` for the service's wait window, so it cannot run unattended. Set
+`VISUAL_INTENT_NO_WAIT=1` and `VISUAL_INTENT_NO_OPEN=1` when running it headless.
 
 ## Bump
 
@@ -132,6 +138,6 @@ Feature = minor, fix = patch, breaking = minor while on `0.x`, which semver defi
 
 Wire a failing check into CI in preference to a recurring checklist. On a green run:
 
-- ticket statuses under `.scratch/<feature>/issues/` — `done`, boxes ticked, evidence in Comments
+- the one thing `scripts/check-records.js` does not automate: evidence in Comments on a ticket whose boxes are ticked
 - `npm outdated`, and the major versions of GitHub Actions
 - a Docs sync, so no current doc has drifted from the build

@@ -1,0 +1,39 @@
+I have sufficient evidence. Now producing the final artifact.
+
+## Scope
+
+Files read in full: `SECURITY.md`, `AGENTS.md`, `docs/agents/domain.md`, `docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, `package.json`, `scripts/check-records.js`, `.github/workflows/publish.yml`, `.github/workflows/ci.yml` (grep only), `docs/adr/0003-local-data-plane-and-bounded-application-support.md`.
+
+Code read/grepped for verification: `src/service/http.ts`, `src/service/sessions.ts`, `src/host/capabilities.ts`, `src/artifact/fidelity.ts`, `src/artifact/revision.ts`, `src/annotation/attachments.ts`, `src/mcp/service.ts`, `src/mcp/stdio.ts`, `src/ui/capture.ts`, `src/ui/app.ts`, `.scratch/**` directory structure (layout only, not content), `.agents/skills/verify-visual-intent-layer/**` and `.agents/skills/maintain-verification-skill/**` (existence check only).
+
+Left out: the 25 vendored skills per instructions; `.visual-intent-verify/**`; contents of `.scratch/**` issue/spec files beyond directory-shape sampling; ADRs other than 0003 (0003 was read because SECURITY.md cites it by number); `README.md`, `design.md`, `docs/pi-validation.md` (out of my assigned lane).
+
+## Findings
+
+- **CLAIM:** "V0 is a local-first Proof Product... `0.3.0-next.x` builds are pre-releases: they publish to the `next` npm tag and are supported the same way while they are the current line." — `SECURITY.md:11-14`
+  **CODE:** `package.json:3` currently ships version `"0.3.0-next.3"`, and `.github/workflows/publish.yml:22-24` still has a `Publish pre-release to next` step gated on `github.event.release.prerelease` that runs `npm publish --provenance --access public --tag next`.
+  **VERDICT:** STALE (per settled decision #4: the npm pre-release channel is being retired; releases become official-only, users install `@latest`).
+  **FIX:** Once decision #4 lands, delete the `0.3.0-next.x`/`next`-tag sentence from `SECURITY.md:12-14` and replace with a statement that all published versions are official releases installed via `@latest`; drop the "pre-release" framing from the Supported Versions note entirely.
+
+- **CLAIM:** "The proxied document therefore carries a separate policy that permits `'self'` for `connect-src`, `form-action`, `script-src`, `style-src`, `img-src`, `font-src`, `media-src`, `worker-src` and `frame-src`, and permits nothing else: `default-src` is `'none'`, and no remote origin is added." — `SECURITY.md:76-79`
+  **CODE:** `applicationContentSecurityPolicy()` in `src/artifact/fidelity.ts:229-246` also sets `manifest-src 'self'` (line 239) and `base-uri 'self'` (line 242), neither enumerated in the doc's list, and `script-src` is actually `'self' 'unsafe-inline' 'unsafe-eval' blob:` (line 233), not the bare `'self'` implied by the doc's phrasing. `object-src 'none'` (line 244) is also unmentioned (though it's a restriction, not a grant, so less material).
+  **VERDICT:** WRONG — the doc's enumerated permit list is incomplete/narrower than the code's actual grant, so "permits nothing else" is false: the policy additionally permits `manifest-src` and overrides `base-uri` to `'self'` (default-src `'none'` does not cover directives that have an explicit override), and understates `script-src`'s breadth (`'unsafe-eval'`, `blob:`).
+  **FIX:** Update `SECURITY.md:76-79` to list all directives the code actually sets to something other than `'none'`: `connect-src`, `form-action`, `script-src` (note `'unsafe-eval'` and `blob:`), `style-src`, `img-src`, `font-src`, `media-src`, `worker-src`, `frame-src`, `manifest-src`, and `base-uri`, all `'self'` except `script-src`/others as coded.
+
+- **CLAIM:** "is set as a scoped, `HttpOnly`, `SameSite=Strict` cookie when the shell is served" — `SECURITY.md:43`
+  **CODE:** `rememberSessionCookie` in `src/service/http.ts` sets `vil_session=...; Path=/; HttpOnly; SameSite=Strict` and `vil_cap=...; Path=/; HttpOnly; SameSite=Strict` — `Path=/`, not scoped to a per-session path.
+  **VERDICT:** MATCHES on `HttpOnly`/`SameSite=Strict`; "scoped" is defensible only as "scoped to this loopback origin/session record via server-side lookup," not as a narrower cookie `Path`. Not a contradiction, but the word "scoped" is doing more rhetorical work than the cookie attributes literally show (`Path=/` is host-wide, not session-path-scoped).
+  **VERDICT:** OK with notes (not WRONG — the enforcement is that the *value itself* is per-session and verified server-side in constant time, which is true), no fix required unless the maintainer wants "scoped" spelled out as "the capability's value, not the cookie's attributes, is what is scoped per session."
+
+## Code with no documentation
+
+- `src/host/capabilities.ts:1-21` — `detectCapabilities`/`describeCapabilities`/`HostCapabilities` (embeddedUI, subscriptions/polling). This is a *host-adapter feature-detection* capability, unrelated to the security "capability" token discussed in `SECURITY.md`. The naming collision (`capabilities.ts` vs. the security "capability") is confusing on first read but is not documented anywhere and not covered by SECURITY.md's threat model, which only discusses the session-auth capability. Load-bearing for host UX (decides embedded vs. browser-fallback rendering), not a security control; no fix needed for SECURITY.md since it's out of scope for that doc, but worth a naming note for future readers. Not flaggable as a SECURITY.md defect since the doc never claims anything about it.
+- `src/service/sessions.ts` (`mkdirSync(dataDir, { recursive: true })`, similarly in `src/service/http.ts:80`, `src/service/check-in.ts:31`, `src/artifact/snapshots.ts:9`, `src/annotation/store.ts:87`) — none of these pass a `mode` to `mkdirSync`, so the local data directory (annotations, sessions, snapshots, attachments) is created with the default umask-derived permissions (typically world/group-readable on multi-user boxes), not an explicit `0o700`. SECURITY.md makes no claim about data-directory permissions one way or the other, so this is not a doc contradiction, but it is a real gap between the "local boundary" framing and what the filesystem actually enforces — worth a "Could not verify" / follow-up rather than a doc fix, since the doc makes no promise here to falsify.
+
+## Could not verify
+
+- Whether `SECURITY.md`'s "scoped" cookie language is meant to imply a narrower `Path` attribute than `/`. Would need a design note or ADR stating the intended cookie `Path` semantics; none found in `docs/adr/`.
+- Whether data-directory permission hardening (`0o700` or similar) is planned but unimplemented, or was never a requirement. Would need an ADR or issue under `.scratch/` explicitly discussing data-at-rest permissions; a targeted grep across `.scratch/**` for "0700"/"file permission" was not performed (out of the assigned five-doc lane and would require broader search than authorized here).
+- Whether `.agents/skills/verify-visual-intent-layer` and `maintain-verification-skill` referenced in `AGENTS.md:14,16` are fully wired end-to-end (I only confirmed the skill directories and a `lever.mjs` binary exist; I did not execute or fully audit the skill contents, which is explicitly out of my lane per the excluded-skills rule and the assigned doc set).
+
+**Note on scope boundary:** `docs/agents/domain.md`, `docs/agents/issue-tracker.md`, and `docs/agents/triage-labels.md` were checked against `scripts/check-records.js`, `.github/workflows/ci.yml`, the `.scratch/` directory layout, `CONTEXT.md`/`docs/adr/` presence, and `VISION.md` presence — all claims in those three files (status vocabulary closed set, `issues/NN-<slug>.md` naming, `Trigger:`/`Deferred confirmation:` rules, CI enforcement, single-context layout, five canonical triage labels, advisor-panel directory convention) match the code/repo exactly, with no discrepancy found. No findings are reported for those three files beyond what's above because none qualified under the evidence bar.

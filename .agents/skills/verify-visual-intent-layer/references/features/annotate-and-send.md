@@ -57,7 +57,7 @@ Preconditions:
 - The anchored card is positioned beside the most recently added target and can cover a neighbouring target, so point where the card will not sit over the next thing you want to point at, or close the card with Escape before the next selection. `Shift` extends the selection into one Annotation's set, up to eight targets; a plain click or box replaces the set.
 - Arming an armed tile returns to operating. A select recipe must not assume the tile is unarmed; the Lever checks the armed state before clicking.
 - The note is saved on a debounce. Wait for the observable note in `state`; do not assume the keystroke landed immediately.
-- `Queue` needs at least one target. Selecting then immediately queueing without a note still creates a durable Annotation with `No note yet`.
+- `Queue` needs at least one target. Selecting then immediately queueing without a note still creates a durable Annotation with `No note`.
 - `Send the queue` is disabled while the queue is empty. Send in that state is a precondition failure, not a silent no-op.
 - A `draft` intent is not a delivery the surface can produce: the tool description and the driver reject it rather than creating a batch.
 - Sending does not clear the Annotation from the list; it changes the state pill and closes the active card. The selected targets stay marked until a new selection or `Escape`.

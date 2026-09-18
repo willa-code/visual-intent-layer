@@ -73,13 +73,21 @@ for a served application.
 served through the review origin so its DOM is selectable rather than
 cross-origin and opaque. It cannot work with `connect-src 'none'`: it needs its
 own requests, its own forms and its own update channel. The proxied document
-therefore carries a separate policy that permits `'self'` for `connect-src`,
-`form-action`, `script-src`, `style-src`, `img-src`, `font-src`, `media-src`,
-`worker-src` and `frame-src`, and permits nothing else: `default-src` is
-`'none'`, and no remote origin is added. Everything the application reaches must
-travel back through the proxied origin, where it is confined to the loopback
-development server and re-validated on every request. The Builder-Reviewer sees
-this permit list in the disclosure. A request outside it fails closed.
+therefore carries a separate policy
+(`applicationContentSecurityPolicy`, `src/artifact/fidelity.ts`): `default-src`
+and `object-src` are `'none'`; `connect-src`, `form-action`, `base-uri`,
+`frame-src` and `manifest-src` are `'self'`; `style-src` is
+`'self' 'unsafe-inline'`; `img-src` is `'self' data: blob:`; `font-src` is
+`'self' data:`; `media-src` and `worker-src` are `'self' blob:`; and `script-src`
+is `'self' 'unsafe-inline' 'unsafe-eval' blob:`. The document is additionally
+sandboxed without top-navigation. Inline and evaluated script are permitted
+because what is being reviewed is a development build proxied from a loopback
+dev server, never a production origin. No remote origin is added. Everything the
+application reaches must travel back through the proxied origin, where it is
+confined to the loopback development server and re-validated on every request.
+The disclosure states this in two sentences rather than as a directive list: the
+surface says what the Builder-Reviewer needs, and the exact policy lives here. A
+request outside it fails closed.
 
 **Reverse-proxy scope (amendment to ADR-0003).** The service proxies a running
 local development server through its own origin. Method, body, request headers

@@ -41,11 +41,11 @@ The ordered set of Annotations a Builder-Reviewer has composed but not yet sent.
 _Avoid_: Cart, basket, backlog, inbox
 
 **Pass**:
-One delivery of Annotations and the artifact revision that answers it. A Pass has a state (open, in flight, ready, closed) and a set of member Annotations, and only the Builder-Reviewer closes it. Closing it is a record: its outcome and its decisions freeze, and a Builder-Reviewer changing a decision on one of its Annotations reopens it. A Pass the agent has not collected may be taken back instead.
+One delivery of Annotations and the artifact revision that answers it. A Pass has a state (in flight, ready, closed, or taken back) and a set of member Annotations, and only the Builder-Reviewer closes it. Closing it is a record: its outcome and its decisions freeze, and a Builder-Reviewer changing a decision on one of its Annotations reopens it. A Pass the agent has not collected may be taken back instead.
 _Avoid_: Round, batch, iteration, cycle, review cycle
 
 **Replacement**:
-The relationship in which a later Annotation replaces an earlier one that was already delivered. The earlier Annotation is Replaced and states what replaced it, and what the agent was told stays a record; the published envelope schema still names the field `supersedes`, because a wire name is a compatibility surface rather than a word a Builder-Reviewer reads.
+The relationship in which a later Annotation replaces an earlier one that was already delivered. The earlier Annotation is Replaced and states what replaced it, and what the agent was told stays a record.
 _Avoid_: Supersession, superseded, successor, follow-up, edit, update, revision
 
 **Not Fixed**:

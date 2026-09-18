@@ -6,8 +6,9 @@ frame of a proxied application. The composed walk keeps one fixed order and one
 shared budget, a stored Target's anchors are boundary-qualified so a later revision
 re-finds the same node, and a drawn Area encloses what it geometrically encloses
 across a boundary. Where the product cannot look in — a closed shadow root, a
-cross-origin frame interior, a frame the content policy never loaded — it states
-the boundary with its true cause rather than reporting the Target as gone.
+cross-origin frame interior, a frame the content policy never loaded, a frame that
+has not loaded yet — it states the boundary with its true cause rather than
+reporting the Target as gone.
 
 _Driven live: the runs pointed into an open shadow root and into a shadow root
 inside a shadow root, drew an Area over shadow content and re-found it after a
@@ -18,7 +19,8 @@ Verification Runs are `.visual-intent-verify/runs/2026-09-18_04-30-07-reach`,
 `2026-09-18_04-56-45-unrendered-row`, `2026-09-18_04-57-29-walk-bound` and
 `2026-09-18_04-58-14-reach-frame`. The two refusals are driven in the browser loop
 (closed shadow root, policy-blocked frame); the cross-origin refusal has a unit
-seam._
+seam. The frame-that-has-not-loaded refusal is stated by the same code and is not
+yet driven._
 
 ## Sub-features
 
@@ -29,6 +31,7 @@ seam._
 - `reach-refusal-closed` reports a Target whose boundary has become a closed shadow root as the boundary, never as deleted.
 - `reach-refusal-policy` reports a frame the artifact's content policy never loaded as policy-blocked, with that cause.
 - `reach-refusal-cross-origin` reports a frame served from another origin as its own refusal.
+- `reach-refusal-unloaded` reports a frame that has not loaded yet as its own cause — "lives inside a frame that has not loaded, so there is nothing inside it to find yet" — rather than folding it into the cross-origin or policy refusal.
 - `reach-unrendered-row` reports a virtualized row that is not rendered as a state no longer on screen, and the operator's own scroll restores it.
 - `reach-bound` records that the composed walk stopped early, says so, and never lowers a threshold or marks a skipped node.
 
@@ -38,6 +41,7 @@ seam._
 - Arm `Box an area` and drag a rectangle over shadow-rooted or framed content; the Area names what it encloses.
 - Point at content, send the Annotation, then reload the artifact or the surface; the Target re-finds itself.
 - Scroll a virtualized list with a Target written against a row that has left the rendered window; the row reports a state no longer on screen until the operator scrolls it back.
+- Point at, or box, a region a frame has not yet filled; the row says the frame has not loaded rather than that the Target is missing.
 
 ## Driving it with the Lever
 
