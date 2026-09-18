@@ -73,7 +73,7 @@ The ability of any conforming MCP host to invoke the product's ordinary tools an
 _Avoid_: Full compatibility, universal experience
 
 **Certified Experience**:
-A host-and-version combination on which the complete supported interaction and delivery behavior has been tested and published. Certification describes verified behavior rather than restricting which agents may connect.
+A host-and-version combination on which the complete supported interaction and delivery behavior has been tested and published. Certification describes verified behavior rather than restricting which agents may connect. No combination is certified yet.
 _Avoid_: Supported agents, exclusive integration
 
 **Harness**:

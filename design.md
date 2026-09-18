@@ -139,8 +139,8 @@ content surface inside the rail is `surface`; the stage behind the artifact is
 | `type.meta` | sans | 11 / 16 | Counts, timestamps, badges |
 | `type.label` | sans | 12 / 16 | Control labels, chips, tool names |
 | `type.body` | sans | 13 / 18 | Notes, evidence, list content |
-| `type.body.strong` | sans | 13 / 18, 600 | Selected rows, active tool |
-| `type.panel.title` | sans | 15 / 22, 600 | Rail and card headings |
+| `type.body` at 600 | sans | 13 / 18, 600 | Selected rows, active tool. Composed from `type.body`, not a token of its own |
+| `type.rail.title` | sans | 15 / 22, 600 | Rail and card headings |
 | `type.stage.title` | sans | 18 / 26, 600 | Empty and terminal states only |
 | `type.identity` | mono | 12 / 18 | Revision ids, selectors, spans, paths |
 
@@ -153,8 +153,8 @@ look like a hash.
 | Group | Values |
 | --- | --- |
 | Spacing | `4, 8, 12, 16, 20, 24, 32, 40, 48`. Chrome uses 4–16; rail rhythm is 8/12/16; section separation is 24/32. |
-| Metrics | Rail width `380`; drawer width `380`; anchored card max width `340`; control height `32`, small `28`, large `36`; icon button `28×28`. |
-| Radius | `8` inputs and buttons; `12` cards and rail sections; `16` anchored card, drawer, dialog; `pill` chips and tags; `full` icon buttons. |
+| Metrics | Rail width `380`; drawer width `380`; anchored card max width `340`; control height `32`, small `28`, large `36`; icon button `28×28`; icon glyph `18`; mode-island tile `36`. |
+| Radius | `8` inputs and buttons; `12` cards and rail sections; `16` anchored card, drawer, dialog; `pill` chips, tags and icon buttons (`999px`). |
 | Elevation | `card`: `0 1px 2px rgba(43,32,20,.06), 0 8px 24px rgba(43,32,20,.08)`; `overlay`: `0 4px 12px rgba(43,32,20,.10), 0 16px 40px rgba(43,32,20,.14)`; `sheet`: `-8px 0 32px rgba(43,32,20,.12)`. Every elevated surface also carries a `line.default` border: a shadow is never the only boundary. Shadows are warm neutral; a shadow tinted toward a colour is decoration. |
 | Motion | `fast` 120ms, `base` 200ms, `deliberate` 320ms, easing `cubic-bezier(.2,.8,.2,1)`. Spatial movement stays under 12px. No perpetual animation except the agent-activity indicator, which must be pausable. Reduced motion removes all transitions and all scale or lift. |
 

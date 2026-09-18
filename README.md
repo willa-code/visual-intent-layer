@@ -253,9 +253,13 @@ may carry Runtime State Evidence, including the address the artifact was showing
 and, for a Target reached through a frame, the ordered chain of documents it was
 reached through. TypeScript types are generated from it (`npm run build:types`).
 
-The `0.1` schema is kept only for reading state written by older releases. `0.2`
-and `0.3` envelopes are still readable: one without a documents chain loads
-unchanged and is read as the current version. New envelopes are `0.4`.
+`schema/envelope-v0.1.schema.json` is kept only as a historical record of the wire
+shape, including the retired `supersedes` field name: `validateEnvelope` reads `0.4`,
+`0.3` and `0.2`, and an envelope shaped like `0.1` is refused. Store files written
+against the older Annotation model are migrated once, at store startup, by
+`src/annotation/migrate.ts`, independently of schema-version negotiation. A `0.2` or
+`0.3` envelope loads unchanged and is read as the current version. New envelopes are
+`0.4`.
 `review-interruption` remains a reserved value in the `delivery.intent` enum and
 is never emitted, because an interruption names no target and so cannot be an
 envelope.
@@ -314,7 +318,7 @@ with `UPDATE_GALLERY=1` once the change is intended.
 - `VISION.md` — the human-in-the-loop thesis and the UI/UX standard every decision defers to
 - `design.md` — normative Review Surface design contract (tokens, roles, states)
 - `CONTEXT.md` — the domain language, including the words to avoid
-- `schema/` — versioned Visual Intent Envelope contracts (0.2 current, 0.1 legacy)
+- `schema/` — versioned Visual Intent Envelope contracts (0.4 current; 0.2 and 0.3 read for compatibility; 0.1 kept as a historical reference)
 - `src/annotation/` — the Annotation model, durable store, attachments, migration
 - `src/artifact/` — identity, content-addressed revisions, fidelity rewriting, snapshots
 - `src/resolution/` — target resolution and its reduced vocabulary

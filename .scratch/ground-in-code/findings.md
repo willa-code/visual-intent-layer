@@ -157,3 +157,26 @@ stale, both settled while landing tickets 04 and 05:
 Ticket 05 is also done: the browser opener resolves a result, the four call sites use
 it, and both the tool result and the CLI say when no browser could be opened here.
 The feature map gained `open-no-browser` with its lack of a live drive stated.
+
+**§6 is empty, 2026-09-18.** All six unsettled claims are settled in
+`audit/10-unverified-claims.md`. Two were real defects, now repaired:
+
+- `0.1` is **not** readable. `src/envelope/validate.ts:30` reads `['0.4','0.3','0.2']`
+  only, so `README.md:256` was wrong to bundle `0.1` into the load-time mechanism, and
+  `README.md:317` still called `0.2` current. Both corrected; the `0.2`/`0.3` half of
+  the claim is confirmed by two cases in `src/envelope/envelope.test.ts`.
+- `design.md` §3's token names were partly fictional. `type.panel.title` is
+  `--type-rail-title` in the CSS; `type.body.strong` and the `full` radius name tokens
+  that do not exist. Every hex value and every semantic surface pair, by contrast,
+  matched `tokens.css` exactly — the values were right and the names were not. §3 now
+  names the real token, describes the composition rather than inventing a token, and
+  adds `--icon-size` and `--island-tile`, which the contract had never mentioned.
+- Confirmed as sound: the `collectedAt` stamping sites, the GET-only polling that
+  ADR-0029 depends on, and `normalizeOutcome`'s legacy mapping.
+- Split: **Certified Experience** is forward-looking and `CONTEXT.md` now says no
+  combination is certified yet; **Baseline Compatibility** is implemented, so its entry
+  needed no change.
+
+The local data directory keeps the operator's umask, decided rather than left open —
+nothing promises a permission on it, and `0o700` would still be trusting an account
+boundary the product does not own. Ticket 07 records the reasoning.
