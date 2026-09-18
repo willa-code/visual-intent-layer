@@ -289,3 +289,36 @@ password and cannot be driven from a non-interactive shell — npm masks its own
 when its output is not a terminal, and a GitHub OIDC token is minted for `npm publish`
 and refused for `dist-tag` with `E401`. The maintainer ran it in their own terminal. The
 maintenance skill records both facts so the next person does not rediscover them.
+
+## Comments
+
+**2026-09-18 — correction: the registry listing does not survive the release it ships with.**
+
+The claim above that the listing "no longer depends on a manual step after npm" is
+wrong, and 0.3.1 proved it. `registry-listing.yml` and `publish.yml` both trigger on
+`release: published`, so they run concurrently; the listing reaches
+`mcp-publisher publish` about forty seconds before `npm publish` finishes, and the
+registry validates the npm version before accepting the listing:
+
+```
+registry validation failed for package 0 (visual-intent-layer): NPM package
+'visual-intent-layer' exists, but version '0.3.1' was not found (status: 404).
+A newly published release can take a moment to appear on the registry.
+```
+
+So the first automatic attempt failed, a hand re-dispatch a minute later failed too
+while npm was still processing, and a third dispatch succeeded once
+`npm view visual-intent-layer@0.3.1 version` answered. The listing workflow's
+`workflow_dispatch` trigger is what made recovery possible; it is not an optional
+convenience.
+
+**Released as 0.3.1, 2026-09-18.** A fix patch for the Review Surface and the browser
+suite, recorded in `.scratch/flaky-browser-suite/spec.md`.
+
+- `latest` names `0.3.1`. The tarball is 179 files with no dev tooling, both bins
+  present, and the installed server reports `0.3.1`.
+- The official MCP Registry lists `0.3.1` after the hand re-dispatch.
+- `npm publish` warns that `bin[visual-intent]` and `bin[visual-intent-mcp]` "were
+  invalid and removed" because they are written `./dist/…`; the published tarball keeps
+  them unchanged, so this is npm normalising the leading `./`, not a defect. It is the
+  same in 0.3.0.

@@ -150,3 +150,10 @@ Re-verified on the final tree: Lever run
 `Member 4`/`Member 5`, outcome `clean`, no unreachable paths. The new
 cancel-on-departure guards are not reachable through the Lever's own commands;
 they are pinned by the two browser tests above.
+
+**Shipped as 0.3.1, 2026-09-18.** `latest` names it, the tarball carries both bins and
+no dev tooling, and the installed server reports `0.3.1`. The relation-drag fix and the
+three browser-drive fixes are in it; the trace-on-failure diagnostic landed in the same
+release, so the next unexplained failure will carry its own evidence. The release also
+exposed that the Registry listing races `npm publish` — see the correction in
+`.scratch/standard-mcp-distribution/spec.md`.
