@@ -49,7 +49,7 @@ A full sweep walks the tiers in order. Within a tier, follow the file order belo
 5. Verify each Annotation (`verify-each-annotation`).
 6. Never discard writing (`never-discard-writing`).
 7. Second tier: attachments, decision drawer, agent position, session and overflow, a proxied application, accessibility and keyboard.
-8. Third tier: setup and Harness Detection, the MCP agent loop, Check-In.
+8. Third tier: the MCP agent loop, Check-In.
 9. Cross-surface journeys (`journeys`).
 
 ## Feature entry contract
@@ -91,7 +91,6 @@ Second tier (mapped, not yet driven):
 
 Third tier (mapped, not yet driven):
 
-- [Setup and Harness Detection](./setup-and-detection.md)
 - [The MCP agent loop](./mcp-agent-loop.md)
 
 Driven:

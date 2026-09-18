@@ -33,7 +33,6 @@ const MAPPED_FEATURES = [
   'session-and-overflow',
   'proxied-application',
   'accessibility-and-keyboard',
-  'setup-and-detection',
   'mcp-agent-loop',
   'check-in',
   'journeys'
@@ -96,7 +95,6 @@ Usage:
   lever wait --target <css> [--frame artifact] [--timeout <ms>]
   lever scroll [--to <pixels>]
 
-  lever setup [--global|--print-only|--status|--harness <name> ...]
   lever mcp --tool <name> [--args <json>] [--run <name>]
   lever finish --outcome clean|changed|blocked|aborted [--run <name>]
   lever coverage --driven <feature-id> [--sub <id,id>] [--detail <text>] [--run <name>]
@@ -1961,42 +1959,6 @@ async function commandScroll(flags) {
   output({ ok: true, command: 'scroll', scrollX: result.scrollX, scrollY: result.scrollY, scroller: result.scroller, elementTop: result.elementTop, scrollHeight: result.scrollHeight, clientHeight: result.clientHeight });
 }
 
-async function commandSetup(flags) {
-  if (flags['dry-run']) {
-    output({ dryRun: true, would: { run: 'visual-intent setup', sandboxHome: join(RUN_ROOT, 'sandbox-home') } });
-    return;
-  }
-  const home = join(RUN_ROOT, 'sandbox-home');
-  mkdirSync(home, { recursive: true });
-  const passthrough = [];
-  for (const key of ['global', 'print-only', 'status', 'no-skill']) {
-    if (flags[key]) passthrough.push(`--${key}`);
-  }
-  if (typeof flags.harness === 'string') passthrough.push('--harness', flags.harness);
-  const runDir = flags.run ? resolveRun(flags.run) : undefined;
-  const result = spawnSync(process.execPath, [join(REPO_ROOT, 'dist', 'cli.js'), 'setup', ...passthrough], {
-    cwd: REPO_ROOT,
-    encoding: 'utf8',
-    env: { ...process.env, HOME: home, USERPROFILE: home }
-  });
-  if (runDir) {
-    const sandboxed = join(runDir, 'evidence', 'setup-output.txt');
-    mkdirSync(dirname(sandboxed), { recursive: true });
-    writeFileSync(sandboxed, `${result.stdout}\n${result.stderr}`, 'utf8');
-    recordEvidence(runDir, { kind: 'setupOutput', name: 'setup', path: sandboxed });
-  }
-  output({
-    ok: result.status === 0,
-    command: 'setup',
-    exitCode: result.status,
-    sandboxHome: home,
-    stdout: result.stdout,
-    stderr: result.stderr,
-    version: environment().packageVersion
-  });
-  process.exit(result.status === 0 ? EXIT.ok : EXIT.precondition);
-}
-
 async function commandMcp(flags) {
   const tool = typeof flags.tool === 'string' ? flags.tool : undefined;
   if (!tool) {
@@ -2102,7 +2064,6 @@ async function main() {
     network: commandNetwork,
     wait: commandWait,
     scroll: commandScroll,
-    setup: commandSetup,
     mcp: commandMcp,
     coverage: commandCoverage,
     finish: commandFinish

@@ -2,6 +2,10 @@
 
 _Decision brief completed 15 September 2026. Revised September 2026: TypeScript-only V0, Personal Proof validated on pi; the spec is authoritative for V0 scope._
 
+> **Superseded in part, 2026-09-18, by ADR-0031.** The thin Skill named in the
+> distribution and layer recommendations is no longer shipped. The npm and MCP Registry
+> halves of that recommendation stand, and the registry listing was added.
+
 > **Corrected on steering.** ADR-0018 supersedes the assumption that an agent
 > reads new direction at a host-negotiated safe boundary. Steering and
 > interruption are seen at the agent's Check-In: a convention this product

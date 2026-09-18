@@ -2,6 +2,13 @@
 
 Research snapshot: 2026-09-15. Sources are the semver 2.0.0 spec, npm documentation (`docs.npmjs.com`), the npm CLI source and release notes (`npm/cli`), the live npm registry API, and GitHub's own docs; plus the first-party release docs of React, TypeScript, Next.js, Angular, Vue, and Node. No shell access was available in this run, so published dist-tags were read from the registry API (`https://registry.npmjs.org/-/package/<pkg>/dist-tags`) instead of `npm view <pkg> dist-tags`.
 
+> **Superseded in part, 2026-09-18, by ADR-0031.** The recommendation to add a
+> pre-release channel was implemented and is now withdrawn: `X.Y.Z-next.N` versions, the
+> `next` dist-tag, the promotion step and the `release.prerelease` publish branch are
+> all gone, and every published version is an official release. The npm mechanics
+> earlier in this document — dist-tag semantics, semver ordering, deprecation and
+> unpublish policy — remain accurate if a pre-release channel is ever reconsidered.
+
 ## Executive conclusion
 
 npm itself defines exactly one tag, `latest`, and deliberately attaches no meaning to any other tag ([npm-dist-tag](https://docs.npmjs.com/cli/v11/commands/npm-dist-tag/)); everything else — `next`, `beta`, `rc`, `canary`, `experimental` — is ecosystem convention that real projects implement inconsistently. `next` is the most widespread pre-release tag, but it is a convention, not a standard, and several majors use `canary`/`beta`/`rc` instead. For this repo the practical consequence is sharper: with npm ≥ 11 (the workflow installs `npm@latest`), `npm publish` **hard-fails** when `package.json` carries a pre-release identifier and no `--tag` is passed ([npm 11.0.0 release notes](https://github.com/npm/cli/releases/tag/v11.0.0)), so a GitHub pre-release today would break the publish job rather than tag a `next` build. Promotion should be a new stable version (`0.3.0-next.3` → `0.3.0`), not a dist-tag move, and rollback should be fix-forward plus `npm deprecate`, since versions are immutable.

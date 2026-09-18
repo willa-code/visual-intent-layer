@@ -135,10 +135,9 @@ $LEVER restart-service       # restart the built product on a new ephemeral port
 $LEVER restart-browser       # restart the browser, same run and evidence
 ```
 
-Secondary product surfaces:
+The MCP surface over stdio:
 
 ```sh
-$LEVER setup --status --harness pi        # the built product's setup and Harness Detection under a sandboxed home
 $LEVER mcp --run <name> --tool open_visual_review --args '{"kind":"saved-html","path":"fixtures/gallery.html","waitMs":1}'
 $LEVER mcp --run <name> --tool get_intent_status --args '{"envelopeId":"<id from state>"}'
 $LEVER mcp --run <name> --tool acknowledge_intent --args '{"envelopeId":"<id>","agentId":"lever"}'

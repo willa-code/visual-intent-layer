@@ -11,8 +11,8 @@ pi session via pi-mcp-adapter.
 ## Prerequisites
 
 - pi with MCP support and `pi-mcp-adapter` installed.
-- This package installed: `npm install -g visual-intent-layer` (Node 20+), then `visual-intent setup` in a scratch project (or `setup --global`).
-- MCP configuration registered by `setup` and picked up by `pi-mcp-adapter` (standard `.mcp.json` / `~/.config/mcp/mcp.json` files).
+- This package installed: `npm install -g visual-intent-layer` (Node 20+), or an entry pointing at the packaged `npx` form.
+- The server registered with pi's own MCP mechanism: the entry in the project `.mcp.json`, or `pi-mcp-adapter`'s `/mcp` panel. Nothing of ours runs to do it.
 
 ## Automated evidence already in place
 

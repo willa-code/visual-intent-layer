@@ -2,6 +2,13 @@
 
 Research snapshot: 2026-09-15. Sources are official product documentation, first-party source-code repositories, and this repo's own source files.
 
+> **Historical, superseded 2026-09-18 by ADR-0031.** The `visual-intent setup` command
+> this document was written to specify is deleted, with the Harness Registry. Sections
+> 1–9's per-Harness survey of where each Harness keeps its MCP configuration is still
+> useful reference material for a human registering the server by hand, and the README's
+> install table points at it. Sections 7, 10 and 11 analyse and recommend a command that
+> no longer exists: read them as history, not as pending work.
+
 ## Executive conclusion
 
 Our `visual-intent setup` writes project `.mcp.json` or global `~/.config/mcp/mcp.json` (`src/cli-setup.ts`), but of the eight harnesses surveyed only Claude Code reads a project-root `.mcp.json` natively ([Claude quickstart](https://code.claude.com/docs/en/mcp-quickstart)), and none of them read `~/.config/mcp/mcp.json` according to their own docs. OpenAI Codex CLI — the reported failure — uses TOML `config.toml` files and ignores `.mcp.json` for host configuration ([ChatGPT Learn: MCP](https://learn.chatgpt.com/docs/mcp)). The fix is to extend `setup` to write each harness's native file (exact paths below), keeping the current merge-not-overwrite behavior, and leave Zed settings-file edits plus IDE marketplace listings as documented manual steps.

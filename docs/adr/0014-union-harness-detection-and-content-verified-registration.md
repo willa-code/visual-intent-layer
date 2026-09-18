@@ -1,5 +1,13 @@
 # Detect harnesses from a union of evidence, and verify registrations instead of trusting them
 
+> **Superseded in full by ADR-0031.** The product ships no installer and no Harness
+> Registry: `setup`, `src/cli-setup.ts` and `src/harness-registry.ts` are deleted, and
+> the Builder-Reviewer registers the server with their own Harness's registrar. The
+> guarantee this ADR defined — a Registration is current when its entry matches what the
+> installed product would write — cannot survive the writer, so nothing replaces it.
+> Kept as the record of what a content-verified Registration cost and why it was worth
+> having while the product owned the write.
+
 `setup` treats a Harness as present when either its own configuration location exists — honouring that Harness's documented config-home environment override — or its command resolves on `PATH`; neither signal alone is sufficient, because herdr detects only commands while the skills ecosystem detects only configuration directories, and each misses Harnesses the other finds. Harness Detection never narrows silently: every in-scope Harness appears in the report as detected or as absent with the evidence that was checked, including the case where nothing was detected and the shared `.mcp.json` default is written. A Harness Registration is compared against the entry the installed product would write rather than trusted because its key exists, so an entry left by an older version or a packaged snippet is reported as outdated and repaired rather than reported as registered.
 
 **Consequences:** `setup` output gains a per-harness detection and registration summary and the running package version, which also makes any future "setup did nothing useful" report self-dating. Harness knowledge becomes a registry of per-harness descriptors — aliases, configuration locations, detection evidence, native entry shape, comparison and writer — instead of inline conditionals in `cli-setup.ts`. The packaged `npx` entry becomes a selectable transport for machines without a global install.

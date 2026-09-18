@@ -34,7 +34,7 @@ Preconditions:
 - **Check in.** Run `… lever.mjs mcp --run <name> --tool check_in --args '{"sessionId":"<id>"}'`. Exit `0`; the result carries deliveries, amendments, any interruption, and the current state, and `… lever.mjs state` records `lastCheckedInAt`.
 - **Acknowledge the batch.** Run `… lever.mjs mcp --run <name> --tool acknowledge_intent --args '{"envelopeId":"<id>","agentId":"lever"}'`. Exit `0`; `… lever.mjs state` shows the batch's Annotations acknowledged and the agent position `acknowledged`.
 - **Prove the boundary.** Read the acknowledgement back. Acknowledgement appears on the Annotation and in the agent position, but the Annotation is not verified and no implementation happened. Acknowledgement is not implementation and not verification.
-- **Proof.** Run `… lever.mjs state` and read `evidence`/`state.json`. The state carries the acknowledged batch and the position sentence; the setup version and server transport are recorded with the run.
+- **Proof.** Run `… lever.mjs state` and read `evidence`/`state.json`. The state carries the acknowledged batch and the position sentence; the server transport is recorded with the run.
 
 ## Gotchas
 

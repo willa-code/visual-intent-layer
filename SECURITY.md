@@ -9,9 +9,8 @@
 | ≤ 0.1.x | No        |
 
 V0 is a local-first Proof Product. There is no hosted service, no account system,
-and no automatic update channel. `0.3.0-next.x` builds are pre-releases: they
-publish to the `next` npm tag and are supported the same way while they are the
-current line.
+and no automatic update channel. Every published version is an official release, and
+`latest` names the newest of them.
 
 ## Reporting a vulnerability
 

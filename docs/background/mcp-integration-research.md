@@ -2,6 +2,12 @@
 
 Research snapshot: 2026-09-14. Sources are protocol specifications, official product documentation, and first-party source code.
 
+> **Superseded in part, 2026-09-18, by ADR-0013 and ADR-0031.** Section 4's
+> Rust/TypeScript split was the researched recommendation; the decision taken is
+> TypeScript-only with Node required (ADR-0013), and the Rust insertion boundary is
+> preserved but unbuilt. The "thin Skill distributed in the same plugin" conclusion is
+> reversed by ADR-0031, which ships no Skill. The SDK-tier survey remains valid research.
+
 ## Executive conclusion
 
 The best architecture is **not MCP tool or Skill**. It is a small MCP surface for capability and transport, plus a thin Skill for proactive discovery and the multi-step Visual Direction Loop.
