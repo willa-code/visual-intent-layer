@@ -107,11 +107,26 @@ Completion: `git diff` shows version fields only, and `package.json` and `server
 ## Publish
 
 1. Commit `chore(release): X.Y.Z`, then `git push origin main`.
-2. `gh release create vX.Y.Z --notes-start-tag <last stable tag> --generate-notes --title "…"`.
+2. Tag the release commit and attach the release to it:
 
-The push is what lets Publish fire: the workflow triggers on `release: published`, and it refuses a GitHub pre-release rather than publishing it, because every published version is an official release. `--notes-start-tag` should name the last *stable* release, so an upgrading reader gets the whole story rather than the distance from the last pre-release.
+```sh
+git tag vX.Y.Z <release-commit>          # lightweight, matching v0.3.1
+git push origin vX.Y.Z
+gh release create vX.Y.Z --verify-tag --title "…" --notes-file <path>
+```
 
-**Then read the generated body, because it is usually wrong.** `--generate-notes` lists merged pull requests, not commits: work that landed directly on `main` does not appear at all. 0.3.0 was generated naming one unrelated PR for 69 commits of work. If the body does not describe the release, write the notes by hand and `gh release edit vX.Y.Z --notes-file <path>`. There is still no separate changelog — but the release body is what a user reads, so it is not a field to accept unread.
+`gh release create --target <sha>` is refused with `tag_name is not a valid tag` and
+`Release.target_commitish is invalid`, so the tag names the commit instead — which is
+also the commit the Publish workflow checks out and builds.
+
+The push is what lets Publish fire: the workflow triggers on `release: published`, and it refuses a GitHub pre-release rather than publishing it, because every published version is an official release.
+
+**Write the notes by hand.** `--generate-notes` lists merged pull requests, not
+commits, and work here lands directly on `main`: 0.3.0 was generated naming one
+unrelated PR for 69 commits of work, and 0.3.2's generated body would have been empty.
+`--notes-start-tag` only affects generated notes, so a hand-written release does not
+use it. There is still no separate changelog — but the release body is what a user
+reads, so it is not a field to accept unread.
 
 Completion: `gh run watch` reports the Publish run success.
 
@@ -125,7 +140,9 @@ it. Both triggers start together, so the listing reaches the registry while `npm
 is still running and the registry reports the version as a 404; the workflow retries that
 specific answer for up to four minutes and fails immediately on anything else, so a real
 auth or validation error is not hidden. A green automatic run is the expected outcome and
-does not need a hand dispatch.
+does not need a hand dispatch. 0.3.2 was the first release where the retry carried it
+alone: npm printed `+ visual-intent-layer@0.3.2` while the packument still served
+`latest: 0.3.1` for about ninety seconds, and the listing went green without a dispatch.
 
 Dispatch it by hand only when the version being listed has never been published — after
 a listing has succeeded, the registry refuses a repeat with `invalid version: cannot

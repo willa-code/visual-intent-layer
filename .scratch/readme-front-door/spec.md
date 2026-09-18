@@ -272,6 +272,28 @@ package, and npm's page keeps the previous README until the next publish, since
 
 D9 was taken in response: `package.json`'s `files` now names `docs/guide.md`, the
 tarball is 180 files carrying exactly one `docs/` entry, and the maintain skill's
-Preflight asserts it (`npm pack --dry-run --ignore-scripts | grep -q
+Preflight asserts it (`npm pack --dry-run --ignore-scripts 2>&1 | grep -q
 "docs/guide.md"`) with Docs sync holding the rule behind it: what the README points
 at ships.
+
+**Released as 0.3.2, 2026-09-18.** Tag `v0.3.2` at `d282749`, the release commit;
+the tarball is built from it. Verified after the workflows went green: npm's `latest`
+names `0.3.2`; the packed tarball is 180 files carrying `README.md` and
+`docs/guide.md` and no `dist/benchmark`, `dist/eval` or `dist/instrumentation`; an
+installed copy reports `SERVER_VERSION` `0.3.2` (`src/mcp/server.ts:74`); and the
+registry lists `0.3.2` active beside `0.3.1` and `0.3.0`.
+
+Three things this release measured, now recorded in the maintain skill rather than
+re-learned:
+
+- **`gh release create --target <short sha>` is refused** — `tag_name is not a valid
+tag`, `Release.target_commitish is invalid`. The working path is a lightweight tag at
+the release commit, pushed, then `gh release create --verify-tag`, and the tag is also
+the ref the Publish workflow checks out.
+- **The Preflight tarball check I added could never pass**: `npm pack` writes its file
+list to stderr, so `| grep -q` read nothing. Fixed in `e248033` with `2>&1`, verified
+in both forms before and after the change.
+- **The listing retry carried a release on its own for the first time.** npm reported
+`+ visual-intent-layer@0.3.2` while the packument still served `latest: 0.3.1` for
+about ninety seconds; the listing workflow retried into that window and went green
+with no hand dispatch, which is the fix 0.3.1 needed by hand.
