@@ -35,6 +35,7 @@ import { CAPTURE_SUPPORT_STATEMENT, captureArtifactView, captureAvailable, captu
 import { icon, type IconName } from './icons.js';
 import type { LayerMessage, LayerRelation, LayerTarget, LayerTool, ShellMarkTargets, ShellMessage } from './protocol.js';
 import { debounce, readConfig, type ShellConfig } from './runtime.js';
+import { targetKindLabel } from './target-label.js';
 
 const THEME_KEY = 'vil-theme';
 const GUIDANCE_KEY = 'vil-guidance';
@@ -2104,7 +2105,7 @@ function describeTarget(target: Annotation['targets'][number] | LayerTarget | un
     return 'Target';
   }
   const grounding = 'grounding' in target ? target.grounding : target.renderedGrounding;
-  return target.label ?? grounding.accessibleName ?? grounding.semanticRole ?? target.kind;
+  return target.label ?? grounding.accessibleName ?? grounding.semanticRole ?? targetKindLabel(target.kind);
 }
 
 function positionCard(
