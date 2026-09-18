@@ -2,7 +2,7 @@
 
 When something needs a decision, the rail head shows an attention count and the drawer explains what would leave the machine, which items need a decision, and how the revision has moved. A remote-origin artifact is disclosed before it loads.
 
-_Driven live: the leaving list including its Runtime State Evidence, the attention trigger, and the closed-rows toggle. The origin gate remains mapped, not yet driven._
+_Partly driven live: the leaving list including its Runtime State Evidence, the attention trigger, and the closed-rows toggle. The origin gate remains mapped, not yet driven._
 
 ## Sub-features
 

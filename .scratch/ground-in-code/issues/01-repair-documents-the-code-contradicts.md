@@ -50,3 +50,12 @@ part that must be true.
 
 Ran: `npm run typecheck`, `node scripts/check-records.js`, `node scripts/check-bins.js`
 and `npm test` (414 passed, 30 files) — all green.
+
+**Correction, 2026-09-18, from the code review's Spec axis.** The Comment above
+claimed "the Replacement mechanism stays documented where it belongs". That was
+wrong: no document named the identifiers. `CONTEXT.md` is a glossary and must carry
+no implementation detail, so the field names belong in `README.md`, and the
+`check_in` row of the Agent tools table now reads "amendments as
+`replacedId`/`replacementId` pairs", matching `src/mcp/service.ts:72,469`. The same
+paragraph's "amendments that superseded something" also used a word `CONTEXT.md`
+lists under _Avoid_ for **Replacement**, and now reads "replaced".

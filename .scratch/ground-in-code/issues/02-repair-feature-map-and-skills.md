@@ -46,3 +46,13 @@ one would have been a claim rather than a record (ADR-0017).
 
 Ran: `npm run typecheck`, `node scripts/check-records.js` and `npm test`
 (414 passed, 30 files) — all green.
+
+**Correction, 2026-09-18, from the code review's Standards axis.** The coverage
+marker in `reach-within-the-class.md` still led with `_Driven live:` while the same
+sentence admitted two named sub-features are undriven, and
+`maintain-visual-intent-layer/SKILL.md` sanctions only `Not yet driven.`,
+`Partly driven live` or no marker. It now leads with `_Partly driven live:`.
+
+The same defect existed in `decision-drawer.md`, which predates this commit and also
+admitted an undriven sub-feature under `_Driven live:`. Fixed there too, since the map
+now has one marker vocabulary instead of two.

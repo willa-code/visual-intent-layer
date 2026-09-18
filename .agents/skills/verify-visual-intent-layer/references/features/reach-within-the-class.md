@@ -10,7 +10,7 @@ cross-origin frame interior, a frame the content policy never loaded, a frame th
 has not loaded yet — it states the boundary with its true cause rather than
 reporting the Target as gone.
 
-_Driven live: the runs pointed into an open shadow root and into a shadow root
+_Partly driven live: the runs pointed into an open shadow root and into a shadow root
 inside a shadow root, drew an Area over shadow content and re-found it after a
 reload, pointed inside a same-origin frame of a loopback application and
 re-resolved it exactly, scrolled a virtualized row in and out to read its state

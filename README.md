@@ -194,7 +194,7 @@ checked in" is a fact the surface states rather than an assumption.
 
 An agent that was not holding a call can retrieve what arrived with the
 `check_in` tool: newly delivered Annotations with their intent, amendments that
-superseded something, a pending stop request, and the current state of what it
+replaced something, a pending stop request, and the current state of what it
 was given before. Sending the queue is **Next-Pass Intent**, amending something
 already sent is **Steering Intent**, and asking an agent to stop is **Review
 Interruption** — a request, never a claim that work stopped. The envelope's
@@ -219,7 +219,7 @@ The model-visible tool surface is deliberately small:
 | Tool                  | What it does                                                                                                                                              |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `open_visual_review`  | Opens the loop for a saved HTML file or a running localhost app, may declare `capabilities: { embeddedUI, subscriptions }`, and holds the call for the human. |
-| `check_in`            | Reads new direction between the agent's own steps, without an `envelopeId`: deliveries with their intent, amendments, a pending stop request, and current state. |
+| `check_in`            | Reads new direction between the agent's own steps, without an `envelopeId`: deliveries with their intent, amendments as `replacedId`/`replacementId` pairs, a pending stop request, and current state. |
 | `get_intent_status`   | Reads one delivered batch by `envelopeId`, including each target's resolution.                                                                             |
 | `acknowledge_intent`  | Confirms receipt of a batch or one Annotation. Never implementation and never verification.                                                                |
 
