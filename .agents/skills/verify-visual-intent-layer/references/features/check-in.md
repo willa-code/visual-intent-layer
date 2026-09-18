@@ -24,16 +24,18 @@ Preconditions:
 
 - A run is healthy with at least one delivered Annotation.
 
-- **Check in.** Run `… lever.mjs mcp --run <name> --tool check_in`. The result names the deliveries, any amendment, any pending interruption, and the current state of Annotations the agent was given before. It needs no `envelopeId`.
+- **Check in.** Run `… lever.mjs mcp --run <name> --tool check_in --args '{"sessionId":"<the session the review URL carries>"}'`. The result names the deliveries, any amendment, any pending interruption, and the current state of Annotations the agent was given before. It needs no `envelopeId`.
 - **Contact is now a fact.** Run `… lever.mjs state`. The `agent.lastCheckedInAt` matches the check-in, and the rail states it in words.
+- **The surface sees a check-in made in another process.** Send an Annotation, `… lever.mjs stop`, then check in through the MCP server as above. The MCP process is a second process over the run's data directory, so this is the arrangement the ``serve`` and ``mcp`` pairing creates: `… lever.mjs state` then reads `agent.lastCheckedInAt` at the new time and `agent.pendingInterruption` false, where it read `true` before the call.
 - **Amend while the agent is away.** Send an Annotation, run `… lever.mjs amend --note "…" --match "…"`, then `… lever.mjs mcp --run <name> --tool check_in`. The result carries the amendment and a batch whose intent is `steering`.
 - **Ask for a stop.** Run `… lever.mjs stop`, then `… lever.mjs mcp --run <name> --tool check_in`. The result carries the interruption and a sentence saying it is a request, not a fact.
 - **Never checked in.** On a fresh run, `… lever.mjs state` shows no `lastCheckedInAt` and the rail says the agent has never checked in, so a request will wait.
 
 ## Gotchas
 
-- The call is discoverable without prior state: it takes no `envelopeId` and, when `sessionId` is omitted, checks the most recently opened session.
+- The call is discoverable without prior state: it takes no `envelopeId`, and, when `sessionId` is omitted, checks the session this process most recently opened. That in-process fact is why a **second** process must pass `sessionId` explicitly: an `mcp` process that did not open the review has none to fall back on, and it says so in words instead of guessing at a session.
 - Contact is recorded by every MCP call for a session, not only `open_visual_review`; a `get_intent_status` or `acknowledge_intent` also updates "last checked in".
 - The interruption is not a Visual Intent Envelope and never appears in a batch. The envelope's `review-interruption` value is reserved and never emitted.
 - A request that nothing collects stays pending; the surface states it as not collected, not as in progress.
+- Two processes may hold one data directory — the `serve` plus `mcp` pairing — and each store re-reads its file, so a check-in or a collection made by one is reported by the surface served by the other. Concurrent writes from both are still last-write-wins on the whole file.
 - The cursor is a position in the delivery order, not a time. Passing `lastCheckedInAt` reads everything again instead of nothing, so a wrong cursor over-reports rather than dropping direction.

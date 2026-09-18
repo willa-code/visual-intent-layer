@@ -11,7 +11,7 @@ node .agents/skills/verify-visual-intent-layer/bin/lever.mjs <command> [flags]
 ## Baseline preconditions
 
 - The repository is built. The Lever rebuilds before launch, so a stale `dist/` is corrected rather than trusted.
-- A saved-HTML Artifact exists. The repository fixture is `fixtures/gallery.html`.
+- A saved-HTML Artifact exists. The repository fixture is `fixtures/gallery.html`. It references `thumb-1.png`, `thumb-2.png` and `thumb-3.png`, which the repository does not ship, so `console` reports three 404s per load that are the fixture's own and not the product's; `network` reports no failed requests.
 - Each run uses its own disposable lifecycle data directory under `.visual-intent-verify/runs/<run>/data` and an operating-system-chosen ephemeral port. The default port and the Builder-Reviewer's own lifecycle directory are never used.
 - Exactly one browser exists per run; the product's automatic browser launch is suppressed.
 - Run `health` before the first drive and again whenever anything looks surprising.
@@ -68,7 +68,7 @@ Keep implementation detail out of the map. Name user paths, stable handles, requ
 First tier (driven live in the surface-refinement Verification Run; see each file for its coverage):
 
 - [Open an Artifact](./open-artifact.md) covers launching a saved-HTML Artifact, health-checking the instance, rendering it faithfully, and capturing the resulting state.
-- [Compose, queue and send an Annotation](./annotate-and-send.md) covers pointing at a target, writing a note, reordering, and the one send action (with amend and stop as separate acts).
+- [Compose, queue and send an Annotation](./annotate-and-send.md) covers pointing at a target, writing a note, reordering, the one send action (with amend and stop as separate acts), and the drag threshold against an artifact that handles its own drags.
 - [Resolution and honest outcomes](./resolution-and-honesty.md) covers re-resolving a target after the Artifact moves on, including ambiguity and deletion.
 - [Reach within the class](./reach-within-the-class.md) covers pointing inside open shadow roots and same-origin frames, drawing an Area across them, the stated refusals, and the walk bound.
 - [Verify each Annotation](./verify-each-annotation.md) covers the per-Annotation verdicts and the per-row before/after comparison.
@@ -77,7 +77,7 @@ First tier (driven live in the surface-refinement Verification Run; see each fil
 Partly driven live (some sub-features confirmed; the rest are mapped):
 
 - [Material and theme](./material-and-theme.md) — the rail/stage/artifact material, canvas versus surface, the two tile glyph forms and the light/dark theme choice were driven; the auto theme and the reload-persistence recipe are mapped.
-- [The decision drawer](./decision-drawer.md) — the closed-rows toggle was driven; the attention drawer and origin gate are mapped.
+- [The decision drawer](./decision-drawer.md) — the attention drawer, its leaving list including the Runtime State Evidence it names, and the closed-rows toggle were driven; the origin gate is mapped.
 - [Agent position](./agent-position.md) — the stop request and Check-In channel were driven; the other positions are mapped.
 - [Check-In](./check-in.md) — the call, contact, amendment and interruption were driven; the never-checked-in state is mapped.
 - [Accessibility and keyboard](./accessibility-and-keyboard.md) — rail legibility, island pointer events, tile minimum size and `V` were driven; the remaining keys are mapped.

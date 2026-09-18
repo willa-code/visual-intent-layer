@@ -8,6 +8,7 @@ A Builder-Reviewer points at one or more visible targets, writes a note onto the
 - `select-add` holds `Shift` to add a target to the set or remove one already in it.
 - `select-text` drags across exact words and takes the artifact's own selection.
 - `select-box` draws a dashed Area and reports what it encloses.
+- `select-threshold` leaves a drag below the text-selection threshold as an element target, and does not fight an artifact that handles its own drags.
 - `mode-operate` returns to operating the artifact, the unarmed state.
 - `annotate-note` writes the note that belongs to the selection.
 - `queue-add` puts the Annotation in the Annotation Queue.
@@ -37,6 +38,7 @@ Preconditions:
 - **Extend the set.** With a selection already made, `Shift`-click another target. Run `… lever.mjs select --tool point --target ".shipping-note" --add`. Exit `0` and `state` showing one Annotation with both targets. `Shift`-clicking a member again removes it from the set.
 - **Box an area.** Arm the box tile and drag a rectangle. Run `… lever.mjs select --tool box --from "h1" --to ".shipping-note"`. Exit `0` and `state` showing a draft Annotation whose target `kind` is `region` and whose `label` names the elements it encloses.
 - **Return to operating.** Run `… lever.mjs mode --to operate` or press `v`. The tile reports no armed state.
+- **The drag threshold.** Launch `fixtures/drag-surface.html`. In operate mode the artifact keeps its own drag: `… lever.mjs drag --from ".drag-card" --dx 60 --dy 40 --frame artifact` exits `0`, the card's readout reads `Card at 84,64. Dragged.`, and `state` shows nothing stored. Arm the point tile and repeat the same drag: it exits `0`, stores nothing, and the card does not move — a drag that starts on an element handling its own pointer events is not mistaken for a selection, and no false text range fires. A two-pixel drag over text is below the threshold and resolves to an `element` target: `… lever.mjs drag --from ".note" --dx 2 --dy 0 --frame artifact`. The gesture that takes words is `… lever.mjs select --tool point --text ".note"`, which stores a `text-range`.
 - **Write the note.** Type into the anchored card. Run `… lever.mjs annotate --note "Make the Place order button impossible to miss."`. Exit `0`; after the debounce, `state` shows the same note on the draft.
 - **Queue the Annotation.** Choose `Queue`. Run `… lever.mjs queue`. Exit `0` and `state` showing state `queued`.
 - **Add a second Annotation.** Select another target and queue it. Run `… lever.mjs select --tool point --target ".gallery-note"`, `… lever.mjs annotate --note "…"`, `… lever.mjs queue`. `state` shows two Annotations in queue order.
@@ -48,6 +50,9 @@ Preconditions:
 - **Proof.** Run `… lever.mjs state` and `… lever.mjs screenshot --name queued`. The state names each Annotation, its delivery state and its target; the screenshot shows the one list.
 
 ## Gotchas
+
+- A `text-range` target needs its text on one line. `select --tool point --text <css>` drags horizontally along the element's vertical centre, so a wrapped block has no text on that line and stores nothing. Keep the recipe's target a single line, or prove the range another way.
+- `drag` moves from the element's centre; a nudge that ends past the end of the text selects nothing. Use `select --text` to take words.
 
 - The anchored card is positioned beside the most recently added target and can cover a neighbouring target, so point where the card will not sit over the next thing you want to point at, or close the card with Escape before the next selection. `Shift` extends the selection into one Annotation's set, up to eight targets; a plain click or box replaces the set.
 - Arming an armed tile returns to operating. A select recipe must not assume the tile is unarmed; the Lever checks the armed state before clicking.

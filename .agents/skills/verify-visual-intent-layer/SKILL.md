@@ -56,7 +56,7 @@ Open and read:
 
 ```sh
 $LEVER session                       # session identity and artifact
-$LEVER state                         # every stored Annotation, its state, targets, resolutions and verdict
+$LEVER state --name after-send       # every stored Annotation, its state, targets, resolutions and verdict, written to evidence/state-<name>-<stamp>.json
 $LEVER screenshot --name opened      # a named state
 $LEVER snapshot --name opened        # the accessibility structure
 $LEVER record --name drag            # the run recording plus a screenshot of the result
@@ -79,6 +79,7 @@ $LEVER select --tool point --target ".b" --add
 $LEVER select --tool point --target ".c" --add
 $LEVER relate --to ".b" --modifier Alt --dy 30 --expect equal-gap        # equal spacing over the whole set
 $LEVER select --tool operate                                          # return to operating the artifact
+$LEVER drag --from ".drag-card" --dx 60 --dy 40   # a raw drag of n pixels from a target's centre, for threshold behaviour and artifacts that handle their own drags
 $LEVER mode --to point|box|operate
 $LEVER annotate --note "Make the Place order button impossible to miss."
 $LEVER queue
@@ -149,7 +150,7 @@ Every command that can change or destroy state accepts `--dry-run` and performs 
 
 Every run writes to `.visual-intent-verify/runs/<stamp>-<name>/`:
 
-- `evidence/` — screenshots, ARIA snapshots, the recording (`recording.webm`), and the trace.
+- `evidence/` — screenshots, ARIA snapshots, the recording (`recording.webm`), the trace, and one `<name>`d JSON read-back per `state` call.
 - `state.json` — the operational run state, including coverage and unreachable paths.
 - `run.json` — the run record: outcome, coverage, environment, launch, evidence index, unreachable paths.
 - `report.md` — the same record for a human.

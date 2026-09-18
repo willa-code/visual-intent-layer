@@ -58,6 +58,7 @@ Usage:
   lever select --tool box --from <css> --to <css> [--add]
   lever select --tool operate
   lever relate --to <css> [--from <css>] [--dx <n>] [--dy <n>] [--modifier <key>] [--expect <operator>]
+  lever drag --from <css> [--dx <n>] [--dy <n>] [--frame artifact]
   lever mode --to point|box|operate
   lever annotate --note <text>
   lever attach --file <path>
@@ -85,7 +86,7 @@ Usage:
   lever measure
   lever unreachable --command <text> --precondition <text>
 
-  lever state [--run <name>]
+  lever state [--name <step>] [--run <name>]
   lever screenshot --name <state>
   lever snapshot --name <state> [--frame artifact]
   lever record --name <label>
@@ -946,6 +947,31 @@ async function commandSelect(flags) {
   output({ ok: true, command: 'select', tool, screenshot: shot.path });
 }
 
+async function commandDrag(flags) {
+  const runDir = resolveRun(flags.run);
+  const secret = await assertHealthy(runDir);
+  if (typeof flags.from !== 'string') {
+    fail(EXIT.usage, 'drag needs --from <css>.', 'Run `lever help` for the surface.');
+  }
+  const dx = Number(flags.dx ?? 0);
+  const dy = Number(flags.dy ?? 0);
+  if (flags['dry-run']) {
+    output({ dryRun: true, would: { drag: { from: flags.from, dx, dy } } });
+    return;
+  }
+  const host = hostCall(secret);
+  await host('/drag', {
+    from: selector(flags.from),
+    to: selector(flags.from),
+    nudgeX: dx,
+    nudgeY: dy,
+    ...(flags.frame === 'artifact' ? { frame: 'artifact' } : {})
+  });
+  const shot = await host('/screenshot', { name: `drag-${Date.now()}` });
+  recordEvidence(runDir, { kind: 'screenshot', name: 'drag', path: shot.path });
+  output({ ok: true, command: 'drag', from: flags.from, dx, dy, screenshot: shot.path });
+}
+
 async function commandRelate(flags) {
   const runDir = resolveRun(flags.run);
   const secret = await assertHealthy(runDir);
@@ -1795,7 +1821,7 @@ async function commandState(flags) {
   const snapshot = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
   const status = await productGet(secret, `/api/sessions/${secret.sessionId}`);
   const agent = await productGet(secret, `/api/sessions/${secret.sessionId}/agent`);
-  output({
+  const payload = {
     ok: true,
     command: 'state',
     sessionId: secret.sessionId,
@@ -1806,7 +1832,12 @@ async function commandState(flags) {
     agent: agent.json,
     passes: snapshot.json.passes ?? [],
     annotations: (snapshot.json.annotations ?? []).map(safeAnnotation)
-  });
+  };
+  const name = typeof flags.name === 'string' && flags.name.length > 0 ? flags.name : 'state';
+  const path = join(runDir, 'evidence', `state-${name}-${Date.now()}.json`);
+  writeJson(path, payload);
+  recordEvidence(runDir, { kind: 'state', name, path });
+  output({ ...payload, evidence: path });
 }
 
 function safeAnnotation(annotation) {
@@ -2032,6 +2063,7 @@ async function main() {
     select: commandSelect,
     relate: commandRelate,
     mode: commandMode,
+    drag: commandDrag,
     annotate: commandAnnotate,
     queue: commandQueue,
     reorder: commandReorder,

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Drag surface fixture</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 2rem; }
+      .board { position: relative; height: 220px; border: 1px solid #ddd; }
+      .drag-card {
+        position: absolute; top: 24px; left: 24px; width: 160px; height: 96px;
+        display: flex; align-items: center; justify-content: center;
+        background: #eef; border: 1px solid #99c; cursor: grab; user-select: none;
+      }
+      .drag-card[data-dragging="true"] { cursor: grabbing; background: #dde; }
+      .slider { width: 320px; }
+      .note { max-width: 60rem; }
+    </style>
+  </head>
+  <body>
+    <main class="board-page">
+      <h1>Layout board</h1>
+      <p class="note">Drag across these words to take exactly them.</p>
+      <div class="board">
+        <div class="drag-card" data-x="24" data-y="24">Drag me</div>
+      </div>
+      <label class="slider-row">Spacing <input class="slider" type="range" min="0" max="100" value="40" /></label>
+      <button class="checkout-submit" type="button">Place order</button>
+      <p class="drag-readout">Card at 24,24. Not dragged.</p>
+      <script>
+        var card = document.querySelector('.drag-card');
+        var board = document.querySelector('.board');
+        var drag = null;
+        card.addEventListener('pointerdown', function (event) {
+          drag = { x: event.clientX, y: event.clientY, left: Number(card.dataset.x), top: Number(card.dataset.y) };
+          card.dataset.dragging = 'true';
+          card.setPointerCapture(event.pointerId);
+        });
+        card.addEventListener('pointermove', function (event) {
+          if (!drag) { return; }
+          card.dataset.x = String(drag.left + event.clientX - drag.x);
+          card.dataset.y = String(drag.top + event.clientY - drag.y);
+          card.style.left = card.dataset.x + 'px';
+          card.style.top = card.dataset.y + 'px';
+        });
+        card.addEventListener('pointerup', function (event) {
+          drag = null;
+          delete card.dataset.dragging;
+          card.releasePointerCapture(event.pointerId);
+          document.querySelector('.drag-readout').textContent =
+            'Card at ' + card.dataset.x + ',' + card.dataset.y + '. Dragged.';
+        });
+        window.boardState = function () {
+          return { x: Number(card.dataset.x), y: Number(card.dataset.y), dragging: card.dataset.dragging === 'true' };
+        };
+      </script>
+    </main>
+  </body>
+</html>

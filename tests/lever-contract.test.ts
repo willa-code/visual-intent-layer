@@ -40,6 +40,7 @@ describe('Lever contract: usage and preconditions at the process boundary', () =
     expect(result.stdout).toContain('--tool point');
     expect(result.stdout).toContain('--add');
     expect(result.stdout).toContain('relate');
+    expect(result.stdout).toContain('drag --from');
     expect(result.stdout).not.toContain('--tool element');
     expect(result.stdout).not.toContain('Arrange');
   });
@@ -119,6 +120,22 @@ describe('Lever contract: launch, health, evidence and cleanup', () => {
     const path = String(shot.json?.path);
     expect(existsSync(path)).toBe(true);
     expect(statSync(path).size).toBeGreaterThan(1000);
+  });
+
+  it('persists every state read-back as evidence', () => {
+    const before = readdirSync(join(runDir, 'evidence')).filter((entry) => entry.startsWith('state-'));
+    const result = lever(['state', '--run', name, '--name', 'contract-readback']);
+    expect(result.status, result.stderr).toBe(0);
+    const path = String(result.json?.evidence);
+    expect(path).toContain(join('evidence', 'state-contract-readback-'));
+    expect(existsSync(path)).toBe(true);
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({
+      ok: true,
+      command: 'state',
+      sessionId: launch.sessionId
+    });
+    const after = readdirSync(join(runDir, 'evidence')).filter((entry) => entry.startsWith('state-'));
+    expect(after.length).toBe(before.length + 1);
   });
 
   it('a dry-run performs no side effect', () => {
@@ -499,5 +516,53 @@ describe('Lever contract: the relation drive', () => {
     const related = lever(['relate', '--run', name, '--from', '.a', '--to', '.b', '--dx', '240', '--dy', '240']);
     expect(related.status).toBe(4);
     expect(related.json?.error).toMatchObject({ class: 'unreachable' });
+  }, 180000);
+});
+
+describe('Lever contract: a raw drag, for threshold behaviour', () => {
+  const name = `contract-drag-${process.pid}-${Date.now()}`;
+  let runDir: string;
+  let cleaned = false;
+
+  beforeAll(() => {
+    const result = lever(['launch', '--html', 'fixtures/drag-surface.html', '--name', name, '--no-build']);
+    expect(result.status, result.stderr).toBe(0);
+    runDir = join(REPO_ROOT, String((result.json as Record<string, unknown>).runDir));
+  }, 180000);
+
+  afterAll(() => {
+    if (!cleaned) {
+      cleaned = true;
+      lever(['cleanup', '--run', name]);
+    }
+  });
+
+  function annotations(): Array<Record<string, unknown>> {
+    return (lever(['state', '--run', name]).json?.annotations as Array<Record<string, unknown>>) ?? [];
+  }
+
+  it('needs --from, and a dry-run reports the offset it would use', () => {
+    const missing = lever(['drag', '--run', name, '--dry-run']);
+    expect(missing.status).toBe(2);
+    expect(missing.json?.error).toMatchObject({ class: 'usage' });
+
+    const planned = lever(['drag', '--run', name, '--from', '.drag-card', '--dx', '60', '--dy', '40', '--dry-run']);
+    expect(planned.status).toBe(0);
+    expect(planned.json).toMatchObject({ dryRun: true, would: { drag: { from: '.drag-card', dx: 60, dy: 40 } } });
+  });
+
+  it('drags in operating mode and creates no Annotation', () => {
+    const dragged = lever(['drag', '--run', name, '--from', '.drag-card', '--dx', '60', '--dy', '40', '--frame', 'artifact']);
+    expect(dragged.status, dragged.stderr).toBe(0);
+    expect(existsSync(String(dragged.json?.screenshot))).toBe(true);
+    expect(annotations()).toEqual([]);
+  });
+
+  it('the same drag with the point tile armed takes no target instead', () => {
+    const armed = lever(['mode', '--run', name, '--to', 'point']);
+    expect(armed.status, armed.stderr).toBe(0);
+    const dragged = lever(['drag', '--run', name, '--from', '.drag-card', '--dx', '60', '--dy', '40', '--frame', 'artifact']);
+    expect(dragged.status, dragged.stderr).toBe(0);
+    expect(annotations()).toEqual([]);
   }, 180000);
 });
