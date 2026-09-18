@@ -1,4 +1,4 @@
-/* Generated from schema/envelope-v0.3.schema.json. Do not edit by hand. */
+/* Generated from schema/envelope-v0.4.schema.json. Do not edit by hand. */
 
 export type Target = {
   [k: string]: any;
@@ -11,13 +11,33 @@ export type Target = {
   label?: string;
   regionEvidence?: RegionEvidence;
   /**
-   * Runtime State Evidence: the state the artifact was in when the Target was pointed at, as the artifact saw it rather than as the review proxy served it.
+   * Runtime State Evidence: the state the artifact was in when the Target was pointed at, as the artifact saw it rather than as the review proxy served it. The artifact's own address stays in its own field; the documents chain records the frames the Target was reached through, each with its own address and scroll.
    */
   runtimeState?: {
     /**
      * Address of the artifact relative to its own base, including query and fragment. Absent when the artifact was at its base.
      */
     address?: string;
+    /**
+     * The ordered chain of documents the Target was reached through, outermost frame first. Each entry names the frame inside its parent document, that document's own address relative to its base, and the scroll it was showing. Absent when the Target lives in the artifact's own document.
+     */
+    documents?: {
+      /**
+       * Composed selector of the frame element inside its parent document, qualified by any shadow boundary it sits in.
+       */
+      path: string;
+      /**
+       * The framed document's address relative to the artifact's base, including query and fragment. Absent when it is at its base.
+       */
+      address?: string;
+      /**
+       * The framed document's scroll offset when the Target was pointed at.
+       */
+      scroll?: {
+        x: number;
+        y: number;
+      };
+    }[];
   };
   /**
    * The Builder-Reviewer's own act declaring that this Target no longer exists, stamped with the result revision it was made against. It never shares a word with Target Resolution's derived vocabulary: the product may only fail to find a Target, while the Builder-Reviewer may know it is gone.
@@ -35,13 +55,33 @@ export type Target = {
   label?: string;
   regionEvidence?: RegionEvidence;
   /**
-   * Runtime State Evidence: the state the artifact was in when the Target was pointed at, as the artifact saw it rather than as the review proxy served it.
+   * Runtime State Evidence: the state the artifact was in when the Target was pointed at, as the artifact saw it rather than as the review proxy served it. The artifact's own address stays in its own field; the documents chain records the frames the Target was reached through, each with its own address and scroll.
    */
   runtimeState?: {
     /**
      * Address of the artifact relative to its own base, including query and fragment. Absent when the artifact was at its base.
      */
     address?: string;
+    /**
+     * The ordered chain of documents the Target was reached through, outermost frame first. Each entry names the frame inside its parent document, that document's own address relative to its base, and the scroll it was showing. Absent when the Target lives in the artifact's own document.
+     */
+    documents?: {
+      /**
+       * Composed selector of the frame element inside its parent document, qualified by any shadow boundary it sits in.
+       */
+      path: string;
+      /**
+       * The framed document's address relative to the artifact's base, including query and fragment. Absent when it is at its base.
+       */
+      address?: string;
+      /**
+       * The framed document's scroll offset when the Target was pointed at.
+       */
+      scroll?: {
+        x: number;
+        y: number;
+      };
+    }[];
   };
   /**
    * The Builder-Reviewer's own act declaring that this Target no longer exists, stamped with the result revision it was made against. It never shares a word with Target Resolution's derived vocabulary: the product may only fail to find a Target, while the Builder-Reviewer may know it is gone.
@@ -53,13 +93,13 @@ export type Target = {
 };
 
 /**
- * Experimental open schema for visually grounded human intent. Version 0.3 adds Runtime State Evidence to every Target, recording the address the artifact was showing, and keeps the 0.2 shape readable.
+ * Experimental open schema for visually grounded human intent. Version 0.4 adds the ordered chain of documents to Runtime State Evidence, so a Target reached through a frame records the frame path, each document's own address and its scroll, and keeps the 0.3 shape readable.
  */
 export interface VisualIntentEnvelope {
   /**
    * Envelope schema version. Major.minor; minor additions are backward compatible.
    */
-  schemaVersion: "0.3";
+  schemaVersion: "0.4";
   /**
    * Stable identifier so retries and redelivery are idempotent.
    */

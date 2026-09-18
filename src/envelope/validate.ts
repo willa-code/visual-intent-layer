@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { VisualIntentEnvelope } from './generated/envelope-v0.3.js';
+import type { VisualIntentEnvelope } from './generated/envelope-v0.4.js';
 
 export type Envelope = VisualIntentEnvelope;
 
@@ -26,8 +26,8 @@ const addFormats = require('ajv-formats') as AddFormats;
 const ajv: AjvInstance = new Ajv2020({ allErrors: true, strict: true, strictSchema: false });
 addFormats(ajv);
 
-const CURRENT_VERSION = '0.3';
-const READABLE_VERSIONS = ['0.3', '0.2'];
+const CURRENT_VERSION = '0.4';
+const READABLE_VERSIONS = ['0.4', '0.3', '0.2'];
 
 function schemaPath(version: string): string {
   const here = dirname(fileURLToPath(import.meta.url));

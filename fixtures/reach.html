@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Reach fixture</title>
+    <style>
+      body { margin: 24px; font-family: system-ui, sans-serif; }
+      section { margin-bottom: 16px; }
+      .shadow-action, .deep-action { font: inherit; padding: 8px 14px; }
+      iframe { display: block; width: 320px; height: 120px; border: 1px solid rgb(221, 221, 221); }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <h1>Reach</h1>
+      <section><div id="open-host"></div></section>
+      <section><div id="closed-host"></div></section>
+      <section><iframe id="reach-frame" title="Widget" src="reach-widget.html"></iframe></section>
+    </main>
+    <script>
+      const open = document.getElementById('open-host').attachShadow({ mode: 'open' });
+      open.innerHTML =
+        '<div class="card"><p class="shadow-note">Shadow note</p><button class="shadow-action" type="button">Shadow action</button><div id="nested-host"></div></div>';
+      const nested = open.getElementById('nested-host').attachShadow({ mode: 'open' });
+      nested.innerHTML = '<button class="deep-action" type="button">Deep action</button>';
+      const closed = document.getElementById('closed-host').attachShadow({ mode: 'closed' });
+      closed.innerHTML = '<button class="closed-action" type="button">Closed action</button>';
+    </script>
+  </body>
+</html>

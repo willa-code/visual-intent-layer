@@ -9,16 +9,42 @@ Verification Run is recorded.
 
 **Status:** ready-for-agent
 
-- [ ] A fixture exists carrying an open shadow root, a shadow root inside a shadow root, a closed shadow root and a same-origin frame
+- [x] A fixture exists carrying an open shadow root, a shadow root inside a shadow root, a closed shadow root and a same-origin frame
 - [ ] The Lever points at a shadow-rooted element and at a frame element, and reads the stored grounding and boundary evidence back from `state`
 - [ ] The Lever drives the unrendered-row case and confirms the row's state word, and confirms the product never moves the artifact
 - [ ] The Lever drives the bound being reached and reads the recorded truncation fact back
-- [ ] Coverage is recorded only for behaviour a drive actually reached
-- [ ] The feature map no longer describes traversal as stopping at the artifact document, and names the refusals it does make
-- [ ] A Verification Run is recorded per the maintainer skill, or the untested paths are named with their preconditions
+- [x] Coverage is recorded only for behaviour a drive actually reached
+- [x] The feature map no longer describes traversal as stopping at the artifact document, and names the refusals it does make
+- [x] A Verification Run is recorded per the maintainer skill, or the untested paths are named with their preconditions
 
 ## Comments
 
 2026-09-18. Filed from `.scratch/reach-within-the-class/spec.md`. The previous iteration's
 lesson carried forward: a drive the harness cannot perform must be named with its
 preconditions rather than recorded as covered.
+
+2026-09-18 — partly landed; four of seven boxes ticked, status left
+`ready-for-agent`. `fixtures/reach.html` carries an open shadow root, a shadow root
+inside a shadow root, a closed shadow root and a same-origin `<iframe>` (its own
+policy sets `frame-src 'none'`, so in saved HTML that frame is present but never
+loads — the spec's own finding). The browser-host's `locatorFor` now understands the
+`>>` frame separator, so a Lever target can name a frame path. A Verification Run
+was recorded: `.visual-intent-verify/runs/2026-09-18_04-30-07-reach`, outcome
+`clean`, coverage `reach-within-the-class` for `reach-shadow`, `reach-nested-shadow`
+and `reach-area`, with a recording, screenshots, ARIA snapshots and a `state`
+read-back showing the shadow Area re-resolving to `recovered` after a
+`reload-surface`. The feature map gains `reach-within-the-class.md` and
+`resolution-and-honesty.md` names the `blocked` and `unread` words.
+
+Three boxes remain, each with the precondition that blocks it, recorded in the
+feature file and in the run's unreachable paths:
+
+- **A frame element.** The Lever cannot reach a loadable same-origin frame in saved
+  HTML; the frame-interior drive needs a loopback application embedding one. The
+  browser loop already proves it against a proxied application, and the Lever
+  attempt is recorded as an unreachable path rather than counted as covered.
+- **The unrendered row.** Needs a virtualized-list fixture and a Lever scroll
+  command; neither exists. The browser loop proves the state word and that the
+  product never moves the artifact.
+- **The bound.** Needs a large-roster fixture; the browser loop proves the
+  truncation fact and the blocked approval.

@@ -1,6 +1,7 @@
 import { provenanceForElement } from '../../adapters/source-stamp.js';
 import { relationSentence } from '../../annotation/relations.js';
 import { isArtifactDocument } from './bootstrap.js';
+import type { ViewedState } from '../../resolution/model.js';
 import type { CandidateMark, Grounding, LayerMessage, LayerRelation, LayerTarget, LayerTool, ShellMessage } from '../protocol.js';
 import {
   LAYER_ATTRIBUTE,
@@ -10,8 +11,13 @@ import {
   describeTextRange,
   elementByNodeId,
   extractCandidates,
-  isLayerNode
+  isLayerNode,
+  composedSelector,
+  rectInReviewedViewport,
+  walkComposedElements,
+  type RectLike
 } from './grounding.js';
+import { elementOf, contentDocumentOf, type BoundaryRefusal } from './boundary.js';
 
 const SELECTION_INK = '#2b5fd7';
 const SELECTION_HOVER_FILL = 'rgba(43, 95, 215, 0.08)';
@@ -28,6 +34,7 @@ const script = document.currentScript as HTMLScriptElement | null;
 const sessionId = script?.dataset['session'] ?? '';
 const revision = script?.dataset['revision'] ?? '';
 const addressBase = (script?.dataset['addressBase'] ?? '').replace(/\/+$/, '');
+const savedHtmlArtifact = addressBase.startsWith('/artifact/');
 const parentWindow = window.parent !== window ? window.parent : undefined;
 
 let tool: LayerTool = 'operate';
@@ -60,6 +67,7 @@ function post(message: LayerMessage): void {
 }
 
 function postCandidates(trigger: 'shell' | 'view' = 'shell'): void {
+  syncFrameDocuments();
   const address = addressOf();
   const extraction = extractCandidates(document);
   post({
@@ -72,7 +80,8 @@ function postCandidates(trigger: 'shell' | 'view' = 'shell'): void {
     viewed: {
       ...(address ? { address } : {}),
       scroll: { x: window.scrollX, y: window.scrollY },
-      viewport: { width: window.innerWidth, height: window.innerHeight }
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      ...(viewedDocuments().length > 0 ? { documents: viewedDocuments() } : {})
     }
   });
 }
@@ -128,9 +137,9 @@ function boxFor(element: Element | null, kind: 'owned' | 'drawn' | 'candidate' |
 }
 
 function positionBox(box: HTMLElement, element: Element): void {
-  const rect = element.getBoundingClientRect();
-  box.style.left = `${rect.left}px`;
-  box.style.top = `${rect.top}px`;
+  const rect = rectInReviewedViewport(element, document);
+  box.style.left = `${rect.x}px`;
+  box.style.top = `${rect.y}px`;
   box.style.width = `${rect.width}px`;
   box.style.height = `${rect.height}px`;
   box.style.display = rect.width === 0 || rect.height === 0 ? 'none' : 'block';
@@ -153,7 +162,7 @@ function redraw(): void {
 }
 
 function labelOf(element: HTMLElement): string {
-  const grounding = describeElement(element);
+  const grounding = describeElement(element, document);
   return grounding.accessibleName ?? grounding.semanticRole ?? element.tagName.toLowerCase();
 }
 
@@ -217,7 +226,14 @@ function stripElement(target: SelectedTarget): LayerTarget {
 }
 
 function addressOf(): string | undefined {
-  const location = window.location;
+  return addressOfWindow(window);
+}
+
+function addressOfWindow(win: Window | null | undefined): string | undefined {
+  if (!win) {
+    return undefined;
+  }
+  const location = win.location;
   let path = location.pathname;
   if (addressBase && (path === addressBase || path.startsWith(`${addressBase}/`))) {
     path = path.slice(addressBase.length).replace(/^\/+/, '');
@@ -226,15 +242,54 @@ function addressOf(): string | undefined {
   return relative.length > 0 ? relative : undefined;
 }
 
+function documentChainFor(element: HTMLElement): NonNullable<LayerTarget['runtimeState']>['documents'] {
+  const frames: HTMLElement[] = [];
+  let win = element.ownerDocument.defaultView;
+  while (win?.frameElement && win !== document.defaultView) {
+    const frame = win.frameElement as HTMLElement;
+    frames.unshift(frame);
+    win = frame.ownerDocument.defaultView;
+  }
+  const chain = frames.map((frame) => {
+    let inner: Document | null = null;
+    try {
+      inner = (frame as HTMLIFrameElement).contentDocument;
+    } catch {
+      inner = null;
+    }
+    const address = inner ? addressOfWindow(inner.defaultView) : undefined;
+    const scroll = inner?.defaultView
+      ? { x: inner.defaultView.scrollX, y: inner.defaultView.scrollY }
+      : { x: 0, y: 0 };
+    return { path: composedSelector(frame, document), ...(address ? { address } : {}), scroll };
+  });
+  return chain.length > 0 ? chain : undefined;
+}
+
+function viewedDocuments(): NonNullable<ViewedState['documents']> {
+  return frameDocuments()
+    .map((inner) => {
+      const frame = inner.defaultView?.frameElement as HTMLElement | null;
+      const address = addressOfWindow(inner.defaultView);
+      return {
+        path: frame ? composedSelector(frame, document) : '',
+        ...(address ? { address } : {}),
+        scroll: { x: inner.defaultView?.scrollX ?? 0, y: inner.defaultView?.scrollY ?? 0 }
+      };
+    })
+    .filter((entry) => entry.path.length > 0);
+}
+
 function makeTarget(kind: LayerTarget['kind'], grounding: Grounding, element?: HTMLElement): SelectedTarget {
   const address = addressOf();
+  const documents = element ? documentChainFor(element) : undefined;
   const target: SelectedTarget = {
     targetId: `t-${++targetCounter}`,
     kind,
     grounding,
     provenanceConfidence: 'unavailable',
     ...(element ? { element } : {}),
-    ...(address ? { runtimeState: { address } } : {})
+    ...(address || documents ? { runtimeState: { ...(address ? { address } : {}), ...(documents ? { documents } : {}) } } : {})
   };
   if (kind === 'region') {
     target.regionEvidence = {
@@ -273,7 +328,7 @@ function appendTarget(target: SelectedTarget): boolean {
 
 function selectElement(element: HTMLElement, additive: boolean): void {
   if (!additive) {
-    targets = [makeTarget('element', describeElement(element), element)];
+    targets = [makeTarget('element', describeElement(element, document), element)];
     renderTargets();
     return;
   }
@@ -282,7 +337,7 @@ function selectElement(element: HTMLElement, additive: boolean): void {
     renderTargets();
     return;
   }
-  appendTarget(makeTarget('element', describeElement(element), element));
+  appendTarget(makeTarget('element', describeElement(element, document), element));
   renderTargets();
 }
 
@@ -295,6 +350,7 @@ function selectEnclosed(rect: { x: number; y: number; width: number; height: num
   const view = { width: window.innerWidth, height: window.innerHeight, scrollX: window.scrollX, scrollY: window.scrollY };
   const grounding = describeRegion(rect, view);
   const enclosed = enclosedElements(rect);
+  const holes = unreadableHoles(rect);
   const labels: string[] = [];
   for (const element of enclosed) {
     const label = labelOf(element);
@@ -302,16 +358,25 @@ function selectEnclosed(rect: { x: number; y: number; width: number; height: num
       labels.push(label);
     }
   }
-  grounding.selectors = enclosed.flatMap((element) => describeElement(element).selectors ?? []).slice(0, MAX_AREA_TARGETS);
+  grounding.selectors = enclosed.flatMap((element) => describeElement(element, document).selectors ?? []).slice(0, MAX_AREA_TARGETS);
   const summary = labels.slice(0, MAX_AREA_TARGETS);
   if (summary.length > 0) {
     grounding.accessibleName = summary.join(', ');
   }
   const target = makeTarget('region', grounding);
-  target.label =
+  const enclosedText =
     summary.length > 0
-      ? `Area enclosing ${summary.join(', ')}${enclosed.length > summary.length ? ` and ${enclosed.length - summary.length} more` : ''}`
-      : 'A drawn area enclosing nothing the artifact owns';
+      ? `${summary.join(', ')}${enclosed.length > summary.length ? ` and ${enclosed.length - summary.length} more` : ''}`
+      : undefined;
+  const holeText = holes.length > 0 ? holes.map(describeHole).join(' and ') : undefined;
+  target.label =
+    enclosedText && holeText
+      ? `Area enclosing ${enclosedText}, and ${holeText}`
+      : holeText
+        ? `A drawn area over ${holeText}`
+        : enclosedText
+          ? `Area enclosing ${enclosedText}`
+          : 'A drawn area enclosing nothing the artifact owns';
   if (additive) {
     appendTarget(target);
   } else {
@@ -320,22 +385,80 @@ function selectEnclosed(rect: { x: number; y: number; width: number; height: num
   renderTargets();
 }
 
+function describeHole(hole: BoundaryRefusal): string {
+  switch (hole) {
+    case 'closed-shadow-root':
+      return 'a closed shadow root';
+    case 'cross-origin-frame':
+      return 'a frame served from another origin';
+    case 'policy-blocked-frame':
+      return "a frame the artifact's content policy blocks";
+    case 'unloaded-frame':
+      return 'a frame that has not loaded';
+  }
+}
+
+function unreadableHoles(rect: { x: number; y: number; width: number; height: number }): BoundaryRefusal[] {
+  const holes = new Set<BoundaryRefusal>();
+  for (const frame of Array.from(document.querySelectorAll('iframe, frame'))) {
+    if (!overlaps(rect, rectInReviewedViewport(frame, document))) {
+      continue;
+    }
+    if (savedHtmlArtifact) {
+      holes.add('policy-blocked-frame');
+      continue;
+    }
+    const inner = contentDocumentOf(frame);
+    if (inner) {
+      continue;
+    }
+    holes.add(inner === null && !sameOrigin(frame) ? 'cross-origin-frame' : 'unloaded-frame');
+  }
+  return [...holes];
+}
+
+function sameOrigin(frame: Element): boolean {
+  const src = frame.getAttribute('src');
+  if (!src) {
+    return true;
+  }
+  try {
+    return new URL(src, window.location.href).origin === window.location.origin;
+  } catch {
+    return true;
+  }
+}
+
+function overlaps(
+  rect: { x: number; y: number; width: number; height: number },
+  box: { x: number; y: number; width: number; height: number }
+): boolean {
+  return (
+    box.width > 0 &&
+    box.height > 0 &&
+    box.x < rect.x + rect.width &&
+    box.x + box.width > rect.x &&
+    box.y < rect.y + rect.height &&
+    box.y + box.height > rect.y
+  );
+}
+
 function enclosedElements(rect: { x: number; y: number; width: number; height: number }): HTMLElement[] {
-  const all = Array.from(document.querySelectorAll<HTMLElement>('body *')).filter((element) => !isLayerNode(element));
+  const all = walkComposedElements(document).elements.filter((element) => !isLayerNode(element));
   const inside = all.filter((element) => {
-    const box = element.getBoundingClientRect();
+    const box = rectInReviewedViewport(element, document);
     if (box.width === 0 || box.height === 0) {
       return false;
     }
     return (
-      box.left >= rect.x - 1 &&
-      box.top >= rect.y - 1 &&
-      box.right <= rect.x + rect.width + 1 &&
-      box.bottom <= rect.y + rect.height + 1
+      box.x >= rect.x - 1 &&
+      box.y >= rect.y - 1 &&
+      box.x + box.width <= rect.x + rect.width + 1 &&
+      box.y + box.height <= rect.y + rect.height + 1
     );
   });
   const recognizable = inside.filter((element) => {
-    const grounding = describeElement(element);
+    const grounding = describeElement(element, document);
     return Boolean(grounding.accessibleName ?? grounding.semanticRole);
   });
   const leaves = recognizable.filter(
@@ -345,12 +468,32 @@ function enclosedElements(rect: { x: number; y: number; width: number; height: n
 }
 
 function eventElement(event: Event): HTMLElement | null {
-  const first = event.composedPath()[0];
-  return first instanceof HTMLElement ? first : null;
+  return elementOf(event.composedPath()[0]);
 }
 
-function elementAtPoint(clientX: number, clientY: number): HTMLElement | null {
-  let element = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+function documentOfEvent(event: Event): Document {
+  const first = event.composedPath()[0] as Node | undefined;
+  return first?.ownerDocument ?? document;
+}
+
+function reviewedPoint(event: PointerEvent): { x: number; y: number } {
+  const offset = viewportOffsetOf(documentOfEvent(event));
+  return { x: event.clientX + offset.x, y: event.clientY + offset.y };
+}
+
+function viewportOffsetOf(doc: Document): { x: number; y: number } {
+  const win = doc.defaultView;
+  if (!win?.frameElement || win === document.defaultView) {
+    return { x: 0, y: 0 };
+  }
+  const frame = win.frameElement as HTMLElement;
+  const frameRect = frame.getBoundingClientRect();
+  const parent = viewportOffsetOf(frame.ownerDocument);
+  return { x: frameRect.x + frame.clientLeft + parent.x, y: frameRect.y + frame.clientTop + parent.y };
+}
+
+function elementAtPoint(clientX: number, clientY: number, doc: Document): HTMLElement | null {
+  let element = doc.elementFromPoint(clientX, clientY) as HTMLElement | null;
   while (element?.shadowRoot) {
     const inner = element.shadowRoot.elementFromPoint(clientX, clientY) as HTMLElement | null;
     if (!inner || inner === element) {
@@ -359,6 +502,100 @@ function elementAtPoint(clientX: number, clientY: number): HTMLElement | null {
     element = inner;
   }
   return element;
+}
+
+function frameDocuments(): Document[] {
+  const docs: Document[] = [];
+  for (const frame of Array.from(document.querySelectorAll('iframe, frame'))) {
+    let inner: Document | null = null;
+    try {
+      inner = (frame as HTMLIFrameElement).contentDocument;
+    } catch {
+      inner = null;
+    }
+    if (inner && inner !== document && !docs.includes(inner)) {
+      docs.push(inner);
+    }
+  }
+  return docs;
+}
+
+const attachedDocuments = new Set<Document>();
+const boundFrames = new Set<Element>();
+
+function onPointerCancel(): void {
+  if (pointDrag?.startedOnSelected) {
+    cancelRelationDrag();
+  }
+}
+
+function onViewportChange(): void {
+  redraw();
+  scheduleCandidateRequest();
+}
+
+function attachToDocument(doc: Document): void {
+  if (attachedDocuments.has(doc)) {
+    return;
+  }
+  attachedDocuments.add(doc);
+  doc.addEventListener('pointerdown', onPointerDown, true);
+  doc.addEventListener('pointermove', onPointerMove, true);
+  doc.addEventListener('pointerup', onPointerUp, true);
+  doc.addEventListener('pointercancel', onPointerCancel, true);
+  doc.addEventListener('click', onClick, true);
+  doc.addEventListener('keydown', onKeyDown, true);
+  doc.defaultView?.addEventListener('scroll', onViewportChange, true);
+  doc.defaultView?.addEventListener('resize', onViewportChange, true);
+}
+
+function syncFrameDocuments(): void {
+  for (const frame of Array.from(document.querySelectorAll('iframe, frame'))) {
+    if (!boundFrames.has(frame)) {
+      boundFrames.add(frame);
+      frame.addEventListener('load', () => {
+        syncFrameDocuments();
+        scheduleCandidateRequest();
+      });
+    }
+    let inner: Document | null = null;
+    try {
+      inner = (frame as HTMLIFrameElement).contentDocument;
+    } catch {
+      inner = null;
+    }
+    if (inner) {
+      attachToDocument(inner);
+    }
+  }
+}
+
+function refusalForEvent(event: Event): BoundaryRefusal | undefined {
+  const doc = documentOfEvent(event);
+  if (doc === document) {
+    return undefined;
+  }
+  if (savedHtmlArtifact) {
+    return 'policy-blocked-frame';
+  }
+  return undefined;
+}
+
+function postBoundaryRefusal(refusal: BoundaryRefusal): void {
+  post({ source: 'vil-layer', type: 'notice', message: boundaryRefusalNotice(refusal) });
+}
+
+function boundaryRefusalNotice(refusal: BoundaryRefusal): string {
+  switch (refusal) {
+    case 'closed-shadow-root':
+      return 'That host has a closed shadow root, so this surface cannot look inside it.';
+    case 'cross-origin-frame':
+      return 'That frame is served from another origin, so this surface cannot look inside it.';
+    case 'policy-blocked-frame':
+      return "That frame is blocked by the artifact's content policy, so this surface never loaded it and cannot look inside it.";
+    case 'unloaded-frame':
+      return 'That frame has not loaded, so there is nothing inside it to point at yet.';
+  }
 }
 
 function onPointerDown(event: PointerEvent): void {
@@ -373,8 +610,14 @@ function onPointerDown(event: PointerEvent): void {
   if (!element || isLayerNode(element)) {
     return;
   }
+  const refusal = refusalForEvent(event);
+  if (refusal) {
+    postBoundaryRefusal(refusal);
+    return;
+  }
   if (tool === 'box') {
-    boxDrag = { startX: event.clientX, startY: event.clientY, additive: event.shiftKey };
+    const start = reviewedPoint(event);
+    boxDrag = { startX: start.x, startY: start.y, additive: event.shiftKey };
     return;
   }
   const startedOnSelected = targets.some(
@@ -385,7 +628,8 @@ function onPointerDown(event: PointerEvent): void {
 
 function onPointerMove(event: PointerEvent): void {
   if (boxDrag) {
-    drawMarquee(boxDrag.startX, boxDrag.startY, event.clientX, event.clientY);
+    const point = reviewedPoint(event);
+    drawMarquee(boxDrag.startX, boxDrag.startY, point.x, point.y);
     return;
   }
   if (pointDrag) {
@@ -399,7 +643,7 @@ function onPointerMove(event: PointerEvent): void {
     }
   }
   if (tool === 'point') {
-    const element = elementAtPoint(event.clientX, event.clientY);
+    const element = elementAtPoint(event.clientX, event.clientY, documentOfEvent(event));
     if (element && !isLayerNode(element)) {
       setHover(element);
     } else {
@@ -413,8 +657,13 @@ function onPointerUp(event: PointerEvent): void {
     const start = boxDrag;
     boxDrag = null;
     removeMarquee();
-    const width = Math.abs(event.clientX - start.startX);
-    const height = Math.abs(event.clientY - start.startY);
+    const point = reviewedPoint(event);
+    const endX = point.x;
+    const endY = point.y;
+    const startX = start.startX;
+    const startY = start.startY;
+    const width = Math.abs(endX - startX);
+    const height = Math.abs(endY - startY);
     if (width < MIN_BOX || height < MIN_BOX) {
       post({
         source: 'vil-layer',
@@ -425,8 +674,8 @@ function onPointerUp(event: PointerEvent): void {
     }
     selectEnclosed(
       {
-        x: Math.min(start.startX, event.clientX),
-        y: Math.min(start.startY, event.clientY),
+        x: Math.min(startX, endX),
+        y: Math.min(startY, endY),
         width,
         height
       },
@@ -444,9 +693,9 @@ function onPointerUp(event: PointerEvent): void {
       finishRelationDrag(drag);
       return;
     }
-    const selection = document.getSelection();
+    const selection = selectionIn(drag.element);
     if (selection && selection.rangeCount > 0 && !selection.isCollapsed && selection.toString().trim().length > 0) {
-      const target = makeTarget('text-range', describeTextRange(selection.getRangeAt(0)));
+      const target = makeTarget('text-range', describeTextRange(selection.getRangeAt(0), document));
       if (event.shiftKey) {
         appendTarget(target);
       } else {
@@ -458,6 +707,9 @@ function onPointerUp(event: PointerEvent): void {
   }
   const element = eventElement(event);
   if (!element || isLayerNode(element)) {
+    return;
+  }
+  if (refusalForEvent(event)) {
     return;
   }
   selectElement(element, event.shiftKey);
@@ -473,7 +725,7 @@ function updateRelationDrag(event: PointerEvent): void {
   if (!drag || !drag.moved || !drag.startedOnSelected) {
     return;
   }
-  const rect = drag.element.getBoundingClientRect();
+  const rect = rectInReviewedViewport(drag.element, document);
   const dx = event.clientX - drag.startX;
   const dy = event.clientY - drag.startY;
   if (!drag.ghost) {
@@ -535,8 +787,15 @@ function cancelRelationDrag(): void {
 type Box = { left: number; top: number; right: number; bottom: number; width: number; height: number };
 
 function boxOfElement(element: HTMLElement): Box {
-  const rect = element.getBoundingClientRect();
-  return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
+  const rect = rectInReviewedViewport(element, document);
+  return {
+    left: rect.x,
+    top: rect.y,
+    right: rect.x + rect.width,
+    bottom: rect.y + rect.height,
+    width: rect.width,
+    height: rect.height
+  };
 }
 
 function boxOfTarget(target: SelectedTarget): Box | undefined {
@@ -552,7 +811,7 @@ function boxOfTarget(target: SelectedTarget): Box | undefined {
 
 function computeRelation(
   dragged: HTMLElement,
-  rect: DOMRect,
+  rect: RectLike,
   dx: number,
   dy: number,
   modifiers: { alt: boolean; ctrl: boolean; shift: boolean }
@@ -876,35 +1135,26 @@ function onKeyDown(event: KeyboardEvent): void {
   cancelRelationDrag();
 }
 
-function start(): void {
-  document.addEventListener('pointerdown', onPointerDown, true);
-  document.addEventListener('pointermove', onPointerMove, true);
-  document.addEventListener('pointerup', onPointerUp, true);
-  document.addEventListener('pointercancel', () => {
-    if (pointDrag?.startedOnSelected) {
-      cancelRelationDrag();
+function selectionIn(element: HTMLElement): Selection | null {
+  const root = element.getRootNode() as ShadowRoot & { getSelection?: () => Selection | null };
+  if (typeof root.getSelection === 'function') {
+    const selection = root.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      return selection;
     }
-  });
-  document.addEventListener('keydown', onKeyDown, true);
+  }
+  return element.ownerDocument.getSelection();
+}
+
+function start(): void {
+  attachToDocument(document);
+  document.addEventListener('click', onDocumentClick, true);
   window.addEventListener('blur', () => {
     if (pointDrag?.startedOnSelected) {
       cancelRelationDrag();
     }
   });
-  document.addEventListener('click', onClick, true);
-  document.addEventListener('click', onDocumentClick, true);
-  window.addEventListener(
-    'scroll',
-    () => {
-      redraw();
-      scheduleCandidateRequest();
-    },
-    true
-  );
-  window.addEventListener('resize', () => {
-    redraw();
-    scheduleCandidateRequest();
-  });
+  window.addEventListener('load', syncFrameDocuments);
   window.addEventListener('message', onMessage as EventListener);
   window.addEventListener('visual-intent:applied-revision', ((event: CustomEvent<{ revision?: unknown }>) => {
     const supplied = event.detail?.revision;
@@ -915,6 +1165,7 @@ function start(): void {
     });
   }) as EventListener);
   overlay = ensureOverlay();
+  syncFrameDocuments();
   post({ source: 'vil-layer', type: 'ready', revision });
 }
 

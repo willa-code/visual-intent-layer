@@ -91,6 +91,25 @@ describe('Annotation model', () => {
     expect(approvalBlockers(repointed)).toHaveLength(0);
   });
 
+  it('blocks an unrendered target as a state no longer on screen even when weak candidates exist', () => {
+    const moved = annotation({
+      resolutions: [
+        resolution({
+          match: 'unresolved',
+          candidates: [{ candidate: { nodeId: 'n-1', selectors: [] }, score: 0.3, matchedAnchors: [] }]
+        })
+      ]
+    });
+    const stateFor = () => ({
+      revisionUnchanged: true,
+      recorded: { scroll: { x: 0, y: 400 } },
+      viewed: { scroll: { x: 0, y: 0 } }
+    });
+    const blockers = approvalBlockers(moved, stateFor);
+    expect(blockers).toHaveLength(1);
+    expect(blockers[0]).toMatch(/may exist only in a state no longer on screen/i);
+  });
+
   it('never blocks a non-approval verdict on a missing target', () => {
     const deleted = annotation({ resolutions: [resolution({ match: 'unresolved' })] });
     expect(verificationRefusedReason(deleted, 'obsolete')).toBeUndefined();

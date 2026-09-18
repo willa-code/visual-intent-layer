@@ -3,6 +3,7 @@ import { anchorOutcomeText, stateLabel } from '../annotation/model.js';
 import type { AgentPositionReport } from '../mcp/service.js';
 import type { SessionPass } from './api.js';
 import { deriveResolutionLabel, resolutionLabelText, type ResolutionLabel, type RuntimeStateContext } from '../resolution/model.js';
+import type { BoundaryRefusal } from './artifact/boundary.js';
 import type { TargetResolutionRecord } from '../resolution/resolve.js';
 import { apiBaseUrl } from './runtime.js';
 import { button, h, iconButton } from './dom.js';
@@ -77,6 +78,7 @@ export function resolutionTone(label: ResolutionLabel): Tone {
       return 'progress';
     case 'ambiguous':
     case 'state-only':
+    case 'blocked':
       return 'attention';
     case 'deleted':
       return 'closed';
@@ -89,13 +91,14 @@ export function resolutionItem(
   state?: RuntimeStateContext,
   outcome?: AnchorOutcome,
   declared = false,
-  truncated = false
+  truncated = false,
+  blocked?: BoundaryRefusal
 ): HTMLElement {
   const derived = deriveResolutionLabel(record, state);
   const unread = truncated && record.match === 'unresolved';
-  const shown = unread ? 'unread' : derived;
+  const shown = record.match === 'unresolved' && blocked ? 'blocked' : unread ? 'unread' : derived;
   const cueName: IconName =
-    unread || derived === 'ambiguous' || derived === 'state-only'
+    shown === 'blocked' || unread || derived === 'ambiguous' || derived === 'state-only'
       ? 'ambiguous'
       : derived === 'matched'
         ? 'check'
@@ -109,9 +112,11 @@ export function resolutionItem(
     outcome && (derived === 'matched' || derived === 'recovered') ? ` · ${anchorOutcomeText(outcome)}` : '';
   const text = declared
     ? `${label}: Declared missing by you`
-    : unread
-      ? `${label}: Not in the part of this revision the surface read`
-      : `${label}: ${resolutionLabelText(derived)}${comparison}`;
+    : shown === 'blocked'
+      ? `${label}: ${resolutionLabelText('blocked')}`
+      : unread
+        ? `${label}: Not in the part of this revision the surface read`
+        : `${label}: ${resolutionLabelText(derived)}${comparison}`;
   item.append(cue, h('span', { text }));
   return item;
 }

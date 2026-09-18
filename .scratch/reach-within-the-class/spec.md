@@ -155,3 +155,14 @@ are partly landed and left `ready-for-agent`, each naming its remaining boxes in
 Comments. `03`, `05`, `06`, `07` and `08` are untouched. The recorded scroll in Rendered
 Grounding was fixed on the way through: it stored the element's absolute position, not the
 page scroll, which ticket `04`'s comparison depends on.
+
+2026-09-18 — second implementation pass. `01`, `03`, `05`, `06` and `07` are `done`;
+`08` is partly landed and names its three remaining drives with their preconditions.
+Traversal is now a composed walk over open shadow roots and one same-origin frame
+level with a visited-document set, one shared 2000-node budget and boundary-qualified
+selectors, and Runtime State Evidence gains the ordered `documents` chain in a
+versioned envelope bump to `0.4`. A closed shadow root, a cross-origin frame and a
+policy-blocked frame are stated with their own causes in the row, the hint and the
+approval wall, and an Area keeps its rectangle while naming the one hole it could not
+read. The Verification Run is
+`.visual-intent-verify/runs/2026-09-18_04-30-07-reach` (outcome `clean`).

@@ -55,7 +55,15 @@ function scope(frame) {
 function locatorFor(target, frame) {
   const root = scope(frame);
   if (target.selector !== undefined) {
-    return root.locator(target.selector);
+    const parts = String(target.selector)
+      .split('>>')
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0);
+    let scoped = root;
+    for (let index = 0; index < parts.length - 1; index += 1) {
+      scoped = scoped.frameLocator(parts[index]);
+    }
+    return scoped.locator(parts[parts.length - 1] ?? target.selector);
   }
   if (target.role !== undefined) {
     return root.getByRole(target.role, target.name !== undefined ? { name: target.name, exact: target.exact === true } : {});

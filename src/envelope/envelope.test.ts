@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { validateEnvelope } from './validate.js';
 import { representativeEnvelope } from './fixtures.js';
 
-describe('Visual Intent Envelope schema conformance (v0.3)', () => {
+describe('Visual Intent Envelope schema conformance (v0.4)', () => {
   it('accepts the representative envelope fixture', () => {
     const result = validateEnvelope(representativeEnvelope);
     expect(result.ok).toBe(true);
@@ -79,7 +79,7 @@ describe('Visual Intent Envelope schema conformance (v0.3)', () => {
     const result = validateEnvelope(legacy);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value.schemaVersion).toBe('0.3');
+      expect(result.value.schemaVersion).toBe('0.4');
     }
   });
 
@@ -93,6 +93,48 @@ describe('Visual Intent Envelope schema conformance (v0.3)', () => {
     if (result.ok) {
       const read = result.value.annotations[0]!.targets[0]!;
       expect(read.runtimeState?.address).toBe('checkout.html#delivery');
+    }
+  });
+
+  it('reads the ordered chain of documents a frame Target was reached through', () => {
+    const withChain = structuredClone(representativeEnvelope) as unknown as Record<string, unknown>;
+    const annotation = (withChain['annotations'] as Array<Record<string, unknown>>)[0]!;
+    const target = (annotation['targets'] as Array<Record<string, unknown>>)[0]!;
+    target['runtimeState'] = {
+      address: 'checkout.html',
+      documents: [{ path: 'iframe#widget', address: 'widget', scroll: { x: 0, y: 120 } }]
+    };
+    const result = validateEnvelope(withChain);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.annotations[0]!.targets[0]!.runtimeState?.documents?.[0]).toEqual({
+        path: 'iframe#widget',
+        address: 'widget',
+        scroll: { x: 0, y: 120 }
+      });
+    }
+  });
+
+  it('rejects a documents chain entry without a frame path', () => {
+    const broken = structuredClone(representativeEnvelope) as unknown as Record<string, unknown>;
+    const annotation = (broken['annotations'] as Array<Record<string, unknown>>)[0]!;
+    const target = (annotation['targets'] as Array<Record<string, unknown>>)[0]!;
+    target['runtimeState'] = { documents: [{ scroll: { x: 0, y: 0 } }] };
+    expect(validateEnvelope(broken).ok).toBe(false);
+  });
+
+  it('keeps a 0.3 envelope without a documents chain readable', () => {
+    const legacy = structuredClone(representativeEnvelope) as unknown as Record<string, unknown>;
+    legacy['schemaVersion'] = '0.3';
+    const annotation = (legacy['annotations'] as Array<Record<string, unknown>>)[0]!;
+    const target = (annotation['targets'] as Array<Record<string, unknown>>)[0]!;
+    target['runtimeState'] = { address: 'checkout.html' };
+    const result = validateEnvelope(legacy);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.schemaVersion).toBe('0.4');
+      expect(result.value.annotations[0]!.targets[0]!.runtimeState?.address).toBe('checkout.html');
+      expect(result.value.annotations[0]!.targets[0]!.runtimeState?.documents).toBeUndefined();
     }
   });
 
@@ -113,17 +155,17 @@ describe('Visual Intent Envelope schema conformance (v0.3)', () => {
     expect(schema['x-version']).toBe('0.2.0');
   });
 
-  it('ships 0.3 as the contract and rebuilds its generated types from the schema', () => {
-    const schema = JSON.parse(readFileSync('schema/envelope-v0.3.schema.json', 'utf8')) as {
+  it('ships 0.4 as the contract and rebuilds its generated types from the schema', () => {
+    const schema = JSON.parse(readFileSync('schema/envelope-v0.4.schema.json', 'utf8')) as {
       $id?: string;
       'x-version'?: string;
       $defs?: { target?: { properties?: Record<string, unknown> } };
     };
-    expect(schema.$id).toContain('visual-intent-envelope-0.3');
-    expect(schema['x-version']).toBe('0.3.0');
+    expect(schema.$id).toContain('visual-intent-envelope-0.4');
+    expect(schema['x-version']).toBe('0.4.0');
     expect(schema.$defs?.target?.properties?.['runtimeState']).toBeDefined();
-    const generated = readFileSync('src/envelope/generated/envelope-v0.3.ts', 'utf8');
-    expect(generated).toContain('schemaVersion: "0.3"');
+    const generated = readFileSync('src/envelope/generated/envelope-v0.4.ts', 'utf8');
+    expect(generated).toContain('schemaVersion: "0.4"');
     expect(generated).toContain('runtimeState');
   });
 

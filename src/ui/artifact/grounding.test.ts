@@ -7,9 +7,9 @@ import {
   elementByComposedSelector,
   elementByNodeId,
   extractCandidates,
-  isLayerNode,
-  SHADOW_SEPARATOR
+  isLayerNode
 } from './grounding.js';
+import { SHADOW_SEPARATOR } from './boundary.js';
 
 function doc(html: string): Document {
   const parsed = new DOMParser().parseFromString(`<!doctype html><html><body>${html}</body></html>`, 'text/html');
@@ -156,6 +156,42 @@ describe('artifact grounding across an open shadow root', () => {
     const selector = describeElement(light).selectors?.[0] ?? '';
     expect(selector).not.toContain(SHADOW_SEPARATOR);
     expect(selector).toBe(cssPath(light));
+  });
+});
+
+describe('artifact grounding into a same-origin frame', () => {
+  function framed(): { document: Document; frame: HTMLIFrameElement; button: HTMLElement } {
+    const document = doc('<main class="page"><iframe id="widget"></iframe></main>');
+    const frame = document.getElementById('widget') as HTMLIFrameElement;
+    frame.contentDocument!.body.innerHTML = '<button class="widget-action">Confirm</button>';
+    const button = frame.contentDocument!.querySelector('button') as HTMLElement;
+    return { document, frame, button };
+  }
+
+  it('walks into a same-origin frame and spends one budget across both documents', () => {
+    const { document, button } = framed();
+    const extraction = extractCandidates(document);
+    const candidate = extraction.candidates.find((entry) => entry.tag === 'button');
+    expect(candidate).toBeDefined();
+    expect(elementByNodeId(document, candidate!.nodeId)).toBe(button);
+  });
+
+  it('stops before the frame interior when the shared budget runs out', () => {
+    const { document } = framed();
+    const candidates = extractCandidates(document, { limit: 2 }).candidates;
+    expect(candidates.some((entry) => entry.tag === 'button')).toBe(false);
+    expect(extractCandidates(document, { limit: 2 }).truncated).toBe(true);
+  });
+
+  it('visits the artifact document plus one frame level, so an embedded frame does not recurse', () => {
+    const document = doc('<main><iframe id="outer"></iframe></main>');
+    const outer = document.getElementById('outer') as HTMLIFrameElement;
+    outer.contentDocument!.body.innerHTML = '<iframe id="inner"></iframe><button class="level-1">One</button>';
+    const inner = outer.contentDocument!.getElementById('inner') as HTMLIFrameElement;
+    inner.contentDocument!.body.innerHTML = '<button class="level-2">Two</button>';
+    const candidates = extractCandidates(document).candidates;
+    expect(candidates.some((entry) => entry.accessibleName === 'One')).toBe(true);
+    expect(candidates.some((entry) => entry.accessibleName === 'Two')).toBe(false);
   });
 });
 

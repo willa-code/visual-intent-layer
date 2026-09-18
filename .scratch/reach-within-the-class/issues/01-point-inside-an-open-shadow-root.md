@@ -10,14 +10,14 @@ this revision.
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] An element inside an open shadow root can be hovered, pointed at and marked, exactly as an element in the artifact's own light DOM can
 - [x] The stored grounding identifies the node through its shadow host, so a later revision can re-find it rather than matching a same-named node outside the root
 - [x] After a reload of the same revision, the Target re-resolves to the same node and its mark returns to it
 - [x] A host inside a host resolves, and the walk terminates on a visited set rather than by depth luck
-- [ ] A closed shadow root, or an element reachable only through one, produces an unresolved Target whose reason names the boundary rather than the revision
-- [ ] A Target inside a shadow root can carry a text range, not only an element, without losing its boundary
+- [x] A closed shadow root, or an element reachable only through one, produces an unresolved Target whose reason names the boundary rather than the revision
+- [x] A Target inside a shadow root can carry a text range, not only an element, without losing its boundary
 - [x] Covered by grounding tests and the browser loop
 
 ## Comments
@@ -55,3 +55,16 @@ reachable only through its host, and a slotted node is visited once, as a light 
 the 2000-node budget. A visited set would be dead code today, and ticket 03 owns the bound
 that would give it a reason to exist. No Verification Run was performed for this ticket;
 the browser-loop drives are the evidence, and ticket 08 owns the Lever and the run.
+
+2026-09-18 — status `ready-for-agent` → `done`, all seven boxes ticked. The two
+boxes that needed refusal work proper landed: a stored boundary-qualified Target
+whose host now holds a **closed** shadow root reads through `boundaryRefusal` in
+`src/ui/artifact/boundary.ts` as `closed-shadow-root`, so the row says **Inside a
+boundary this surface cannot read** and its hint names the closed root rather than
+claiming the Target is not in this revision; the approval wall repeats the cause.
+A text selection inside an open shadow root is taken from the selection's own root
+(`selectionIn`), and `describeTextRange` composes the selector through the host, so
+a shadow text range stores its boundary. Both are driven in the browser loop: a
+drag across words inside a shadow root stores a `text-range` Target whose selector
+contains `|`, re-resolves after a reload, and then reads `blocked` naming the
+closed root once the host is rewritten to `mode: 'closed'`.

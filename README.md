@@ -238,15 +238,16 @@ under the data directory, so a service restart loses nothing. The packaged
 
 ## Envelope schema
 
-The portable contract is `schema/envelope-v0.3.schema.json` (experimental,
+The portable contract is `schema/envelope-v0.4.schema.json` (experimental,
 versioned). One envelope carries one or more Annotations, each with its own
 identity, targets, note, relationships, references and attachments. Every target
-may carry Runtime State Evidence, including the address the artifact was showing.
-TypeScript types are generated from it (`npm run build:types`).
+may carry Runtime State Evidence, including the address the artifact was showing
+and, for a Target reached through a frame, the ordered chain of documents it was
+reached through. TypeScript types are generated from it (`npm run build:types`).
 
 The `0.1` schema is kept only for reading state written by older releases. `0.2`
-envelopes are still readable: a `0.2` envelope without Runtime State Evidence
-loads unchanged and is read as the current version. New envelopes are `0.3`.
+and `0.3` envelopes are still readable: one without a documents chain loads
+unchanged and is read as the current version. New envelopes are `0.4`.
 `review-interruption` remains a reserved value in the `delivery.intent` enum and
 is never emitted, because an interruption names no target and so cannot be an
 envelope.

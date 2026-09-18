@@ -15,7 +15,7 @@ import {
   type RemoteOrigins
 } from '../artifact/fidelity.js';
 import { assertLocalAppUrl, fetchAppRevision, type ReviewService } from '../mcp/service.js';
-import type { ScrollOffset, ViewportSize } from '../resolution/model.js';
+import type { DocumentState, ScrollOffset, ViewportSize } from '../resolution/model.js';
 import { resolveTarget, type ResolutionCandidate } from '../resolution/resolve.js';
 import { summarise } from '../annotation/model.js';
 import type { AnnotationRelation, AnnotationTarget } from '../annotation/model.js';
@@ -1716,12 +1716,22 @@ function normalizeTargets(raw: unknown[]): AnnotationTarget[] {
   });
 }
 
-function readViewedState(value: unknown): { viewedAddress?: string; viewedScroll?: ScrollOffset; viewedViewport?: ViewportSize } {
+function readViewedState(value: unknown): {
+  viewedAddress?: string;
+  viewedScroll?: ScrollOffset;
+  viewedViewport?: ViewportSize;
+  viewedDocuments?: DocumentState[];
+} {
   if (value === null || typeof value !== 'object') {
     return {};
   }
-  const record = value as { address?: unknown; scroll?: unknown; viewport?: unknown };
-  const options: { viewedAddress?: string; viewedScroll?: ScrollOffset; viewedViewport?: ViewportSize } = {};
+  const record = value as { address?: unknown; scroll?: unknown; viewport?: unknown; documents?: unknown };
+  const options: {
+    viewedAddress?: string;
+    viewedScroll?: ScrollOffset;
+    viewedViewport?: ViewportSize;
+    viewedDocuments?: DocumentState[];
+  } = {};
   if (typeof record.address === 'string' && record.address.length > 0) {
     options.viewedAddress = record.address;
   }
@@ -1733,7 +1743,36 @@ function readViewedState(value: unknown): { viewedAddress?: string; viewedScroll
   if (viewport && typeof viewport.width === 'number' && typeof viewport.height === 'number') {
     options.viewedViewport = { width: viewport.width, height: viewport.height };
   }
+  const documents = readDocumentStates(record.documents);
+  if (documents.length > 0) {
+    options.viewedDocuments = documents;
+  }
   return options;
+}
+
+function readDocumentStates(value: unknown): DocumentState[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const states: DocumentState[] = [];
+  for (const entry of value) {
+    if (entry === null || typeof entry !== 'object') {
+      continue;
+    }
+    const record = entry as { path?: unknown; address?: unknown; scroll?: unknown };
+    if (typeof record.path !== 'string' || record.path.length === 0) {
+      continue;
+    }
+    const scroll = record.scroll as { x?: unknown; y?: unknown } | undefined;
+    states.push({
+      path: record.path,
+      ...(typeof record.address === 'string' && record.address.length > 0 ? { address: record.address } : {}),
+      ...(scroll && typeof scroll.x === 'number' && typeof scroll.y === 'number'
+        ? { scroll: { x: scroll.x, y: scroll.y } }
+        : {})
+    });
+  }
+  return states;
 }
 
 function dirnameOf(path: string): string {

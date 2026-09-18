@@ -125,7 +125,7 @@ Evidence identifying a target within the visible artifact without claiming knowl
 _Avoid_: Source provenance, exact source, weak provenance
 
 **Runtime State Evidence**:
-Evidence recording the state the artifact was in when a Target was pointed at: its address relative to the artifact's own base, plus the viewport and scroll position Rendered Grounding already carries. It records what the Builder-Reviewer was looking at, and never claims anything about the editable source. An unresolved Target whose recorded state — address, viewport or scroll — differs from the state now on screen while its revision has not changed is reported with the derived words **May exist only in a state no longer on screen**, and that reading wins over lookalike candidates; the label is derived at read time and never stored.
+Evidence recording the state the artifact was in when a Target was pointed at: its address relative to the artifact's own base, plus the viewport and scroll position Rendered Grounding already carries, plus the ordered chain of documents the Target was reached through when it lives inside a frame — each entry naming the frame, its own address relative to the same base, and its scroll. It records what the Builder-Reviewer was looking at, and never claims anything about the editable source. An unresolved Target whose recorded state — address, viewport, scroll or a frame's address or scroll — differs from the state now on screen while its revision has not changed is reported with the derived words **May exist only in a state no longer on screen**, and that reading wins over lookalike candidates; the label is derived at read time and never stored.
 _Avoid_: Snapshot, session state, page state, context
 
 **Captured View**:

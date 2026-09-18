@@ -34,7 +34,7 @@ export type BenchmarkReport = {
 export function runBenchmark(cases: BenchmarkCase[]): BenchmarkReport {
   const latencies: number[] = [];
   const byMatch: Record<TargetMatch, number> = { exact: 0, recovered: 0, unresolved: 0 };
-  const byLabel: Record<ResolutionLabel, number> = { matched: 0, recovered: 0, ambiguous: 0, deleted: 0, 'state-only': 0 };
+  const byLabel: Record<ResolutionLabel, number> = { matched: 0, recovered: 0, ambiguous: 0, deleted: 0, 'state-only': 0, blocked: 0 };
   let correct = 0;
   let confidentlyWrong = 0;
   let correctAmbiguity = 0;

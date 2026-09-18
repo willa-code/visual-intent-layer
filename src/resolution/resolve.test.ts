@@ -203,3 +203,21 @@ describe('target resolution vocabulary', () => {
     );
   });
 });
+describe('resolution records the documents it looked through', () => {
+  it('keeps the viewed frame chain beside the viewed address, scroll and viewport', () => {
+    const result = resolveTarget(elementTarget(), [candidate()], {
+      viewedAddress: 'checkout.html',
+      viewedScroll: { x: 0, y: 40 },
+      viewedViewport: { width: 1280, height: 800 },
+      viewedDocuments: [{ path: 'iframe#widget', address: 'widget', scroll: { x: 0, y: 120 } }]
+    });
+    expect(result.viewedDocuments).toEqual([
+      { path: 'iframe#widget', address: 'widget', scroll: { x: 0, y: 120 } }
+    ]);
+  });
+
+  it('omits an empty frame chain rather than recording one', () => {
+    const result = resolveTarget(elementTarget(), [candidate()], { viewedDocuments: [] });
+    expect(result.viewedDocuments).toBeUndefined();
+  });
+});

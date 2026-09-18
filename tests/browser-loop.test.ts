@@ -1544,4 +1544,247 @@ describe('Review Surface: Runtime State Evidence, one document, and a proxied ap
       await dev.stop();
     }
   }, 120000);
+
+  it('points inside a same-origin frame, marks at its true position, and re-finds it after a revision', async () => {
+    const dev = await startDevServer({ framed: true });
+    const framePage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    try {
+      const opened = await service.openSession({ kind: 'react-vite-app', url: dev.url });
+      const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+      const snapshot = () =>
+        fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`).then((response) =>
+          response.json()
+        ) as Promise<{
+          annotations: Array<{
+            state: string;
+            targets: Array<{
+              renderedGrounding: { selectors?: string[] };
+              runtimeState?: { documents?: Array<{ path: string; address?: string }> };
+            }>;
+            resolutions: Array<{ match: string }>;
+          }>;
+        }>;
+      await framePage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+      const artifact = framePage.frameLocator('iframe.artifact-frame');
+      const widget = artifact.frameLocator('iframe#widget');
+      await expectLater(() => widget.locator('.widget-action').count(), (count) => count === 1, 'the embedded document renders');
+
+      await framePage.getByRole('button', { name: /Point at things/ }).click();
+      await widget.locator('.widget-action').click();
+      const card = framePage.locator('.anchored-card');
+      await card.waitFor({ state: 'visible' });
+      expect(await card.innerText()).toMatch(/Confirm/);
+
+      const widgetBox = await widget.locator('.widget-action').boundingBox();
+      const markBox = await artifact.locator('[data-vil-mark="owned"]').boundingBox();
+      expect(markBox).not.toBeNull();
+      expect(Math.abs((markBox?.x ?? 0) - (widgetBox?.x ?? 0))).toBeLessThan(3);
+      expect(Math.abs((markBox?.y ?? 0) - (widgetBox?.y ?? 0))).toBeLessThan(3);
+
+      await card.locator('textarea').fill('Make Confirm the primary action.');
+      await card.locator('textarea').press('Enter');
+      await expectLater(
+        async () => (await snapshot()).annotations[0]?.targets[0]?.renderedGrounding.selectors?.[0]?.includes('>>'),
+        (frameQualified) => frameQualified === true,
+        'the Target stores a frame-qualified selector'
+      );
+      const stored = await snapshot();
+      expect(stored.annotations[0]?.targets[0]?.runtimeState?.documents?.[0]?.path).toContain('iframe#widget');
+      expect(stored.annotations[0]?.targets[0]?.runtimeState?.documents?.[0]?.address).toBe('widget');
+
+      await framePage.getByRole('button', { name: 'Send the queue' }).click();
+      await expectLater(
+        async () => (await snapshot()).annotations[0]?.state,
+        (state) => state === 'delivered',
+        'the queue is sent'
+      );
+      await expectLater(
+        async () => (await snapshot()).annotations[0]?.resolutions[0]?.match,
+        (match) => match !== 'unresolved',
+        'the frame Target resolves against the same revision'
+      );
+
+      await framePage.reload({ waitUntil: 'domcontentloaded' });
+      await expectLater(
+        () => framePage.locator('.annotation-row .resolution').first().getAttribute('data-label'),
+        (label) => label === 'matched' || label === 'recovered',
+        'the frame Target re-resolves after a reload'
+      );
+    } finally {
+      await framePage.close();
+      await dev.stop();
+    }
+  }, 120000);
+
+  it('carries a text range inside a shadow root, and names a boundary that later closes', async () => {
+    const openVersion = `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Shadow text</title><style>body { margin: 2rem; font-family: system-ui, sans-serif; }</style></head>
+  <body>
+    <main class="page"><div id="open"></div></main>
+    <script>
+      const root = document.getElementById('open').attachShadow({ mode: 'open' });
+      root.innerHTML = '<section><p>Where should the parcel go?</p></section>';
+    </script>
+  </body>
+</html>`;
+    const closedVersion = `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Shadow text</title><style>body { margin: 2rem; font-family: system-ui, sans-serif; }</style></head>
+  <body>
+    <main class="page"><div id="open"></div></main>
+    <script>
+      const root = document.getElementById('open').attachShadow({ mode: 'closed' });
+      root.innerHTML = '<section><p>Where should the parcel go?</p></section>';
+    </script>
+  </body>
+</html>`;
+    const textDir = mkdtempSync(join(tmpdir(), 'vil-shadow-text-'));
+    const textPath = join(textDir, 'shadow-text.html');
+    writeFileSync(textPath, openVersion, 'utf8');
+    const opened = await service.openSession({ kind: 'saved-html', path: textPath });
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const textPage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const snapshot = () =>
+      fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`).then((response) =>
+        response.json()
+      ) as Promise<{
+        annotations: Array<{
+          state: string;
+          targets: Array<{ kind: string; renderedGrounding: { selectors?: string[] } }>;
+          resolutions: Array<{ match: string }>;
+        }>;
+      }>;
+    try {
+      await textPage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+      const frame = textPage.frameLocator('iframe.artifact-frame');
+      const paragraph = frame.locator('#open p');
+      await expectLater(() => paragraph.count(), (count) => count === 1, 'the shadow paragraph renders');
+
+      await textPage.getByRole('button', { name: /Point at things/ }).click();
+      const box = await paragraph.boundingBox();
+      await textPage.mouse.move((box?.x ?? 0) + 2, (box?.y ?? 0) + (box?.height ?? 0) / 2);
+      await textPage.mouse.down();
+      await textPage.mouse.move((box?.x ?? 0) + (box?.width ?? 0) * 0.7, (box?.y ?? 0) + (box?.height ?? 0) / 2, { steps: 6 });
+      await textPage.mouse.up();
+
+      const card = textPage.locator('.anchored-card');
+      await card.waitFor({ state: 'visible' });
+      await expectLater(
+        async () => (await snapshot()).annotations[0]?.targets[0]?.kind,
+        (kind) => kind === 'text-range',
+        'a selection inside the shadow root becomes a text-range Target'
+      );
+      expect((await snapshot()).annotations[0]?.targets[0]?.renderedGrounding.selectors?.[0]).toContain('|');
+
+      await card.locator('textarea').fill('Tighten this sentence.');
+      await card.locator('textarea').press('Enter');
+      await textPage.getByRole('button', { name: 'Send the queue' }).click();
+      await expectLater(
+        async () => (await snapshot()).annotations[0]?.state,
+        (state) => state === 'delivered',
+        'the queue is sent'
+      );
+      await expectLater(
+        async () => (await snapshot()).annotations[0]?.resolutions[0]?.match,
+        (match) => match !== 'unresolved',
+        'the shadow text range resolves after a reload'
+      );
+
+      writeFileSync(textPath, closedVersion, 'utf8');
+      await textPage.locator('.banner').waitFor({ state: 'visible' });
+      await textPage.getByRole('button', { name: 'Reload artifact' }).click();
+      await expectLater(
+        () => textPage.locator('.annotation-row .resolution').first().getAttribute('data-label'),
+        (label) => label === 'blocked',
+        'the row names the boundary instead of claiming the target is gone'
+      );
+      await expectLater(
+        () => textPage.locator('.annotation-row .hint').first().innerText(),
+        (text) => /closed shadow root/i.test(text),
+        'the reason names the closed shadow root'
+      );
+    } finally {
+      await textPage.close();
+    }
+  }, 120000);
+
+  it('draws an Area that encloses content inside a same-origin frame', async () => {
+    const dev = await startDevServer({ framed: true });
+    const areaPage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    try {
+      const opened = await service.openSession({ kind: 'react-vite-app', url: dev.url });
+      const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+      await areaPage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+      const artifact = areaPage.frameLocator('iframe.artifact-frame');
+      const widget = artifact.frameLocator('iframe#widget');
+      await expectLater(() => widget.locator('.widget-action').count(), (count) => count === 1, 'the embedded document renders');
+
+      await areaPage.getByRole('button', { name: /Box an area/ }).click();
+      const button = await widget.locator('.widget-action').boundingBox();
+      const x1 = (button?.x ?? 0) - 8;
+      const y1 = (button?.y ?? 0) - 8;
+      const x2 = (button?.x ?? 0) + (button?.width ?? 0) + 8;
+      const y2 = (button?.y ?? 0) + (button?.height ?? 0) + 8;
+      await areaPage.mouse.move(x1, y1);
+      await areaPage.mouse.down();
+      await areaPage.mouse.move(x2, y2, { steps: 6 });
+      await areaPage.mouse.up();
+
+      const card = areaPage.locator('.anchored-card');
+      await card.waitFor({ state: 'visible' });
+      await expectLater(
+        async () => card.innerText(),
+        (text) => /Confirm/.test(text),
+        'the Area names the content it encloses inside the frame'
+      );
+      const stored = (await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`).then(
+        (response) => response.json()
+      )) as { annotations: Array<{ targets: Array<{ kind: string; label?: string; renderedGrounding: { selectors?: string[] } }> }> };
+      const target = stored.annotations[0]?.targets[0];
+      expect(target?.kind).toBe('region');
+      expect(target?.renderedGrounding.selectors?.some((selector) => selector.includes('>>'))).toBe(true);
+    } finally {
+      await areaPage.close();
+      await dev.stop();
+    }
+  }, 120000);
+
+  it('states the one hole an Area could not read, with the policy cause', async () => {
+    const blocked = `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Blocked frame</title><style>body { margin: 0; font-family: system-ui, sans-serif; } main { padding: 24px; } iframe { display: block; width: 240px; height: 120px; margin-top: 16px; border: 1px solid #ddd; }</style></head>
+  <body><main><h1>Settings</h1><iframe id="blocked" title="Blocked" src="widget.html"></iframe></main></body>
+</html>`;
+    const blockedDir = mkdtempSync(join(tmpdir(), 'vil-blocked-frame-'));
+    const blockedPath = join(blockedDir, 'blocked.html');
+    writeFileSync(blockedPath, blocked, 'utf8');
+    const opened = await service.openSession({ kind: 'saved-html', path: blockedPath });
+    const blockedPage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const snapshot = () =>
+      fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`).then((response) =>
+        response.json()
+      ) as Promise<{ annotations: Array<{ targets: Array<{ kind: string; label?: string }> }> }>;
+    try {
+      await blockedPage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+      const frame = blockedPage.frameLocator('iframe.artifact-frame');
+      await expectLater(() => frame.locator('#blocked').count(), (count) => count === 1, 'the blocked frame element is in the document');
+
+      await blockedPage.getByRole('button', { name: /Box an area/ }).click();
+      const frameBox = await frame.locator('#blocked').boundingBox();
+      await blockedPage.mouse.move((frameBox?.x ?? 0) - 20, (frameBox?.y ?? 0) - 10);
+      await blockedPage.mouse.down();
+      await blockedPage.mouse.move((frameBox?.x ?? 0) + (frameBox?.width ?? 0) + 20, (frameBox?.y ?? 0) + (frameBox?.height ?? 0) + 10, { steps: 6 });
+      await blockedPage.mouse.up();
+
+      await expectLater(
+        async () => (await snapshot()).annotations[0]?.targets[0]?.label ?? '',
+        (label) => /content policy blocks/.test(label),
+        'the Area states the hole with the policy cause'
+      );
+    } finally {
+      await blockedPage.close();
+    }
+  }, 120000);
 });

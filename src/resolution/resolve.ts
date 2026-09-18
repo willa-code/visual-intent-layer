@@ -1,5 +1,5 @@
 import type { Envelope } from '../envelope/validate.js';
-import type { ScrollOffset, TargetMatch, ViewportSize } from './model.js';
+import type { DocumentState, ScrollOffset, TargetMatch, ViewportSize } from './model.js';
 
 export type BoundingBox = {
   x: number;
@@ -39,6 +39,7 @@ export type TargetResolutionRecord = {
   viewedAddress?: string;
   viewedScroll?: ScrollOffset;
   viewedViewport?: ViewportSize;
+  viewedDocuments?: DocumentState[];
 };
 
 type Target = Envelope['annotations'][number]['targets'][number];
@@ -54,13 +55,22 @@ const GENERATED_CLASS = /\.(css-[a-z0-9_-]{4,}|[a-z]-{1,2}[a-z0-9]{5,}|sc-[a-z0-
 export function resolveTarget(
   target: Target,
   candidates: ResolutionCandidate[],
-  options: { at?: string; viewedAddress?: string; viewedScroll?: ScrollOffset; viewedViewport?: ViewportSize } = {}
+  options: {
+    at?: string;
+    viewedAddress?: string;
+    viewedScroll?: ScrollOffset;
+    viewedViewport?: ViewportSize;
+    viewedDocuments?: DocumentState[];
+  } = {}
 ): TargetResolutionRecord {
   const resolvedAt = options.at ?? new Date().toISOString();
   const viewed = {
     ...(options.viewedAddress !== undefined ? { viewedAddress: options.viewedAddress } : {}),
     ...(options.viewedScroll !== undefined ? { viewedScroll: options.viewedScroll } : {}),
-    ...(options.viewedViewport !== undefined ? { viewedViewport: options.viewedViewport } : {})
+    ...(options.viewedViewport !== undefined ? { viewedViewport: options.viewedViewport } : {}),
+    ...(options.viewedDocuments !== undefined && options.viewedDocuments.length > 0
+      ? { viewedDocuments: options.viewedDocuments }
+      : {})
   };
   const scored = candidates
     .map((candidate) => scoreCandidate(target, candidate))

@@ -12,7 +12,7 @@ a marked candidate. The operator never meets a sentence about a bound they canno
 **Status:** done
 
 - [x] The composed walk visits documents in one fixed order with the top document first, and spends a single 2000-node budget across all of them
-- [ ] A visited-document set and a one-frame-level nesting cap stop an artifact that embeds its own URL from recursing
+- [x] A visited-document set and a one-frame-level nesting cap stop an artifact that embeds its own URL from recursing
 - [x] Reaching the budget records a truncation fact, and a Target outside the searched portion reads as unresolved with that fact rather than as not found
 - [x] No resolution threshold is lowered at the bound, and no skipped node becomes a candidate mark
 - [x] Extraction, marking and re-finding all derive a node's identity from the same enumeration, so a bound never re-binds an id to a different node
@@ -51,3 +51,9 @@ budget, no truncation when the walk finishes inside it, the interaction layer no
 the budget, and a candidate id resolving to its own element) and a browser-loop drive over a
 2500-row roster that points past the budget, sends, reloads and reads `data-label="unread"`
 back with Approve still blocked.
+
+2026-09-18 — the box deferred to `06` is now delivered there and ticked here too.
+`walkComposedElements` carries a visited-document `Set` and a one-frame-level
+`FRAME_DEPTH_LIMIT`, and a grounding test proves a frame inside a frame is not
+traversed, so an artifact embedding its own URL cannot recurse. The budget stays one
+shared `WALK_LIMIT` spent top document first.

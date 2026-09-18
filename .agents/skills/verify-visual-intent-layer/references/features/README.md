@@ -70,6 +70,7 @@ First tier (driven live in the surface-refinement Verification Run; see each fil
 - [Open an Artifact](./open-artifact.md) covers launching a saved-HTML Artifact, health-checking the instance, rendering it faithfully, and capturing the resulting state.
 - [Compose, queue and send an Annotation](./annotate-and-send.md) covers pointing at a target, writing a note, reordering, and the one send action (with amend and stop as separate acts).
 - [Resolution and honest outcomes](./resolution-and-honesty.md) covers re-resolving a target after the Artifact moves on, including ambiguity and deletion.
+- [Reach within the class](./reach-within-the-class.md) covers pointing inside open shadow roots and same-origin frames, drawing an Area across them, the stated refusals, and the walk bound.
 - [Verify each Annotation](./verify-each-annotation.md) covers the per-Annotation verdicts and the per-row before/after comparison.
 - [Never discard writing](./never-discard-writing.md) covers a draft surviving a reload, a service restart and a browser restart.
 

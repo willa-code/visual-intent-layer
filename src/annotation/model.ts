@@ -156,7 +156,8 @@ export function isAttemptable(state: AnnotationState): boolean {
 export function approvalBlockers(
   annotation: Annotation,
   stateFor?: (resolution: TargetResolutionRecord) => RuntimeStateContext,
-  truncated = false
+  truncated = false,
+  blockedFor?: (resolution: TargetResolutionRecord) => string | undefined
 ): string[] {
   const blockers: string[] = [];
   for (const resolution of annotation.resolutions) {
@@ -165,19 +166,24 @@ export function approvalBlockers(
     }
     const label = labelFor(annotation, resolution.targetId);
     const declared = declaredMissingNow(annotation, resolution.targetId);
+    const blocked = declared ? undefined : blockedFor?.(resolution);
+    if (blocked) {
+      blockers.push(`${label} ${blocked}, so approval is blocked.`);
+      continue;
+    }
     if (truncated && !declared) {
       blockers.push(`${label} was not in the part of this revision the surface read, so approval is blocked.`);
       continue;
     }
+    if (declared) {
+      continue;
+    }
+    const state = stateFor?.(resolution);
+    if (deriveResolutionLabel(resolution, state) === 'state-only') {
+      blockers.push(`${label} may exist only in a state no longer on screen, so approval is blocked.`);
+      continue;
+    }
     if (resolution.candidates.length === 0) {
-      if (declared) {
-        continue;
-      }
-      const state = stateFor?.(resolution);
-      if (deriveResolutionLabel(resolution, state) === 'state-only') {
-        blockers.push(`${label} may exist only in a state no longer on screen, so approval is blocked.`);
-        continue;
-      }
       blockers.push(`${label} is deleted from this revision, so approval is blocked.`);
       continue;
     }

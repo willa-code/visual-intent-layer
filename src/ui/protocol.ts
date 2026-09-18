@@ -30,6 +30,12 @@ export type SourceProvenance = {
   sourceSpan?: string;
 };
 
+export type RuntimeDocumentState = {
+  path: string;
+  address?: string;
+  scroll?: { x: number; y: number };
+};
+
 export type LayerTarget = {
   targetId: string;
   kind: 'element' | 'text-range' | 'region';
@@ -38,7 +44,7 @@ export type LayerTarget = {
   sourceProvenance?: SourceProvenance;
   provenanceConfidence: 'exact' | 'inferred' | 'unavailable';
   regionEvidence?: { revision: string; scrollX: number; scrollY: number };
-  runtimeState?: { address?: string };
+  runtimeState?: { address?: string; documents?: RuntimeDocumentState[] };
 };
 
 export type LayerRelation = {

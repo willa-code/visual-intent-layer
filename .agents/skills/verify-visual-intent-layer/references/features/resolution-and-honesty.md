@@ -10,7 +10,9 @@ When the Artifact moves on, the product locates each Annotation's target again i
 - `resolution-ambiguous` reports an unresolved target with its candidates marked on the artifact, and no ranked list or figure.
 - `resolution-deleted` reports an unresolved target with no candidates.
 - `resolution-declared-missing` lets the Builder-Reviewer declare a target with no candidate missing, in their own words, which clears that target's approval wall and travels to the agent.
-- `resolution-state-only` reports an unresolved target whose recorded state — address, viewport or scroll — differs from the state now on screen, while the revision has not changed, as possibly existing only in a state no longer on screen, and that reading wins over lookalike candidates.
+- `resolution-state-only` reports an unresolved target whose recorded state — address, viewport or scroll, or a frame's address or scroll — differs from the state now on screen, while the revision has not changed, as possibly existing only in a state no longer on screen, and that reading wins over lookalike candidates.
+- `resolution-unread` reports a Target outside the part of the revision the surface could read as unresolved with that fact, never as deleted, and blocks approval.
+- `resolution-blocked` reports a Target the surface never had a chance to read — behind a closed shadow root, a cross-origin frame, or a frame the content policy never loaded — as the boundary, with the true cause, never as deleted.
 - `resolution-adopted-revision` stamps the Annotation with the revision the artifact reported, not the revision the source offers.
 - `resolution-repoint` lets the Builder-Reviewer re-point the Annotation at the right target by pointing.
 - `resolution-revision-relation` reports whether the Annotation was written before the revision now on screen.

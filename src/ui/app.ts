@@ -1,7 +1,7 @@
 import type { Annotation } from '../annotation/model.js';
 import { anchorOutcome, approvalBlockers, declaredMissingNow, isAmendable, isAttemptable, isInQueue, isVerification, missingRelationTargets, relationsAmong, targetName } from '../annotation/model.js';
 import { relationSentence } from '../annotation/relations.js';
-import { deriveResolutionLabel, sameViewedState, type RuntimeStateContext, type ViewedState } from '../resolution/model.js';
+import { deriveResolutionLabel, frameStateChange, sameViewedState, type RuntimeStateContext, type ViewedState } from '../resolution/model.js';
 import type { ResolutionCandidate, TargetResolutionRecord } from '../resolution/resolve.js';
 import { Api, ApiError, type Policy, type SessionPass, type SessionSnapshot, type SessionStatus } from './api.js';
 import {
@@ -29,6 +29,7 @@ import {
   type ThemeChoice
 } from './components.js';
 import { ARTIFACT_FRAME_CLASS, ARTIFACT_FRAME_SESSION_ATTRIBUTE } from './artifact/bootstrap.js';
+import { boundaryRefusal, type BoundaryRefusal } from './artifact/boundary.js';
 import { button, clear, h, iconButton, qs } from './dom.js';
 import { CAPTURE_SUPPORT_STATEMENT, captureArtifactView, captureAvailable, captureUnavailableReason } from './capture.js';
 import { icon, type IconName } from './icons.js';
@@ -483,6 +484,7 @@ class App {
       const target = annotation.targets.find((entry) => entry.targetId === resolution.targetId);
       const label = target?.label ?? target?.renderedGrounding.accessibleName ?? target?.kind ?? resolution.targetId;
       const declared = declaredMissingNow(annotation, resolution.targetId) !== undefined;
+      const blocked = this.boundaryRefusalFor(annotation, resolution);
       targets.appendChild(
         resolutionItem(
           resolution,
@@ -490,7 +492,8 @@ class App {
           stateFor(resolution),
           anchorOutcome(annotation, resolution),
           declared,
-          this.extractionTruncated
+          this.extractionTruncated,
+          blocked
         )
       );
     }
@@ -509,10 +512,11 @@ class App {
       }
       const target = annotation.targets.find((entry) => entry.targetId === resolution.targetId);
       const label = target?.label ?? resolution.targetId;
+      const blocked = this.boundaryRefusalFor(annotation, resolution);
       row.appendChild(
         h('p', {
           class: 'hint',
-          text: unresolvedSentence(label, resolution, stateFor(resolution), this.extractionTruncated)
+          text: unresolvedSentence(label, resolution, stateFor(resolution), this.extractionTruncated, blocked)
         })
       );
       const unresolvedActions = h(
@@ -625,19 +629,49 @@ class App {
             : {}),
           ...(box && box.viewportWidth !== undefined && box.viewportHeight !== undefined
             ? { viewport: { width: box.viewportWidth, height: box.viewportHeight } }
-            : {})
+            : {}),
+          ...(target?.runtimeState?.documents ? { documents: target.runtimeState.documents } : {})
         },
         viewed: {
           ...(resolution.viewedAddress !== undefined ? { address: resolution.viewedAddress } : {}),
           ...(resolution.viewedScroll ? { scroll: resolution.viewedScroll } : {}),
-          ...(resolution.viewedViewport ? { viewport: resolution.viewedViewport } : {})
+          ...(resolution.viewedViewport ? { viewport: resolution.viewedViewport } : {}),
+          ...(resolution.viewedDocuments ? { documents: resolution.viewedDocuments } : {})
         }
       };
     };
   }
 
+  private boundaryRefusalFor(annotation: Annotation, resolution: TargetResolutionRecord): BoundaryRefusal | undefined {
+    if (resolution.match !== 'unresolved') {
+      return undefined;
+    }
+    const target = annotation.targets.find((entry) => entry.targetId === resolution.targetId);
+    const selectors = target?.renderedGrounding.selectors ?? [];
+    if (selectors.length === 0) {
+      return undefined;
+    }
+    return boundaryRefusal(selectors, this.artifactDocument() ?? document);
+  }
+
+  private artifactDocument(): Document | undefined {
+    try {
+      return this.iframe.contentDocument ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   private verdictBlock(annotation: Annotation): HTMLElement {
-    const blocked = approvalBlockers(annotation, this.stateContextFor(annotation), this.extractionTruncated);
+    const blocked = approvalBlockers(
+      annotation,
+      this.stateContextFor(annotation),
+      this.extractionTruncated,
+      (resolution) => {
+        const refusal = this.boundaryRefusalFor(annotation, resolution);
+        return refusal ? boundaryReasonSentence(refusal) : undefined;
+      }
+    );
     return verdictControls(annotation, {
       blocked,
       ...(annotation.verification ? { recorded: annotation.verification.verdict } : {}),
@@ -2114,14 +2148,35 @@ function removedRelationsNotice(count: number): string {
     : `${count} relations were removed because they named targets no longer in this Annotation.`;
 }
 
+function boundaryReasonSentence(refusal: BoundaryRefusal): string {
+  switch (refusal) {
+    case 'closed-shadow-root':
+      return 'lives inside a closed shadow root, which this surface cannot look into';
+    case 'cross-origin-frame':
+      return 'lives inside a frame served from another origin, which this surface cannot look into';
+    case 'policy-blocked-frame':
+      return "lives inside a frame the artifact's content policy blocks, so this surface never loaded it";
+    case 'unloaded-frame':
+      return 'lives inside a frame that has not loaded, so there is nothing inside it to find yet';
+  }
+}
+
 function unresolvedSentence(
   label: string,
   resolution: TargetResolutionRecord,
   state: RuntimeStateContext,
-  truncated = false
+  truncated = false,
+  blocked?: BoundaryRefusal
 ): string {
+  if (blocked) {
+    return `${label} ${boundaryReasonSentence(blocked)}, so approval is blocked.`;
+  }
   if (truncated) {
     return `${label} was not in the part of this revision the surface read, so approval is blocked.`;
+  }
+  const navigated = frameStateChange(state.recorded, state.viewed);
+  if (navigated) {
+    return `${label} was written inside ${navigated.path}, which has navigated since, so approval is blocked.`;
   }
   if (deriveResolutionLabel(resolution, state) === 'state-only') {
     return `${label} may exist only in a state no longer on screen, so approval is blocked.`;

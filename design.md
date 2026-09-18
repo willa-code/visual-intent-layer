@@ -875,3 +875,30 @@ failure and offers a retry that can work; `policy-blocked` stays the consent gat
 for a remote origin, and `changed` stays the banner for a new revision. A dead
 session is never an `ArtifactFrame.unreachable`: the review's own terminal state
 covers that, and the two never share a surface. The gallery renders every state.
+
+### 2026-09-18 — A boundary the surface cannot read is stated, not silent
+
+Reason: the artifact class the product accepts is wider than the traversal that
+addressed it. A Target inside an open shadow root or a same-origin frame was inside
+the shipped class and silently unpointable, an Area over content the product cannot
+look into claimed an empty rectangle, and a Target behind a closed shadow root read
+as though it had been deleted from the revision.
+
+Replaces:
+
+- §4's resolution vocabulary, which had no word between **Matched** and **Deleted**
+  for a Target the surface never had a chance to read.
+- §6's `ArtifactFrame` policy-blocked state, which named the cause for the artifact
+  frame but not for a frame the artifact itself embeds.
+
+A composed walk addresses the artifact document and one same-origin frame level
+inside it, spending one fixed budget over open shadow roots and frames; an
+unrendered row is a state no longer on screen rather than a deletion, and the
+product never scrolls the artifact itself. Where a boundary blocks the read — a
+closed shadow root, a cross-origin frame, a frame the content policy never loaded —
+the row says so in its own words (**Inside a boundary this surface cannot read**)
+and the approval wall repeats the cause, distinct from a Target that cannot be
+found. A drawn Area keeps its rectangle and names the one hole it could not read,
+with the true cause. Runtime State Evidence gains the ordered chain of documents a
+Target was reached through; ADR-0030 records that shape, and the frame path stays
+out of the single address field the derived state label compares.

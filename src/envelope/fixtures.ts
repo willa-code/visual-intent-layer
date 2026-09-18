@@ -1,9 +1,9 @@
-import type { VisualIntentEnvelope } from './generated/envelope-v0.3.js';
+import type { VisualIntentEnvelope } from './generated/envelope-v0.4.js';
 
-export const SCHEMA_VERSION = '0.3' as const;
+export const SCHEMA_VERSION = '0.4' as const;
 
 export const representativeEnvelope: VisualIntentEnvelope = {
-  schemaVersion: '0.3',
+  schemaVersion: '0.4',
   envelopeId: 'env-02-representative',
   artifact: {
     id: 'artifact-demo-checkout',

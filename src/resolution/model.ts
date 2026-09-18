@@ -1,6 +1,6 @@
 export type TargetMatch = 'exact' | 'recovered' | 'unresolved';
 
-export type ResolutionLabel = 'matched' | 'recovered' | 'ambiguous' | 'deleted' | 'state-only';
+export type ResolutionLabel = 'matched' | 'recovered' | 'ambiguous' | 'deleted' | 'state-only' | 'blocked';
 
 export type ResolutionRecordShape = {
   match: TargetMatch;
@@ -12,10 +12,17 @@ export type ViewportSize = { width: number; height: number };
 
 export type ScrollOffset = { x: number; y: number };
 
+export type DocumentState = {
+  path: string;
+  address?: string;
+  scroll?: ScrollOffset;
+};
+
 export type ViewedState = {
   address?: string;
   scroll?: ScrollOffset;
   viewport?: ViewportSize;
+  documents?: DocumentState[];
 };
 
 export type RuntimeStateContext = {
@@ -40,10 +47,36 @@ export function runtimeStateMoved(state: RuntimeStateContext): boolean {
   if (recorded.scroll && viewed.scroll && (recorded.scroll.x !== viewed.scroll.x || recorded.scroll.y !== viewed.scroll.y)) {
     return true;
   }
-  return (
+  if (
     recorded.viewport !== undefined &&
     viewed.viewport !== undefined &&
     (recorded.viewport.width !== viewed.viewport.width || recorded.viewport.height !== viewed.viewport.height)
+  ) {
+    return true;
+  }
+  return frameStateChange(recorded, viewed) !== undefined || frameMissing(recorded, viewed);
+}
+
+export function frameStateChange(
+  recorded?: ViewedState,
+  viewed?: ViewedState
+): { path: string; from?: string; to?: string } | undefined {
+  for (const document of recorded?.documents ?? []) {
+    const seen = (viewed?.documents ?? []).find((entry) => entry.path === document.path);
+    if (seen && seen.address !== document.address) {
+      return {
+        path: document.path,
+        ...(document.address !== undefined ? { from: document.address } : {}),
+        ...(seen.address !== undefined ? { to: seen.address } : {})
+      };
+    }
+  }
+  return undefined;
+}
+
+function frameMissing(recorded?: ViewedState, viewed?: ViewedState): boolean {
+  return (recorded?.documents ?? []).some(
+    (document) => !(viewed?.documents ?? []).some((entry) => entry.path === document.path)
   );
 }
 
@@ -78,5 +111,7 @@ export function resolutionLabelText(label: ResolutionLabel): string {
       return 'Deleted';
     case 'state-only':
       return 'May exist only in a state no longer on screen';
+    case 'blocked':
+      return 'Inside a boundary this surface cannot read';
   }
 }
