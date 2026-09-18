@@ -266,3 +266,5 @@ The Lever first, with its health check and lifecycle, so that a launch can be tr
 ## Comments
 
 Corrected 2026-09-17: `Status: done`. The Lever, the feature map and the skill body shipped, and the mapped first-tier drive ran live. Two tickets carried gaps their own boxes made visible: `05` is now `deferred` and `06` names its two unticked boxes in a `Deferred confirmation:`; see `.scratch/truth-and-sync/issues/05-mark-the-regressed-and-superseded-capabilities.md`. Parked verification does not reopen an iteration whose behaviour shipped.
+
+The spec stays `done`, with one note. `05` is `ready-for-agent` again as of 2026-09-18: the decision that parked it — Relational Intent removed from the surface — was reversed by `.scratch/several-targets-and-relations/`, so the ticket is actionable again rather than parked. That is agent work and one ticket, not a reopening of the iteration: the Lever, the feature map and the skill body all still ship, and `05`'s remaining gap is two undriven relation operators. It is listed in `.scratch/backlog.md` under **Parked, waiting on a human**.

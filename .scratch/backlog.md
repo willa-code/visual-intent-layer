@@ -17,7 +17,8 @@ An idea does not leave by being mentioned in conversation. Nothing here is a pro
 For the other two categories, see the ownership map in
 `.scratch/truth-and-sync/spec.md` (owned work) and `docs/adr/` plus the parked list in
 `.scratch/truth-and-sync/issues/06-park-verification-with-a-named-trigger.md` (refused
-and parked work).
+and parked work). The repo's outstanding work that no spec is actively building is listed
+at the end of this file under **Parked, waiting on a human**.
 
 ---
 
@@ -128,3 +129,58 @@ or a note.
   object model behind an in-app React prop; confirm nothing else exposes it.
 - **Write the rule-out sentences** for mobile, native desktop, design files and PDFs,
   once someone decides where they belong.
+
+---
+
+## Parked, waiting on a human
+
+Not ideas with no owner: each of these already has an owner spec and a `Trigger:` line.
+They are listed here because they are the whole of what the product still owes and is not
+building, and because a maintainer about to dogfood should know what dogfooding closes.
+
+All six are `deferred` under the same trigger — the Verification Run of
+`.scratch/several-targets-and-relations/`, plus maintainer time for the parts only a human
+can do. That run happened twice on 2026-09-17 and was `clean`; the maintainer half has not
+happened, so each is still owed and correctly parked rather than stale. The decision that
+parked them is `.scratch/truth-and-sync/issues/06-park-verification-with-a-named-trigger.md`.
+
+- **Live detection on a machine carrying all four Harnesses.** pi, Codex, Claude Code and
+  opencode each detected, an outdated entry reported and repaired, at least one Harness
+  configured under a non-default configuration home, and the `npx` transport used on a
+  machine with no global install.
+  *Waiting on:* a human at that machine. *From:* `.scratch/harness-detection/issues/07`.
+- **Live setup verification on all four Harnesses.** Each Harness lists the server after
+  project and global setup. Codex-global and opencode were evidenced automatically on
+  2026-09-15; the interactive confirmations were not.
+  *Waiting on:* a human with the Harness applications installed. *From:*
+  `.scratch/multi-harness-setup/issues/06`.
+- **The screenshot-and-chat baseline.** Three real corrections performed the old way, with
+  honest numbers, before product enthusiasm can bias them. The recording template is
+  already written beside it.
+  *Waiting on:* the builder doing work they care about. *From:*
+  `.scratch/visual-intent-layer/issues/01`.
+- **The core loop validated on a live pi session.** The installable plugin runs the loop
+  end to end through pi-mcp-adapter; browser fallback and restart recovery are already
+  evidenced, so only the live session is owed.
+  *Waiting on:* a real pi session. *From:* `.scratch/visual-intent-layer/issues/16`.
+- **Dogfood re-recorded against the baseline.** Real corrections measured against the
+  baseline, voluntary repeat use observed, and the old dogfood record marked as discarded.
+  The Intent-Preview verdicts this used to ask for are gone with the `preview` object,
+  which left the wire at `schema/envelope-v0.2.schema.json`.
+  *Waiting on:* the builder. *From:* `.scratch/review-surface/issues/17`.
+- **The three measurements only a running surface settles.** Rail legibility at its fixed
+  width reported rather than asserted, every semantic surface/ink pair checked in both
+  themes on its own surface, and drag-versus-text-selection behaviour exercised against an
+  artifact with its own drag interactions. The parked whole-loop run that owned them is
+  superseded by per-iteration Verification Runs, but these three are not owned anywhere
+  else.
+  *Waiting on:* a Verification Run that measures rather than asserts. *From:*
+  `.scratch/surface-refinement/issues/13`.
+
+One item of the outstanding work is **agent** work rather than human work, and is
+`ready-for-agent` rather than parked: **`.scratch/verification-skill/issues/05`**. The Lever
+drives four of the six relation families — alignment, equal spacing, ordering and
+containment — and drives neither equivalence (`shared-property`) nor comparative size
+(`same-width` / `same-height`). The browser loop covers all six, so the capability is
+evidenced; the instrument is what is short. It shares that gap with
+`.scratch/reach-within-the-class/issues/08`, which extends the same Lever.
