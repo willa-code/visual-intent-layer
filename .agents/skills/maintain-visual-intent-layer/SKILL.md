@@ -98,9 +98,11 @@ Completion: `git diff` shows version fields only, and `package.json` and `server
 ## Publish
 
 1. Commit `Release X.Y.Z`, then `git push origin main`.
-2. `gh release create vX.Y.Z --generate-notes --title "…"`.
+2. `gh release create vX.Y.Z --notes-start-tag <last stable tag> --generate-notes --title "…"`.
 
-The push is what lets Publish fire: the workflow triggers on `release: published`, and it refuses a GitHub pre-release rather than publishing it, because every published version is an official release. Release notes come from `--generate-notes` off the commit history; there is no separate changelog.
+The push is what lets Publish fire: the workflow triggers on `release: published`, and it refuses a GitHub pre-release rather than publishing it, because every published version is an official release. `--notes-start-tag` should name the last *stable* release, so an upgrading reader gets the whole story rather than the distance from the last pre-release.
+
+**Then read the generated body, because it is usually wrong.** `--generate-notes` lists merged pull requests, not commits: work that landed directly on `main` does not appear at all. 0.3.0 was generated naming one unrelated PR for 69 commits of work. If the body does not describe the release, write the notes by hand and `gh release edit vX.Y.Z --notes-file <path>`. There is still no separate changelog — but the release body is what a user reads, so it is not a field to accept unread.
 
 Completion: `gh run watch` reports the Publish run success.
 
