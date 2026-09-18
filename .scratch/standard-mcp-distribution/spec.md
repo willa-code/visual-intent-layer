@@ -1,6 +1,6 @@
 # Ship a standard MCP server, and let each Harness do its own installing
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 
@@ -263,3 +263,29 @@ order naming the two features instead of a tier.
 One commit in this span (`31a335c`, the README deduplication) sits **after** the
 reviewed range `f555a4d..05fce92`; it was found while the review ran and is recorded
 rather than folded in.
+
+**Released as 0.3.0, 2026-09-18.** The whole change shipped, so this feature is closed.
+
+- `latest` names `0.3.0` and nothing else: the retired `next` channel is gone from the
+  package's dist-tags. The tarball is 179 files with no dev tooling, no Skill and no
+  packaged snippet, and the server inside it reports `0.3.0`.
+- The official MCP Registry lists `io.github.willa-code/visual-intent-layer` at `0.3.0`.
+  A new `registry-listing.yml` publishes it over GitHub OIDC on every stable release,
+  so the listing no longer depends on a manual step after npm — and `mcp-publisher
+  validate` caught a real error the first time it ran, because the registry caps
+  `description` at 100 characters and the one written for the listing was 158.
+- Two CI failures followed the release and both were mine. Changing the gallery's
+  Pass-states panel moved the pinned render past its 3% tolerance, so the Linux
+  baselines were re-recorded from the CI runner's own `gallery-actual` artifact and the
+  darwin pair on the machine that renders them; `tokens.json` was unchanged, so the
+  render moved and the design did not. Then the suite failed differently on two runs of
+  the same commit, which is contention rather than a defect: CI gives the suite two
+  cores while `browser-loop` and `lever-contract` each drive a real browser for about a
+  minute. Files now run one at a time under CI. That is a mitigation, not a proven root
+  cause, and the commit says what to do if it recurs.
+
+**What this feature deliberately did not do:** `npm dist-tag rm` needs a one-time
+password and cannot be driven from a non-interactive shell — npm masks its own auth URL
+when its output is not a terminal, and a GitHub OIDC token is minted for `npm publish`
+and refused for `dist-tag` with `E401`. The maintainer ran it in their own terminal. The
+maintenance skill records both facts so the next person does not rediscover them.
