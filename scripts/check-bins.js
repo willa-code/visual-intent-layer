@@ -10,15 +10,5 @@ for (const [name, target] of Object.entries(pkg.bin)) {
   }
 }
 
-const snippet = JSON.parse(readFileSync(new URL('../mcp.json', import.meta.url), 'utf8'));
-const args = snippet.mcpServers?.['visual-intent-layer']?.args ?? [];
-const packageFlag = args.indexOf('--package');
-const pinned = packageFlag === -1 ? undefined : args[packageFlag + 1];
-const expected = `${pkg.name}@${pkg.version}`;
-if (pinned !== expected) {
-  console.error(`mcp.json pins ${pinned ?? '(nothing)'} but the package is ${expected}`);
-  failed = true;
-}
-
 if (failed) process.exit(1);
-console.log(`bins OK: ${Object.keys(pkg.bin).join(', ')}; mcp.json pins ${expected}`);
+console.log(`bins OK: ${Object.keys(pkg.bin).join(', ')}`);

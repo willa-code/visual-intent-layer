@@ -1,6 +1,6 @@
 # Ship a standard MCP server, and let each Harness do its own installing
 
-Status: needs-triage
+Status: ready-for-agent
 
 ## Problem Statement
 
@@ -97,6 +97,16 @@ in the official MCP Registry so a client that queries it can offer us.
 - **`open --html` is kept and demoted** to the no-agent route rather than the headline
   path, and it stops being presented as if an agent were waiting for the envelope.
 
+## Decisions, settled by the maintainer after the panel
+
+| | Decision |
+| --- | --- |
+| **D1** | Delete **Harness Detection** and **Harness Registration** from `CONTEXT.md` and name no replacement. A Registration was current when its entry matched what the product would write — a property only the deleted writer could carry, so the word goes rather than being re-pointed. **Harness** itself stays. |
+| **D2** | The running version appears in every `open_visual_review` result. |
+| **D3** | Fix `describeTarget`'s fallback for `region` **and** `text-range`, in its own ticket — `CONTEXT.md:117` lists _Region_ under _Avoid_ for **Area**, so the card currently shows the Builder-Reviewer a word our glossary forbids, and a half-fix would ship a mixed voice. Filed as `.scratch/ground-in-code/issues/08`. |
+| **D4** | Port the Skill's four trigger heuristics into `open_visual_review`'s description, which becomes the only trigger surface once the Skill is gone. |
+| **D5** | Accept the loss of `--status` as a diagnostic, and document the workaround: the README says the Harness's own MCP panel is where a server that failed to start is explained. |
+
 ## Open decisions put to the advisor panel
 
 1. **Which term, if any, replaces Harness Detection and Harness Registration** in
@@ -113,8 +123,8 @@ in the official MCP Registry so a client that queries it can offer us.
 
 ## Advisor panel
 
-Three independent lenses read `VISION.md` and this spec; their POVs are under
-`advisors/`. They agreed on the two decisions above and split on the third.
+The three lenses were asked three questions and answered them; the maintainer's
+resolutions are in the table above.
 
 - **Minimalist** (`advisors/minimalist.md`): delete both glossary terms and name no
   replacement, because nothing in the shipped surface says "Registration" any more and a

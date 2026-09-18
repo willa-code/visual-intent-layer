@@ -22,63 +22,47 @@ window, a design file and a PDF are outside it by decision rather than omission.
 
 Requires Node 20+. No Rust toolchain, no hosted account.
 
+The product is a standard local MCP server. You register it with your own agent's
+MCP mechanism — there is no install command of ours to run, and nothing of yours
+that we write.
+
+| Harness     | What to run                                                                                              |
+| ----------- | -------------------------------------------------------------------------------------------------------- |
+| Claude Code | `claude mcp add visual-intent-layer -- npx -y --package visual-intent-layer@latest visual-intent-mcp`      |
+| Codex       | `codex mcp add visual-intent-layer -- npx -y --package visual-intent-layer@latest visual-intent-mcp`       |
+| opencode    | `opencode mcp add visual-intent-layer`, then give it `npx` and the arguments above when it asks             |
+| pi          | with `pi-mcp-adapter` installed, the same entry in the project `.mcp.json`, or the adapter's `/mcp` panel    |
+| any other   | any host that can launch a local stdio server: command `npx`, arguments `-y --package visual-intent-layer@latest visual-intent-mcp` |
+
+If you installed the package globally, the command is simply `visual-intent mcp`.
+
+**Install it on the machine where you look at the screen.** The Review Surface
+launches a browser on the machine running the server and binds a loopback port
+there. A server in a container, on a remote host, or inside a cloud agent has
+nothing to show you.
+
+Registering takes effect when your agent next starts, so restart it. If the tools
+do not appear, your agent's own MCP panel is where the reason is: it names the
+server and reports why it failed to start. The product cannot tell you — it writes
+no configuration and reads none.
+
+The command carries `@latest`, so each session resolves the current release and
+nothing needs updating by hand. Pin an exact version instead if you would rather
+nothing move under you.
+
+### The same server, without an agent
+
+The local commands need no agent and no registration:
+
 ```sh
-npm install -g visual-intent-layer
-visual-intent setup            # register in this project
-visual-intent setup --global   # register for every project on this machine
+visual-intent open --html ./checkout.html     # opens the browser, prints the review URL
+visual-intent open --app http://localhost:5173
+visual-intent serve --port 3742               # local service only
 ```
 
-`setup` looks for each harness in scope and registers the server with each one
-natively. A harness counts as present when any of these is true, and the report
-names which one matched:
-
-| Harness     | Configuration location (env override)                                          | Command                            | Extra                                          |
-| ----------- | ------------------------------------------------------------------------------ | ---------------------------------- | ---------------------------------------------- |
-| pi          | `$PI_CODING_AGENT_DIR`, else `~/.pi/agent` or `~/.pi`; project `.pi/`          | `pi`                               | —                                              |
-| Codex       | `$CODEX_HOME`, else `~/.codex`; project `.codex/config.toml`                   | `codex`                            | `/etc/codex`; `~/.codex/packages/standalone/releases/*/bin/codex` |
-| Claude Code | `$CLAUDE_CONFIG_DIR`, else `~/.claude`; plus `~/.claude.json`                  | `claude`                           | —                                              |
-| opencode    | `($XDG_CONFIG_HOME or ~/.config)/opencode`; project `opencode.json(c)`         | `opencode`, `opencode2`            | —                                              |
-
-A command only counts when a real executable file resolves, so a directory or a
-non-executable file with a harness's name is ignored. Writes land in the same
-locations detection checks, so an override that detection honours is also where
-setup writes and where status looks. Without a harness filter,
-every detected in-scope harness is configured. Every run prints its own package
-version, the detected harnesses, each known-but-absent harness with the evidence
-that was checked, and an explicit line when nothing was detected — so a
-pi-only result is never ambiguous between a detection result and a fallback.
-When nothing is detected, project scope still writes the shared `.mcp.json` so
-pi and Claude Code keep working by default, and the report says so.
-
-| Harness     | Project scope                              | Global scope                                                       |
-| ----------- | ------------------------------------------ | ------------------------------------------------------------------ |
-| pi          | `.mcp.json` (shared) + Skill               | `~/.config/mcp/mcp.json` + Skill                                   |
-| Claude Code | `.mcp.json` (shared; first-use approval)   | `claude mcp add-json … --scope user` (or the printed manual command) |
-| Codex       | `.codex/config.toml` (trusted projects)    | `codex mcp add …` when the binary exists, else `~/.codex/config.toml` |
-| opencode    | `opencode.json`                            | `~/.config/opencode/opencode.json`                                 |
-
-Every write merges the server entry and preserves existing servers. Setup never
-overwrites another server's configuration and refuses a file holding invalid JSON
-or TOML (naming the harness and path) instead of touching it. An existing server
-entry is compared against the entry setup would write: a matching entry is
-reported as current and left byte-identical, and a differing entry is reported as
-outdated — naming the fields that differ — and repaired on re-run, so an entry
-left by an older release or copied from a snippet heals without hand-editing.
-
-### Transport
-
-Setup registers whichever transport will actually work on this machine. When
-`visual-intent` resolves on `PATH` the entry is `command: "visual-intent"` with
-args `["mcp"]`; otherwise it is the packaged
-`npx -y --package visual-intent-layer@<version> visual-intent-mcp` form.
-
-### Setup flags
-
-- `--global` — user-global scope instead of the current project.
-- `--harness <name>` — restrict the matrix to named harnesses; repeatable.
-- `--status` — read-only: report registration state, location, transport, evidence.
-- `--print-only` — show every planned write without touching disk.
-- `--no-skill` — skip the pi Skill install.
+This is the route for driving the Review Surface yourself, and the fallback when a
+running service must be started by hand. It opens a review but delivers nothing: with
+no agent holding the loop, an envelope has nobody to reach.
 
 ## Use
 
@@ -205,7 +189,7 @@ no target, so it cannot be one.
 
 The nearest canvas-agent prior art refuses check-in outright and schedules later
 requests instead; polling through the MCP Tasks extension is the one push-free
-pattern the specification sanctions. Both are recorded in the shipped skill.
+pattern the specification sanctions. Both are recorded here.
 
 A single drawer, hidden while it has nothing to report and badge-counted when it
 does, carries what needs a decision: everything that will leave the machine, any
@@ -242,7 +226,6 @@ knows to call `check_in` between its own steps.
 
 Annotations, sessions, attachments, snapshot bytes and Check-In contact all live
 under the data directory, so a service restart loses nothing. The packaged
-`mcp.json` pins the current release version for the `npx` transport form.
 
 ## Envelope schema
 
@@ -333,7 +316,6 @@ with `UPDATE_GALLERY=1` once the change is intended.
 - `fixtures/` — the gallery artifact the Lever and tests drive
 - `tests/` — the browser loop, the Lever contract, and the gallery baselines
 - `scripts/` — UI bundling and envelope type generation
-- `skills/` — thin optional Skill for agents
 
 ## Documentation
 
@@ -347,10 +329,9 @@ with `UPDATE_GALLERY=1` once the change is intended.
 ## Maintaining this package
 
 Releases go out through the Publish workflow (npm trusted publishing).
-`/maintain-visual-intent-layer` lays out the paths — dogfood locally, cut a
-pre-release to `next`, promote a validated pre-release, or fix a bad release —
-and executes the one you pick. Pre-releases publish to `next`; `latest` only
-moves when a validated pre-release is promoted.
+`/maintain-visual-intent-layer` lays out the paths — dogfood locally, cut a release,
+or fix a bad release — and executes the one you pick. Every published version is an
+official release and `latest` always names the newest of them.
 
 ## License
 
