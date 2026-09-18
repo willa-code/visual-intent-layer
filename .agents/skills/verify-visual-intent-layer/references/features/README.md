@@ -49,7 +49,7 @@ A full sweep walks the tiers in order. Within a tier, follow the file order belo
 5. Verify each Annotation (`verify-each-annotation`).
 6. Never discard writing (`never-discard-writing`).
 7. Second tier: attachments, decision drawer, agent position, session and overflow, a proxied application, accessibility and keyboard.
-8. Third tier: the MCP agent loop, Check-In.
+8. The MCP agent loop and Check-In.
 9. Cross-surface journeys (`journeys`).
 
 ## Feature entry contract
@@ -81,6 +81,7 @@ Partly driven live (some sub-features confirmed; the rest are mapped):
 - [Agent position](./agent-position.md) — the stop request and Check-In channel were driven; the other positions are mapped.
 - [Check-In](./check-in.md) — the call, contact, amendment and interruption were driven; the never-checked-in state is mapped.
 - [Accessibility and keyboard](./accessibility-and-keyboard.md) — rail legibility, island pointer events, tile minimum size and `V` were driven; the remaining keys are mapped.
+- [The MCP agent loop](./mcp-agent-loop.md) — `mcp-open` was driven over stdio; the rest are mapped.
 
 Second tier (mapped, not yet driven):
 
@@ -88,10 +89,6 @@ Second tier (mapped, not yet driven):
 - [A Captured View](./captured-view.md)
 - [Session and overflow actions](./session-and-overflow.md)
 - [A proxied application](./proxied-application.md)
-
-Third tier (mapped, not yet driven):
-
-- [The MCP agent loop](./mcp-agent-loop.md)
 
 Driven:
 

@@ -11,9 +11,7 @@
   "keywords": [
     "mcp",
     "model-context-protocol",
-    "visual-review",
-    "agent-skills",
-    "pi-package"
+    "visual-review"
   ],
   "type": "module",
   "engines": {

@@ -233,3 +233,33 @@ files, and neither `skills/` nor `mcp.json`.
 **Blocking the release, not the change:** `latest` on npm is still `0.2.1`, so the
 README's documented `@latest` command installs a product older than the entire
 review-surface rework. The release has to happen for that claim to be true.
+
+**Review, 2026-09-18 (the retry after credits were added).** Both axes came back *OK
+with notes*. The Standards lane reported honestly that it had no shell, so it could not
+run `git diff` and reviewed the tree against the commits' own claims instead; the Spec
+lane checked each claim against the code. Four findings, all mine, all fixed here:
+
+- **P1 — the feature map contradicted the Verification Run it exists to record.**
+  `mcp-agent-loop.md` still opened with `_Not yet driven._` while the run's report
+  lists `mcp-agent-loop [mcp-open]` under Coverage. The marker now says `mcp-open` was
+driven over stdio and names the rest as mapped, the index moves the file from "Third
+tier" into "Partly driven live", and the now-empty tier heading is gone with the sweep
+order naming the two features instead of a tier.
+- **P1 — the README never said the Registry listing exists.** Issue 06 required the
+  replaced Install section to name the official MCP Registry as the discovery path,
+  and ADR-0031's user story 4 is the same requirement. The mechanics were in
+  `server.json` and the maintain skill, but a Builder-Reviewer reading the README would
+  never learn of it. The Install section now names
+  `io.github.willa-code/visual-intent-layer` and says the registry lists where to get
+  the server rather than hosting it.
+- **P2 — `package.json`'s keywords still claimed a capability the change removed:**
+  `agent-skills` and `pi-package` survived the Skill and the `pi` manifest key. Both
+  dropped.
+- The Standards lane also confirmed, independently, the three checks I had run myself:
+  no live reference to the deleted modules, every relative link resolving, and the
+  tarball carrying what the bin entries need with the excluded dev tooling unreachable
+  from either entry point.
+
+One commit in this span (`31a335c`, the README deduplication) sits **after** the
+reviewed range `f555a4d..05fce92`; it was found while the review ran and is recorded
+rather than folded in.

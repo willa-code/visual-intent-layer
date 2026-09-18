@@ -36,6 +36,10 @@ that we write.
 
 If you installed the package globally, the command is simply `visual-intent mcp`.
 
+Registry-aware clients can also find the server as
+`io.github.willa-code/visual-intent-layer` in the official MCP Registry, which lists
+where to get it rather than hosting it.
+
 **Install it on the machine where you look at the screen.** The Review Surface
 launches a browser on the machine running the server and binds a loopback port
 there. A server in a container, on a remote host, or inside a cloud agent has

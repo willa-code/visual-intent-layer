@@ -2,7 +2,7 @@
 
 The product reaches an agent through its MCP tools over a real standard-input transport against the built server. The agent opens a review, reads intent status for a delivered batch, checks in between its own steps, and acknowledges. Acknowledgement is not implementation and not verification.
 
-_Not yet driven. Recipes are mapped; no live drive has confirmed them._
+_Partly driven live: `mcp-open` was driven over stdio and its result carried the server version; the remaining sub-features are mapped._
 
 ## Sub-features
 
