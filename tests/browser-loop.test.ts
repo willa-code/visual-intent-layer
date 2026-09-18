@@ -988,7 +988,20 @@ const APP_HTML = `<!doctype html>
   </body>
 </html>`;
 
-async function startDevServer(): Promise<{
+const APP_FRAMED_HTML = APP_HTML.replace(
+  '<button class="app-plain" type="button">Plain</button>',
+  '<button class="app-plain" type="button">Plain</button>\n      <iframe id="widget" title="Widget" src="/widget"></iframe>'
+);
+
+const APP_WIDGET_HTML = `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Embedded widget</title></head>
+  <body>
+    <div class="widget-root"><button class="widget-action" type="button">Confirm</button></div>
+  </body>
+</html>`;
+
+async function startDevServer(options: { framed?: boolean } = {}): Promise<{
   url: string;
   requests: Array<{ method: string; url: string; body: string }>;
   advancedRevision: string;
@@ -1009,7 +1022,11 @@ async function startDevServer(): Promise<{
         return;
       }
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      response.end(APP_HTML);
+      if (options.framed === true && (request.url ?? '').startsWith('/widget')) {
+        response.end(APP_WIDGET_HTML);
+        return;
+      }
+      response.end(options.framed === true ? APP_FRAMED_HTML : APP_HTML);
     });
   });
   server.on('upgrade', (request, socket) => {
@@ -1477,6 +1494,54 @@ describe('Review Surface: Runtime State Evidence, one document, and a proxied ap
       expect(stored.annotations[0]?.resolutions[0]?.match).toBe('unresolved');
     } finally {
       await bigPage.close();
+    }
+  }, 120000);
+
+  it('gives a proxied application one artifact layer, even when it embeds a same-origin frame', async () => {
+    const dev = await startDevServer({ framed: true });
+    const framedPage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    try {
+      const opened = await service.openSession({ kind: 'react-vite-app', url: dev.url });
+      await framedPage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+      const artifact = framedPage.frameLocator('iframe.artifact-frame');
+      await expectLater(() => artifact.locator('.app-root').count(), (count) => count === 1, 'the application renders in the frame');
+      const widget = artifact.frameLocator('iframe#widget');
+      await expectLater(() => widget.locator('.widget-action').count(), (count) => count === 1, 'the embedded document renders');
+
+      const widgetHtml = await (
+        await fetch(`${service.baseUrl}/app/${opened.sessionId}/widget`, {
+          headers: { 'x-session-cap': opened.capability }
+        })
+      ).text();
+      expect(widgetHtml).toContain('/ui/artifact-layer.js');
+
+      await expectLater(
+        () => artifact.locator('[data-vil-overlay]').count(),
+        (count) => count === 1,
+        'the artifact document carries exactly one overlay'
+      );
+      await expectLater(
+        () => widget.locator('[data-vil-overlay]').count(),
+        (count) => count === 0,
+        'the embedded document carries no second overlay'
+      );
+      await expectLater(
+        () => widget.locator('[data-vil-mark]').count(),
+        (count) => count === 0,
+        'the embedded document draws no marks'
+      );
+
+      await framedPage.getByRole('button', { name: /Point at things/ }).click();
+      await widget.locator('.widget-action').click({ position: { x: 2, y: 2 } });
+      await framedPage.waitForTimeout(500);
+      await expectLater(
+        () => widget.locator('[data-vil-overlay]').count(),
+        (count) => count === 0,
+        'pointing over the embedded document still grows no second layer'
+      );
+    } finally {
+      await framedPage.close();
+      await dev.stop();
     }
   }, 120000);
 });

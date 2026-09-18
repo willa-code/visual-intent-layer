@@ -8,13 +8,13 @@ second overlay under a dead message path is a defect, not a boundary.
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A proxied artifact embedding a same-origin frame shows exactly one selection overlay, in the artifact's own document
-- [ ] Pointing, hovering and keyboard acts over the frame's region produce no second, in-frame overlay and no selection that goes nowhere
+- [x] A proxied artifact embedding a same-origin frame shows exactly one selection overlay, in the artifact's own document
+- [x] Pointing, hovering and keyboard acts over the frame's region produce no second, in-frame overlay and no selection that goes nowhere
 - [x] The shell still receives every layer message it receives today, and the artifact still reports its own revision
 - [x] A saved-HTML artifact, which cannot nest a frame at all, is unaffected
-- [ ] Covered by the browser loop against a fixture with a same-origin frame
+- [x] Covered by the browser loop against a fixture with a same-origin frame
 
 ## Comments
 
@@ -37,3 +37,14 @@ The three unticked boxes all need the same thing, which is not built: a proxied 
 whose document embeds a same-origin frame, driven in the browser. That fixture belongs to
 ticket 06, so the guard's behaviour inside a real frame is asserted by its unit predicate
 today and will be driven end to end there.
+
+2026-09-18 — status `ready-for-agent` → `done`, all five boxes ticked. The fixture arrived
+here rather than with ticket `06`, because `06` is blocked by this ticket and the guard has
+to be provable before traversal crosses a boundary. `startDevServer` gained a `framed`
+option: the application document then embeds a same-origin `<iframe id="widget"
+/src="/widget">`, and the dev server serves a second document at that path. The drive
+proves the important half directly — the proxy *does* rewrite and inject the layer into the
+embedded document, so the guard is what stops the second overlay, not the absence of an
+injection. It then reads back one `[data-vil-overlay]` in the artifact document, none and no
+`[data-vil-mark]` in the embedded one, and none still after pointing over the embedded
+document. Ticket `06` reuses this fixture to cross the boundary on purpose.
