@@ -40,6 +40,7 @@ export type TargetResolutionRecord = {
   viewedScroll?: ScrollOffset;
   viewedViewport?: ViewportSize;
   viewedDocuments?: DocumentState[];
+  truncated?: boolean;
 };
 
 type Target = Envelope['annotations'][number]['targets'][number];
@@ -61,6 +62,7 @@ export function resolveTarget(
     viewedScroll?: ScrollOffset;
     viewedViewport?: ViewportSize;
     viewedDocuments?: DocumentState[];
+    truncated?: boolean;
   } = {}
 ): TargetResolutionRecord {
   const resolvedAt = options.at ?? new Date().toISOString();
@@ -70,7 +72,8 @@ export function resolveTarget(
     ...(options.viewedViewport !== undefined ? { viewedViewport: options.viewedViewport } : {}),
     ...(options.viewedDocuments !== undefined && options.viewedDocuments.length > 0
       ? { viewedDocuments: options.viewedDocuments }
-      : {})
+      : {}),
+    ...(options.truncated === true ? { truncated: true } : {})
   };
   const scored = candidates
     .map((candidate) => scoreCandidate(target, candidate))

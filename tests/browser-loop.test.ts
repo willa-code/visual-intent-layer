@@ -1490,8 +1490,9 @@ describe('Review Surface: Runtime State Evidence, one document, and a proxied ap
       );
       const stored = (await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`).then(
         (response) => response.json()
-      )) as { annotations: Array<{ resolutions: Array<{ match: string; candidates: unknown[] }> }> };
+      )) as { annotations: Array<{ resolutions: Array<{ match: string; candidates: unknown[]; truncated?: boolean }> }> };
       expect(stored.annotations[0]?.resolutions[0]?.match).toBe('unresolved');
+      expect(stored.annotations[0]?.resolutions[0]?.truncated).toBe(true);
     } finally {
       await bigPage.close();
     }

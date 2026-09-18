@@ -93,6 +93,7 @@ Usage:
   lever console
   lever network
   lever wait --target <css> [--frame artifact] [--timeout <ms>]
+  lever scroll [--to <pixels>]
 
   lever setup [--global|--print-only|--status|--harness <name> ...]
   lever mcp --tool <name> [--args <json>] [--run <name>]
@@ -1913,6 +1914,22 @@ async function commandWait(flags) {
   output({ ok: true, command: 'wait' });
 }
 
+async function commandScroll(flags) {
+  const runDir = resolveRun(flags.run);
+  const secret = await assertHealthy(runDir);
+  const y = typeof flags.to === 'string' ? Number(flags.to) : undefined;
+  if (y !== undefined && !Number.isFinite(y)) {
+    fail(EXIT.usage, 'scroll needs --to <pixels>.', 'Pass a finite pixel offset.');
+  }
+  if (flags['dry-run']) {
+    output({ dryRun: true, would: { scrollTo: y ?? null } });
+    return;
+  }
+  const result = await hostCall(secret)('/scroll', { frame: 'artifact', y: y ?? null });
+  await sleep(500);
+  output({ ok: true, command: 'scroll', scrollX: result.scrollX, scrollY: result.scrollY, scroller: result.scroller, elementTop: result.elementTop, scrollHeight: result.scrollHeight, clientHeight: result.clientHeight });
+}
+
 async function commandSetup(flags) {
   if (flags['dry-run']) {
     output({ dryRun: true, would: { run: 'visual-intent setup', sandboxHome: join(RUN_ROOT, 'sandbox-home') } });
@@ -2052,6 +2069,7 @@ async function main() {
     console: commandConsole,
     network: commandNetwork,
     wait: commandWait,
+    scroll: commandScroll,
     setup: commandSetup,
     mcp: commandMcp,
     coverage: commandCoverage,

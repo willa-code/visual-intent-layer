@@ -1635,7 +1635,7 @@ class App {
         (annotation) => !isInQueue(annotation.state) && !isVerification(annotation.state)
       );
       for (const annotation of eligible) {
-        await this.api.resolve(annotation.annotationId, revision, this.candidates, this.viewed);
+        await this.api.resolve(annotation.annotationId, revision, this.candidates, this.viewed, this.extractionTruncated);
       }
       this.resolvedRevision = revision;
       await this.refresh();

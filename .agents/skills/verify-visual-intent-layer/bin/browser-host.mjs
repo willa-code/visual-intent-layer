@@ -114,6 +114,31 @@ const handlers = {
     await page.reload({ waitUntil: 'domcontentloaded' });
     return { url: page.url() };
   },
+  'POST /scroll': async (body) => {
+    const targetFrame = page.frameLocator('iframe.artifact-frame');
+    const read = () =>
+      targetFrame.locator('body').evaluate(() => {
+        const scroller = document.scrollingElement ?? document.documentElement;
+        return {
+          scrollX: window.scrollX,
+          scrollY: window.scrollY,
+          elementTop: scroller.scrollTop,
+          scroller: scroller.tagName.toLowerCase(),
+          scrollHeight: scroller.scrollHeight,
+          clientHeight: scroller.clientHeight
+        };
+      });
+    if (body.frame === 'artifact' && body.y !== null && body.y !== undefined) {
+      const box = await page.locator('iframe.artifact-frame').boundingBox();
+      if (box) {
+        const current = await read();
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.wheel(0, body.y - current.scrollY);
+        await page.waitForTimeout(250);
+      }
+    }
+    return { ok: true, ...(await read()) };
+  },
   'POST /click': async (body) => {
     await pick(locatorFor(body.target, body.frame), body.target).click({
       modifiers: body.modifiers ?? []

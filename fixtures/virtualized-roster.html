@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Virtualized roster</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      .roster { padding: 16px; }
+      #list { position: relative; }
+      .row { position: absolute; left: 0; right: 0; height: 60px; line-height: 60px; padding-left: 8px; border-bottom: 1px solid rgb(238, 238, 238); }
+    </style>
+  </head>
+  <body>
+    <main class="roster">
+      <h1>Roster</h1>
+      <div id="list"></div>
+    </main>
+    <script>
+      const TOTAL = 200;
+      const ROW = 60;
+      const WINDOW = 10;
+      const list = document.getElementById('list');
+      list.style.height = TOTAL * ROW + 'px';
+      function render() {
+        const first = Math.max(0, Math.floor(window.scrollY / ROW) - 2);
+        const last = Math.min(TOTAL, first + WINDOW);
+        list.textContent = '';
+        for (let index = first; index < last; index += 1) {
+          const row = document.createElement('div');
+          row.className = 'row';
+          row.id = 'row-' + index;
+          row.style.top = index * ROW + 'px';
+          row.textContent = 'Row ' + String(index).padStart(4, '0');
+          list.appendChild(row);
+        }
+      }
+      window.addEventListener('scroll', render);
+      render();
+    </script>
+  </body>
+</html>

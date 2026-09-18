@@ -166,3 +166,11 @@ policy-blocked frame are stated with their own causes in the row, the hint and t
 approval wall, and an Area keeps its rectangle while naming the one hole it could not
 read. The Verification Run is
 `.visual-intent-verify/runs/2026-09-18_04-30-07-reach` (outcome `clean`).
+
+2026-09-18 — third implementation pass, and the class is closed. `08` is `done`:
+the Lever gained a `scroll` command and a frame-path selector, a loopback
+application fixture makes the same-origin frame drivable, and four clean
+Verification Runs cover the shadow roots, the frame interior, the unrendered row
+and the walk bound. The truncation fact is now recorded on the resolution
+(`TargetResolutionRecord.truncated`), so `state` reads it back rather than only the
+row stating it. All eight tickets are `done`.

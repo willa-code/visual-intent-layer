@@ -9,13 +9,16 @@ across a boundary. Where the product cannot look in — a closed shadow root, a
 cross-origin frame interior, a frame the content policy never loaded — it states
 the boundary with its true cause rather than reporting the Target as gone.
 
-_Partly driven live: the run pointed into an open shadow root, into a shadow root
-inside a shadow root, drew an Area that encloses shadow content, and re-found the
-Area after a reload on exact-and-weaker evidence. The frame interior and the two
-refusals are driven in the browser-loop against a proxied application embedding a
-same-origin frame; the Lever drive for them is named below with its precondition.
-The unrendered-row and walk-bound drives are also proven in the browser-loop and
-named with their preconditions._
+_Driven live: the runs pointed into an open shadow root and into a shadow root
+inside a shadow root, drew an Area over shadow content and re-found it after a
+reload, pointed inside a same-origin frame of a loopback application and
+re-resolved it exactly, scrolled a virtualized row in and out to read its state
+word, and pointed past the walk bound to read the truncation fact back. The
+Verification Runs are `.visual-intent-verify/runs/2026-09-18_04-30-07-reach`,
+`2026-09-18_04-56-45-unrendered-row`, `2026-09-18_04-57-29-walk-bound` and
+`2026-09-18_04-58-14-reach-frame`. The two refusals are driven in the browser loop
+(closed shadow root, policy-blocked frame); the cross-origin refusal has a unit
+seam._
 
 ## Sub-features
 
@@ -41,16 +44,16 @@ named with their preconditions._
 Preconditions:
 
 - A healthy run, one browser, and either `fixtures/reach.html` (saved HTML) for shadow content or a loopback application embedding a same-origin frame for the frame interior.
-- A same-origin frame is reachable only in a proxied application: a saved-HTML artifact sets `frame-src 'none'`, so it cannot nest a loadable frame.
+- A same-origin frame is reachable only in a proxied application: a saved-HTML artifact sets `frame-src 'none'`, so it cannot nest a loadable frame. Start `node fixtures/reach-app/server.mjs` and pass its printed URL to `launch --app`.
 
 - **Point inside an open shadow root.** Run `… lever.mjs select --tool point --target ".shadow-action"`, then `… lever.mjs state`. The stored Target's `selectors[0]` contains the `|` shadow separator and names `div#open-host`.
 - **Point inside a host inside a host.** Run `… lever.mjs select --tool point --target ".deep-action"`, then `… lever.mjs state`. The selector names both hosts, separated by `|`.
 - **Box an area over shadow content.** Run `… lever.mjs select --tool box --from ".shadow-note" --to ".shadow-action"`, then `… lever.mjs state`. The Target is `region`, its label names the enclosed control, and its selectors are boundary-qualified.
 - **Re-find it after a reload.** Run `… lever.mjs annotate --note "…"`, `… lever.mjs queue`, `… lever.mjs send`, `… lever.mjs reload-surface`, then `… lever.mjs state`. The Target's `resolutions[].match` is `exact` or `recovered`, never `unresolved`.
-- **Point inside a same-origin frame.** Run `… lever.mjs select --tool point --target "iframe#widget >> .widget-action"`, then `… lever.mjs state`. The selector contains `>>` and the frame path; screen-read the mark with `… lever.mjs screenshot`. _Not driven: requires a loopback application embedding a same-origin frame; the browser-loop proves it against a proxied application._
-- **State the two refusals.** Point at a stored Target whose host has since become a closed shadow root, or draw an Area over a frame the policy never loaded. The row reads **Inside a boundary this surface cannot read** and its hint names the cause; the Area keeps its rectangle and names the one hole. _Not driven with the Lever: the closed-root case needs a stored boundary-qualified Target whose host closes between revisions, and the policy case needs a saved-HTML artifact with a frame; both are proven in the browser-loop._
-- **An unrendered row is not deleted.** Write a Target against a virtualized row, send it, scroll the row out of the rendered window, then run `… lever.mjs state`. The row's derived word is a state no longer on screen and approval stays blocked; scrolling back restores it. _Not driven: needs a virtualized-list fixture and a Lever scroll command; the browser-loop proves it._
-- **The bound is stated, not silent.** Point past the walk budget on a large artifact, send, reload, then run `… lever.mjs state`. The resolution is `unresolved` and the row states that the surface read only part of the revision. _Not driven: needs a large-roster fixture; the browser-loop proves it._
+- **Point inside a same-origin frame.** Run `… lever.mjs select --tool point --target "iframe#widget >> .widget-action"`, then `… lever.mjs state`. The selector contains `>>` and the frame path, `runtimeState.documents[0]` names `iframe#widget` with its own address `widget`, and after `annotate`, `queue`, `send` and `reload-surface` the resolution is `exact`.
+- **Read an Area that could not read a hole.** With `fixtures/reach.html`, point at the closed host; with a saved-HTML artifact carrying a frame, draw an Area over it. The Area keeps its rectangle and names the one hole as **a frame the artifact's content policy blocks**.
+- **An unrendered row is not deleted.** Launch `fixtures/virtualized-roster.html`, run `… lever.mjs scroll --to 6000`, `… lever.mjs wait --target "#row-100" --frame artifact`, point at `#row-100`, write and send, then `… lever.mjs scroll --to 0`. `… lever.mjs snapshot` contains **May exist only in a state no longer on screen** and Approve is disabled; a further `… lever.mjs scroll` reports the artifact still at `scrollY: 0`, so resolving never moved it. Scrolling back to `6000` restores the match.
+- **The bound is stated, not silent.** Launch `fixtures/large-roster.html`, point at `.row:nth-of-type(2400)` (past the 2000-node budget), send, and `… lever.mjs reload-surface`. `… lever.mjs state` reports the resolution `unresolved` with `truncated: true`, and `… lever.mjs snapshot` contains **Not in the part of this revision the surface read** with Approve disabled.
 
 ## Gotchas
 
@@ -59,3 +62,4 @@ Preconditions:
 - The anchored card intercepts a click when it overlaps the next target. Complete or dismiss the current draft before pointing again.
 - A closed shadow root is indistinguishable from an ordinary leaf at pointing time; the refusal can only be stated when a stored boundary-qualified Target stops resolving.
 - The composed walk spends one budget across the artifact document and one frame level. A later frame is not traversed.
+- `scroll` moves the artifact the way an operator would (a real wheel over the frame), and reports the resulting `scrollY`; with no `--to` it only reads.

@@ -560,12 +560,13 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     const revision = (body as { revision?: unknown }).revision;
     const candidates = (body as { candidates?: unknown }).candidates;
     const viewed = readViewedState((body as { viewed?: unknown }).viewed);
+    const truncated = (body as { truncated?: unknown }).truncated === true;
     if (typeof revision !== 'string' || !Array.isArray(candidates)) {
       sendText(response, 400, 'Expected { revision: string, candidates: ResolutionCandidate[] }');
       return;
     }
     const resolutions = annotation.targets.map((target) =>
-      resolveTarget(target, candidates as ResolutionCandidate[], viewed)
+      resolveTarget(target, candidates as ResolutionCandidate[], { ...viewed, truncated })
     );
     review.annotations.noteRevisionAdvance(annotation.artifactId, revision);
     const updated = review.annotations.recordResolutions(annotationId, resolutions, revision);

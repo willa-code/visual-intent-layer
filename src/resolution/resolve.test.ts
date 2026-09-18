@@ -221,3 +221,15 @@ describe('resolution records the documents it looked through', () => {
     expect(result.viewedDocuments).toBeUndefined();
   });
 });
+
+describe('a resolution records whether the walk reached the bound', () => {
+  it('records the truncation fact on the resolution it resolved under', () => {
+    const result = resolveTarget(elementTarget(), [], { truncated: true });
+    expect(result.truncated).toBe(true);
+  });
+
+  it('does not record a bound that was not reached', () => {
+    const result = resolveTarget(elementTarget(), [candidate()]);
+    expect(result.truncated).toBeUndefined();
+  });
+});

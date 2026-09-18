@@ -177,11 +177,15 @@ export class Api {
     annotationId: string,
     revision: string,
     candidates: ResolutionCandidate[],
-    viewed?: ViewedState
+    viewed?: ViewedState,
+    truncated = false
   ): Promise<TargetResolutionRecord[]> {
     const result = await this.json<{ resolutions: TargetResolutionRecord[] }>(
       this.url(`/api/annotations/${annotationId}/resolve`),
-      { method: 'POST', body: JSON.stringify({ revision, candidates, ...(viewed ? { viewed } : {}) }) }
+      {
+        method: 'POST',
+        body: JSON.stringify({ revision, candidates, ...(viewed ? { viewed } : {}), ...(truncated ? { truncated: true } : {}) })
+      }
     );
     return result.resolutions;
   }

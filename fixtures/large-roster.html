@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Large roster</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      .roster { padding: 16px; }
+      .row { height: 20px; line-height: 20px; }
+    </style>
+  </head>
+  <body>
+    <main class="roster">
+      <h1>Roster</h1>
+    </main>
+    <script>
+      const main = document.querySelector('main.roster');
+      for (let index = 0; index < 2500; index += 1) {
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.textContent = 'Row ' + index;
+        main.appendChild(row);
+      }
+    </script>
+  </body>
+</html>
