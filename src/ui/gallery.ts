@@ -86,7 +86,7 @@ function samplePass(state: SessionPass['state'], overrides: Partial<SessionPass>
     fromRevision: 'blake3:0123456789abcdef',
     toRevision: 'blake3:fedcba9876543210',
     annotationIds: ['ann-queued'],
-    outcome: { answered: 3, untouched: 1, gone: 1 },
+    outcome: { changed: 3, same: 1, notFound: 1 },
     intent: 'next-pass',
     openedAt: '2026-09-16T00:00:00.000Z',
     ...overrides

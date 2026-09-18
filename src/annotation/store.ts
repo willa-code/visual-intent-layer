@@ -13,10 +13,12 @@ import {
 import { buildBatchEnvelope, batchEnvelopeId, batchIdempotencyKey } from './envelope.js';
 import type { DeliveryIntent } from '../host/capabilities.js';
 import {
+  anchorOutcome,
   isInQueue,
   isVerification,
   relationsAmong,
   verificationRefusedReason,
+  type AnchorOutcome,
   type Annotation,
   type AnnotationAttachment,
   type AnnotationEvent,
@@ -28,7 +30,7 @@ import {
 
 export type PassState = 'open' | 'in-flight' | 'ready' | 'closed';
 
-export type PassOutcome = { answered: number; untouched: number; gone: number };
+export type PassOutcome = { changed: number; same: number; notFound: number };
 
 export type Pass = {
   passId: string;
@@ -284,7 +286,7 @@ export class AnnotationStore {
       fromRevision: input.artifact.revision,
       annotationIds: annotations.map((annotation) => annotation.annotationId),
       state: 'in-flight',
-      outcome: { answered: 0, untouched: 0, gone: 0 },
+      outcome: { changed: 0, same: 0, notFound: 0 },
       openedAt: at,
       envelopeId: envelope.envelopeId,
       idempotencyKey: key,
@@ -310,7 +312,7 @@ export class AnnotationStore {
   }
 
   recordResolutions(annotationId: string, resolutions: TargetResolutionRecord[], revision?: string): Annotation {
-    return this.mutate(annotationId, (annotation) => {
+    const updated = this.mutate(annotationId, (annotation) => {
       annotation.resolutions = resolutions;
       if (revision) {
         annotation.resolvedRevision = revision;
@@ -319,11 +321,13 @@ export class AnnotationStore {
         annotation.state = 'resolved';
       }
       annotation.history.push({ type: 'resolved', at: now() });
-      if (annotation.passId) {
-        this.refreshPassOutcome(annotation.passId, revision);
-      }
       return annotation;
     });
+    if (updated.passId) {
+      this.refreshPassOutcome(updated.passId, revision);
+      this.persist();
+    }
+    return updated;
   }
 
   repoint(annotationId: string, targets: AnnotationTarget[], relationships?: AnnotationRelation[]): Annotation {
@@ -422,7 +426,7 @@ export class AnnotationStore {
       fromRevision: envelope.artifact.revision,
       annotationIds: ids,
       state: 'in-flight',
-      outcome: { answered: 0, untouched: 0, gone: 0 },
+      outcome: { changed: 0, same: 0, notFound: 0 },
       openedAt: at,
       envelopeId: envelope.envelopeId,
       idempotencyKey: envelope.delivery.idempotencyKey,
@@ -500,18 +504,10 @@ export class AnnotationStore {
     if (!pass) {
       return;
     }
-    const outcome: PassOutcome = { answered: 0, untouched: 0, gone: 0 };
+    const outcome: PassOutcome = { changed: 0, same: 0, notFound: 0 };
     for (const annotation of this.annotationsOfPass(passId)) {
       for (const resolution of annotation.resolutions) {
-        if (resolution.match === 'exact' || resolution.match === 'recovered') {
-          if (keptOriginalEvidence(annotation, resolution)) {
-            outcome.untouched += 1;
-          } else {
-            outcome.answered += 1;
-          }
-        } else {
-          outcome.gone += 1;
-        }
+        outcome[outcomeKey(anchorOutcome(annotation, resolution))] += 1;
       }
     }
     pass.outcome = outcome;
@@ -657,7 +653,7 @@ function normalizePersistedState(raw: Record<string, unknown>): PersistedState {
       fromRevision: pass.fromRevision ?? pass.envelope?.artifact.revision ?? '',
       annotationIds: pass.annotationIds ?? [],
       state: pass.state ?? 'in-flight',
-      outcome: pass.outcome ?? { answered: 0, untouched: 0, gone: 0 },
+      outcome: normalizeOutcome(pass.outcome),
       openedAt: pass.openedAt ?? pass.at,
       at: pass.at ?? pass.openedAt
     };
@@ -709,17 +705,24 @@ function assignMissingSequences(
   return highest;
 }
 
-function keptOriginalEvidence(annotation: Annotation, resolution: TargetResolutionRecord): boolean {
-  const target = annotation.targets.find((entry) => entry.targetId === resolution.targetId);
-  const selected = resolution.candidates.find((entry) => entry.candidate.nodeId === resolution.selectedNodeId)?.candidate;
-  if (!target || !selected) {
-    return false;
+function outcomeKey(outcome: AnchorOutcome): keyof PassOutcome {
+  switch (outcome) {
+    case 'changed':
+      return 'changed';
+    case 'same':
+      return 'same';
+    case 'not-found':
+      return 'notFound';
   }
-  const grounding = target.renderedGrounding;
-  const nameMatches = !grounding.accessibleName || grounding.accessibleName === selected.accessibleName;
-  const roleMatches = !grounding.semanticRole || grounding.semanticRole === selected.semanticRole;
-  const textMatches = !grounding.textEvidence?.exactText || grounding.textEvidence.exactText === selected.text;
-  return nameMatches && roleMatches && textMatches;
+}
+
+function normalizeOutcome(value: unknown): PassOutcome {
+  const stored = (value ?? {}) as Record<string, number | undefined>;
+  return {
+    changed: stored['changed'] ?? stored['answered'] ?? 0,
+    same: stored['same'] ?? stored['untouched'] ?? 0,
+    notFound: stored['notFound'] ?? stored['gone'] ?? 0
+  };
 }
 
 function now(): string {

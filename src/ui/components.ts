@@ -1,5 +1,5 @@
-import type { Annotation, AnnotationState } from '../annotation/model.js';
-import { stateLabel } from '../annotation/model.js';
+import type { Annotation, AnnotationState, AnchorOutcome } from '../annotation/model.js';
+import { anchorOutcomeText, stateLabel } from '../annotation/model.js';
 import type { AgentPositionReport } from '../mcp/service.js';
 import type { SessionPass } from './api.js';
 import { deriveResolutionLabel, resolutionLabelText, type ResolutionLabel, type RuntimeStateContext } from '../resolution/model.js';
@@ -88,7 +88,8 @@ export function resolutionTone(label: ResolutionLabel): Tone {
 export function resolutionItem(
   record: TargetResolutionRecord,
   label: string,
-  state?: RuntimeStateContext
+  state?: RuntimeStateContext,
+  outcome?: AnchorOutcome
 ): HTMLElement {
   const derived = deriveResolutionLabel(record, state);
   const cueName: IconName =
@@ -102,7 +103,9 @@ export function resolutionItem(
   const item = h('li', { class: 'resolution', dataset: { label: derived }, attrs: { 'data-label': derived } });
   const cue = h('span', { class: 'resolution__cue', attrs: { 'aria-hidden': 'true' } });
   cue.appendChild(icon(cueName, { size: 14 }));
-  item.append(cue, h('span', { text: `${label}: ${resolutionLabelText(derived)}` }));
+  const comparison =
+    outcome && (derived === 'matched' || derived === 'recovered') ? ` · ${anchorOutcomeText(outcome)}` : '';
+  item.append(cue, h('span', { text: `${label}: ${resolutionLabelText(derived)}${comparison}` }));
   return item;
 }
 
@@ -511,7 +514,7 @@ export function passHeader(options: {
   header.appendChild(
     h('p', {
       class: 'hint',
-      text: `${pass.outcome.answered} answered · ${pass.outcome.untouched} untouched · ${pass.outcome.gone} gone`
+      text: `${pass.outcome.changed} changed · ${pass.outcome.same} same · ${pass.outcome.notFound} not found`
     })
   );
   if (pass.state !== 'closed') {

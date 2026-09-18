@@ -1,6 +1,6 @@
 # Closing the loop: changing your mind, and saying what a revision answered
 
-Status: needs-triage
+Status: ready-for-agent
 
 Scope accepted; the design and the tickets are not written. This file exists because
 each item below is either promised by a normative document today or named as Pass B by
@@ -58,6 +58,53 @@ promise pass-outcome marks on the artifact, which do not exist.
   revocation itself lands in `.scratch/truth-and-sync/issues/09`; expiry is the other
   half.
 
+## Decided already
+
+Decided 2026-09-18, from this spec's own Open list. Each decision was reviewed
+independently by three lenses — a minimalist interaction designer, a sceptical
+user advocate and a precision engineer — whose POVs are kept in
+`.scratch/closing-the-loop/advisors/`.
+
+- **Declared Missing is an act, not a label.** It is stored per target on the
+  Annotation with the revision it was made against, offered only where Target
+  Resolution found zero candidates, reads in its own words, clears that anchor's
+  approval blocker, and travels in the next envelope so the agent is told.
+- **A verdict is a judgment, never a fact.** Changing one never moves the Pass
+  outcome counts. There is one "no": `Reject` collapses into **Not Fixed**, and
+  **Obsolete** stays the abandonment. Marking Not Fixed delivers nothing by
+  itself; from it the Builder-Reviewer adds to the note, re-annotates, or asks for
+  another Pass, in that order of likelihood.
+- **Changing a verdict is one act, and closing is structural.** A changed verdict
+  reopens its closed Pass as a consequence, with no separate Reopen control.
+  Closing a Pass with undecided members is allowed and those members read **never
+  decided**. A closed Pass refuses later resolution writes, and close and reopen
+  are history events rather than one overwritten timestamp.
+- **Another Pass is a new Pass.** It carries every member not `verified`, not
+  `obsolete` and not `replaced`; the current Pass closes with its outcome frozen.
+  Membership is Pass-side and dated, so the old Pass keeps its own rows and counts
+  and the batch idempotency key cannot hand back a closed Pass.
+- **The outcome words describe the evidence, not the request.**
+  `answered / untouched / gone` become **changed / same / not found**. Each anchor
+  keeps its resolution word and gains the comparison; a target that only moved
+  reads `same`; `not found` covers what the row separately names as ambiguous,
+  deleted or declared missing. Amends ADR-0019's wording and `design.md` §5/§6.
+- **Withdraw is bounded by collection, not acknowledgement.** Until the agent has
+  collected a delivery, the row's existing remove action returns the members to
+  the queue and the Pass is marked withdrawn; after that a Replacement is the only
+  act. Reassigning a target after a verdict requires reopening the verdict first.
+- **A dead session is a surface state, not a frame state.** Session ended or
+  expired is a whole-surface terminal state with one action — open this artifact
+  again over the same stored notes — never `ArtifactFrame.unreachable`, which is
+  the artifact fetch failure alone, with its trigger named.
+- **Nothing derived is drawn on the artifact.** Amend `design.md` §5 and §6 to
+  remove the pass-outcome marks and state the rule: every mark on the artifact is
+  something the Builder-Reviewer can act on (target, candidate, relation ghost).
+- **Expiry is idle time, and it announces itself.** A session expires after seven
+  days without a human act, never renewed by the background status poll, refused
+  exactly like an ended session, with the refusal naming its cause. When it
+  happens while the surface is open, the surface says so rather than failing
+  silently.
+
 ## Open before tickets can be written
 
 - Declared Missing's representation: a stored act on the Annotation, or a Builder-Reviewer
@@ -81,3 +128,13 @@ promise pass-outcome marks on the artifact, which do not exist.
 - Redaction before send, a second reviewer and concurrency, and Windows and Linux depth:
   triggered later.
 - Proof and measurement, which remain parked.
+
+## Comments
+
+2026-09-18 — status `needs-triage` → `ready-for-agent`. Every item in *Open before
+tickets can be written* is answered in **Decided already** above; the Open list is
+kept as the record of what was open. The three independent reviews behind the
+decisions are in `.scratch/closing-the-loop/advisors/`. Two consequences worth
+naming: the Pass outcome vocabulary is amended away from `answered` because the
+product cannot know a note was satisfied, and `Reject` retires in favour of
+`Not Fixed`, which `CONTEXT.md` already defines and which no longer auto-delivers.

@@ -191,7 +191,7 @@ One rail, and one island over the artifact. No chrome spans the window.
 │  + artifact-document overlay                 │  one ledger of Passes      │
 │    (hover, target marks, focus ring,         │                            │
 │     drawn-target boundary, relation ghost,   │  verdicts on each row      │
-│     candidate marks, pass-outcome marks)     │                            │
+│     candidate marks)                          │                            │
 │                                              │                            │
 │         ┌─────────────────┐                  │                            │
 │         │  mode island    │                  │                            │
@@ -276,7 +276,7 @@ gallery in §9 renders them.
 | `AttentionTrigger` | hidden at zero, badge with count |
 | `OverflowMenu` | closed, open, item focus |
 | `ArtifactFrame` | loading, ready, unreachable, policy-blocked, changed |
-| `OverlayMark` | hover, selected, focused, drawn-target boundary, relation ghost, candidate mark, pass outcome (answered, untouched, gone) |
+| `OverlayMark` | hover, selected, focused, drawn-target boundary, relation ghost, candidate mark |
 | `RelationSentence` | preview before release; recorded on the Annotation in the card and the rail row, from one formatter; names the targets and the desired relationship, never a pixel value |
 | `DrawnTargetBoundary` | drawing; drawn; below the minimum-size threshold it produces nothing |
 | `BeforeAfterToggle` | before, after, off; at the stage's top edge, never over the stage's content footprint; present only while the selected row has a result from a different revision to compare; the selected row states which revision it compares |
@@ -736,3 +736,26 @@ not a separate capability: a reversible visual proposal shown before the
 relation is recorded, which never mutates authoritative source. The keyboard
 route is stated as absent, because no target of any kind is reachable by
 keyboard today and a relation-only route would misrepresent the surface.
+
+### 2026-09-18 — A Pass reports evidence, not accomplishment
+
+Reason: ADR-0019 fixed the Pass outcome as *answered*, *untouched* and *gone*,
+and this document promised the same three as marks on the artifact. Three
+independent reviews found both claims overstate what the product knows.
+"Answered" reads as "the agent did what I asked", while the product can only
+observe that the evidence at an anchor changed; "gone" collapses an ambiguous
+target, a deleted one and the Builder-Reviewer's own declaration into one word.
+The artifact marks also restated a row, and an anchor that could not be found has
+nowhere on the artifact to carry one.
+
+Replaces:
+
+- §5's composition diagram, which listed pass-outcome marks in the
+  artifact-document overlay.
+- §6's `OverlayMark` entry, which listed a pass-outcome variant.
+
+The outcome words become **changed**, **same** and **not found**, derived from the
+same comparison that decides the counts. No substitute mark takes their place:
+every mark on the artifact is something the Builder-Reviewer can act on — a
+target, a candidate or a relation ghost — and nothing derived is drawn there.
+ADR-0024 records the decision.

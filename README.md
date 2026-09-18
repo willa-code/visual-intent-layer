@@ -302,6 +302,7 @@ with `UPDATE_GALLERY=1` once the change is intended.
 
 ## Layout
 
+- `VISION.md` — the human-in-the-loop thesis and the UI/UX standard every decision defers to
 - `design.md` — normative Review Surface design contract (tokens, roles, states)
 - `CONTEXT.md` — the domain language, including the words to avoid
 - `schema/` — versioned Visual Intent Envelope contracts (0.2 current, 0.1 legacy)

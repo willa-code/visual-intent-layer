@@ -21,6 +21,39 @@ export type AnnotationState =
 
 export type VerificationVerdict = 'approve' | 'reject' | 'not-fixed' | 'obsolete';
 
+export type AnchorOutcome = 'changed' | 'same' | 'not-found';
+
+export function anchorOutcome(annotation: Annotation, resolution: TargetResolutionRecord): AnchorOutcome {
+  if (resolution.match === 'unresolved') {
+    return 'not-found';
+  }
+  return evidenceUnchanged(annotation, resolution) ? 'same' : 'changed';
+}
+
+export function anchorOutcomeText(outcome: AnchorOutcome): string {
+  switch (outcome) {
+    case 'changed':
+      return 'changed';
+    case 'same':
+      return 'same';
+    case 'not-found':
+      return 'not found';
+  }
+}
+
+export function evidenceUnchanged(annotation: Annotation, resolution: TargetResolutionRecord): boolean {
+  const target = annotation.targets.find((entry) => entry.targetId === resolution.targetId);
+  const selected = resolution.candidates.find((entry) => entry.candidate.nodeId === resolution.selectedNodeId)?.candidate;
+  if (!target || !selected) {
+    return false;
+  }
+  const grounding = target.renderedGrounding;
+  const nameMatches = !grounding.accessibleName || grounding.accessibleName === selected.accessibleName;
+  const roleMatches = !grounding.semanticRole || grounding.semanticRole === selected.semanticRole;
+  const textMatches = !grounding.textEvidence?.exactText || grounding.textEvidence.exactText === selected.text;
+  return nameMatches && roleMatches && textMatches;
+}
+
 export type AnnotationEvent = {
   type:
     | 'created'

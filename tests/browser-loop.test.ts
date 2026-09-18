@@ -96,7 +96,7 @@ describe('Review Surface (primary seam: a real browser engine)', () => {
     const snapshot = () =>
       fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`).then((response) => response.json()) as Promise<{
         annotations: Array<{ annotationId: string; state: string; note: string; writtenRevision: string; revisionRelation: string; replaces?: string; replacedBy?: string }>;
-        passes: Array<{ passId: string; envelopeId: string; state: string; fromRevision: string; toRevision?: string; outcome: { answered: number; untouched: number; gone: number } }>;
+        passes: Array<{ passId: string; envelopeId: string; state: string; fromRevision: string; toRevision?: string; outcome: { changed: number; same: number; notFound: number } }>;
       }>;
 
     expect(await page.locator('.coachmark').count()).toBe(0);
@@ -241,6 +241,9 @@ describe('Review Surface (primary seam: a real browser engine)', () => {
       () => page.locator('.annotation-row .resolution[data-label="matched"]').count(),
       (count) => count >= 1,
       'the target now resolves'
+    );
+    expect(await page.locator('.annotation-row .resolution[data-label="matched"]').first().innerText()).toMatch(
+      /· (same|changed)/
     );
     expect(await page.getByRole('button', { name: 'Approve' }).first().isDisabled()).toBe(false);
     await expectLater(() => frame.locator('[data-vil-mark="candidate"]').count(), (count) => count === 0, 'the marks clear once repaired');

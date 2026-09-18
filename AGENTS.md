@@ -1,3 +1,9 @@
+## Vision
+
+Every product decision defers to `VISION.md` before local taste or implementation
+convenience: raise the fidelity of human intent, and keep the surface concise,
+minimal, intuitive and beautiful. Read it before designing or reviewing behaviour.
+
 ## Agent skills
 
 ### Issue tracker

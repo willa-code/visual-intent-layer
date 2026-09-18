@@ -1,5 +1,5 @@
 import type { Annotation } from '../annotation/model.js';
-import { approvalBlockers, isInQueue, isVerification, missingRelationTargets, relationsAmong, stateLabel, targetName } from '../annotation/model.js';
+import { anchorOutcome, approvalBlockers, isInQueue, isVerification, missingRelationTargets, relationsAmong, stateLabel, targetName } from '../annotation/model.js';
 import { relationSentence } from '../annotation/relations.js';
 import { deriveResolutionLabel, type RuntimeStateContext } from '../resolution/model.js';
 import type { ResolutionCandidate, TargetResolutionRecord } from '../resolution/resolve.js';
@@ -418,7 +418,7 @@ class App {
     for (const resolution of annotation.resolutions) {
       const target = annotation.targets.find((entry) => entry.targetId === resolution.targetId);
       const label = target?.label ?? target?.renderedGrounding.accessibleName ?? target?.kind ?? resolution.targetId;
-      targets.appendChild(resolutionItem(resolution, label, stateFor(resolution)));
+      targets.appendChild(resolutionItem(resolution, label, stateFor(resolution), anchorOutcome(annotation, resolution)));
     }
     if (annotation.resolutions.length > 0) {
       row.appendChild(targets);

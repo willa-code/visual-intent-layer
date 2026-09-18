@@ -288,4 +288,54 @@ describe('Annotation store', () => {
       vi.useRealTimers();
     }
   });
+
+  it('reports what the revision changed, per anchor, and sums it on the Pass', () => {
+    const store = new AnnotationStore(dataDir());
+    const targets: AnnotationTarget[] = [
+      { ...target(), targetId: 't-same' },
+      { ...target(), targetId: 't-changed' },
+      { ...target(), targetId: 't-gone' }
+    ];
+    const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets });
+    const pass = store.markDelivered([annotation.annotationId], {
+      host: 'test',
+      intent: 'next-pass',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+    });
+    const same = resolveTarget(targets[0]!, [candidate('n-same')]);
+    const changed = resolveTarget(targets[1]!, [{ ...candidate('n-changed'), accessibleName: 'Buy now' }]);
+    const notFound = resolveTarget(targets[2]!, [
+      {
+        nodeId: 'n-other',
+        selectors: ['footer a.help'],
+        tag: 'a',
+        semanticRole: 'link',
+        accessibleName: 'Help',
+        text: 'Help'
+      }
+    ]);
+    expect(same.match).toBe('exact');
+    expect(changed.match).toBe('recovered');
+    expect(notFound.match).toBe('unresolved');
+
+    store.recordResolutions(annotation.annotationId, [same, changed, notFound], 'rev-2');
+
+    expect(store.getPass(pass.passId)?.outcome).toEqual({ changed: 1, same: 1, notFound: 1 });
+  });
+
+  it('reads a target the revision only moved as same, never as changed', () => {
+    const store = new AnnotationStore(dataDir());
+    const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });
+    const pass = store.markDelivered([annotation.annotationId], {
+      host: 'test',
+      intent: 'next-pass',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+    });
+    const moved = resolveTarget(target(), [
+      { ...candidate('n-moved'), boundingBox: { x: 40, y: 40, width: 200, height: 44 } }
+    ]);
+    expect(moved.match).toBe('recovered');
+    store.recordResolutions(annotation.annotationId, [moved], 'rev-2');
+    expect(store.getPass(pass.passId)?.outcome).toEqual({ changed: 0, same: 1, notFound: 0 });
+  });
 });
