@@ -1,5 +1,5 @@
 import type { Annotation } from '../annotation/model.js';
-import { anchorOutcome, approvalBlockers, isInQueue, isVerification, missingRelationTargets, relationsAmong, stateLabel, targetName } from '../annotation/model.js';
+import { anchorOutcome, approvalBlockers, isAmendable, isInQueue, isVerification, missingRelationTargets, relationsAmong, targetName } from '../annotation/model.js';
 import { relationSentence } from '../annotation/relations.js';
 import { deriveResolutionLabel, type RuntimeStateContext } from '../resolution/model.js';
 import type { ResolutionCandidate, TargetResolutionRecord } from '../resolution/resolve.js';
@@ -438,19 +438,13 @@ class App {
       );
     }
 
-    const delivered = isDelivered(annotation.state);
-    if (delivered) {
+    if (isDecidable(annotation.state)) {
       row.appendChild(this.verdictBlock(annotation));
     }
     if (annotation.attachments.length > 0) {
       row.appendChild(
         attachmentChips(annotation, { onRemove: (id) => void this.removeAttachment(annotation.annotationId, id) }) ??
           h('span')
-      );
-    }
-    if (annotation.verification) {
-      row.appendChild(
-        h('p', { class: 'hint', text: `Recorded: ${stateLabel(annotation.state)} at ${annotation.verification.at}` })
       );
     }
 
@@ -462,7 +456,7 @@ class App {
         () => void this.activateAnnotation(annotation.annotationId)
       )
     );
-    if (delivered) {
+    if (isAmendable(annotation.state)) {
       const amend = button('Amend', { variant: 'ghost', onClick: () => this.openAmend(annotation.annotationId) });
       amend.prepend(icon('amend', { size: 14 }));
       amend.dataset['action'] = 'amend';
@@ -530,7 +524,7 @@ class App {
     const blocked = approvalBlockers(annotation, this.stateContextFor(annotation));
     return verdictControls(annotation, {
       blocked,
-      ...(annotation.verification ? { recorded: `Recorded: ${annotation.verification.verdict}` } : {}),
+      ...(annotation.verification ? { recorded: annotation.verification.verdict } : {}),
       onVerdict: (verdict) => void this.verdict(annotation.annotationId, verdict)
     });
   }
@@ -1774,7 +1768,7 @@ function kindIcon(kind: string): IconName {
 }
 
 function isClosed(state: Annotation['state']): boolean {
-  return state === 'verified' || state === 'replaced' || state === 'obsolete';
+  return state === 'replaced' || state === 'obsolete';
 }
 
 function isCapturedView(attachment: Annotation['attachments'][number]): boolean {
@@ -1783,6 +1777,10 @@ function isCapturedView(attachment: Annotation['attachments'][number]): boolean 
 
 function isDelivered(state: Annotation['state']): boolean {
   return state === 'delivered' || state === 'resolved' || state === 'acknowledged';
+}
+
+function isDecidable(state: Annotation['state']): boolean {
+  return isDelivered(state) || isVerification(state);
 }
 
 function rank(annotation: Annotation): number {

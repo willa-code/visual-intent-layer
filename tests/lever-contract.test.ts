@@ -339,18 +339,18 @@ describe('Lever contract: every verdict path that remains a row control', () => 
     lever(['cleanup', '--run', name]);
   });
 
-  it('drives approve, reject, not-fixed and obsolete and reads each back', () => {
-    const targets = ['.checkout-submit', '.gallery-note', 'h1', '.shipping-note'];
+  it('drives approve, not-fixed and obsolete, and changes a decision in one act', () => {
+    const targets = ['.checkout-submit', '.gallery-note', 'h1'];
     for (const target of targets) {
       expect(lever(['select', '--run', name, '--tool', 'point', '--target', target]).status).toBe(0);
       expect(lever(['annotate', '--run', name, '--note', `verdict path for ${target}`]).status).toBe(0);
       expect(lever(['queue', '--run', name]).status).toBe(0);
     }
-    expect(lever(['reorder', '--run', name, '--from', '3', '--direction', 'up']).status).toBe(0);
+    expect(lever(['reorder', '--run', name, '--from', '2', '--direction', 'up']).status).toBe(0);
     expect(lever(['send', '--run', name, '--intent', 'next-pass']).status).toBe(0);
     expect(lever(['verify', '--run', name]).status).toBe(0);
 
-    const verdicts = ['approve', 'reject', 'not-fixed', 'obsolete'];
+    const verdicts = ['approve', 'not-fixed', 'obsolete'];
     for (let row = 0; row < verdicts.length; row += 1) {
       const decided = lever([
         'decide',
@@ -364,11 +364,24 @@ describe('Lever contract: every verdict path that remains a row control', () => 
       expect(decided.status, decided.stderr).toBe(0);
     }
 
+    const changed = lever(['decide', '--run', name, '--verdict', 'not-fixed', '--match', `verdict path for ${targets[0]!}`]);
+    expect(changed.status, changed.stderr).toBe(0);
+
     const state = lever(['state', '--run', name]).json as { annotations: Array<Record<string, unknown>> };
-    const states = state.annotations.map((annotation) => annotation.state);
-    expect(states).toEqual(expect.arrayContaining(['verified', 'rejected', 'not-fixed', 'obsolete']));
-    const approved = state.annotations.find((annotation) => annotation.state === 'verified')!;
-    expect((approved.verification as Record<string, unknown>).verdict).toBe('approve');
+    const byNote = (target: string): Record<string, unknown> =>
+      state.annotations.find((annotation) => String(annotation.note).includes(`verdict path for ${target}`))!;
+    expect(byNote(targets[1]!).state).toBe('not-fixed');
+    expect(byNote(targets[2]!).state).toBe('obsolete');
+    expect(byNote(targets[0]!).state).toBe('not-fixed');
+    expect((byNote(targets[0]!).verification as Record<string, unknown>).verdict).toBe('not-fixed');
+
+    const amended = lever(['amend', '--run', name, '--note', 'and make it bolder', '--match', `verdict path for ${targets[0]!}`]);
+    expect(amended.status, amended.stderr).toBe(0);
+    const afterAmend = lever(['state', '--run', name]).json as { annotations: Array<Record<string, unknown>> };
+    const replaced = afterAmend.annotations.find(
+      (annotation) => String(annotation.note).includes(`verdict path for ${targets[0]!}`) && annotation.state === 'replaced'
+    )!;
+    expect((replaced.replacedBy as string).length).toBeGreaterThan(0);
   }, 240000);
 });
 

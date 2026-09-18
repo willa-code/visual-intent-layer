@@ -14,8 +14,8 @@ import { buildBatchEnvelope, batchEnvelopeId, batchIdempotencyKey } from './enve
 import type { DeliveryIntent } from '../host/capabilities.js';
 import {
   anchorOutcome,
+  isAmendable,
   isInQueue,
-  isVerification,
   relationsAmong,
   verificationRefusedReason,
   type AnchorOutcome,
@@ -30,6 +30,8 @@ import {
 
 export type PassState = 'open' | 'in-flight' | 'ready' | 'closed';
 
+export type PassEvent = { type: 'opened' | 'closed' | 'reopened'; at: string };
+
 export type PassOutcome = { changed: number; same: number; notFound: number };
 
 export type Pass = {
@@ -40,6 +42,7 @@ export type Pass = {
   annotationIds: string[];
   state: PassState;
   outcome: PassOutcome;
+  history: PassEvent[];
   openedAt: string;
   closedAt?: string;
   envelopeId: string;
@@ -165,7 +168,7 @@ export class AnnotationStore {
     if (!original) {
       throw new Error(`Unknown Annotation ${annotationId}`);
     }
-    if (!isInQueue(original.state) && !isVerification(original.state)) {
+    if (isAmendable(original.state)) {
       const successor = this.createDraft({
         artifactId: original.artifactId,
         writtenRevision: original.writtenRevision,
@@ -191,7 +194,7 @@ export class AnnotationStore {
       });
     }
     throw new Error(
-      `${annotationId} is ${original.state}, so it cannot be amended. Amend is offered only on a delivered Annotation that is not yet verified.`
+      `${annotationId} is ${original.state}, so it cannot be amended. Amend is offered only on a delivered or Not Fixed Annotation that has not been accepted.`
     );
   }
 
@@ -287,6 +290,7 @@ export class AnnotationStore {
       annotationIds: annotations.map((annotation) => annotation.annotationId),
       state: 'in-flight',
       outcome: { changed: 0, same: 0, notFound: 0 },
+      history: [{ type: 'opened', at }],
       openedAt: at,
       envelopeId: envelope.envelopeId,
       idempotencyKey: key,
@@ -356,6 +360,13 @@ export class AnnotationStore {
   }
 
   verify(annotationId: string, verdict: VerificationVerdict, options: { successorId?: string } = {}): Annotation {
+    const existing = this.get(annotationId);
+    if (!existing) {
+      throw new Error(`Unknown Annotation ${annotationId}`);
+    }
+    if (existing.verification) {
+      this.reopenVerdict(annotationId);
+    }
     return this.mutate(annotationId, (annotation) => {
       const refused = verificationRefusedReason(annotation, verdict);
       if (refused) {
@@ -366,6 +377,34 @@ export class AnnotationStore {
       annotation.history.push({ type: 'verified', at: now(), detail: verdict });
       return annotation;
     });
+  }
+
+  reopenVerdict(annotationId: string): Annotation {
+    const current = this.get(annotationId);
+    if (!current) {
+      throw new Error(`Unknown Annotation ${annotationId}`);
+    }
+    if (current.state === 'replaced') {
+      throw new Error(
+        `${annotationId} was replaced rather than decided, so its Replacement is the act that changes it.`
+      );
+    }
+    if (!current.verification) {
+      throw new Error(`${annotationId} has no decision to reopen.`);
+    }
+    const reopened = this.mutate(annotationId, (annotation) => {
+      delete annotation.verification;
+      annotation.state = annotation.resolutions.length > 0 ? 'resolved' : 'delivered';
+      annotation.history.push({ type: 'reopened', at: now() });
+      return annotation;
+    });
+    if (reopened.passId) {
+      const pass = this.state.passes[reopened.passId];
+      if (pass && pass.state === 'closed') {
+        this.reopenPass(reopened.passId);
+      }
+    }
+    return reopened;
   }
 
   noteRevisionAdvance(artifactId: string, currentRevision: string): Annotation[] {
@@ -427,6 +466,7 @@ export class AnnotationStore {
       annotationIds: ids,
       state: 'in-flight',
       outcome: { changed: 0, same: 0, notFound: 0 },
+      history: [{ type: 'opened', at }],
       openedAt: at,
       envelopeId: envelope.envelopeId,
       idempotencyKey: envelope.delivery.idempotencyKey,
@@ -478,8 +518,29 @@ export class AnnotationStore {
     if (!pass) {
       throw new Error(`Unknown Pass ${passId}`);
     }
+    if (pass.state === 'closed') {
+      return pass;
+    }
+    const at = now();
     pass.state = 'closed';
-    pass.closedAt = now();
+    pass.closedAt = at;
+    pass.history.push({ type: 'closed', at });
+    this.persist();
+    return pass;
+  }
+
+  reopenPass(passId: string): Pass {
+    const pass = this.state.passes[passId];
+    if (!pass) {
+      throw new Error(`Unknown Pass ${passId}`);
+    }
+    if (pass.state !== 'closed') {
+      return pass;
+    }
+    const at = now();
+    pass.state = 'ready';
+    delete pass.closedAt;
+    pass.history.push({ type: 'reopened', at });
     this.persist();
     return pass;
   }
@@ -501,7 +562,7 @@ export class AnnotationStore {
 
   private refreshPassOutcome(passId: string, revision?: string): void {
     const pass = this.state.passes[passId];
-    if (!pass) {
+    if (!pass || pass.state === 'closed') {
       return;
     }
     const outcome: PassOutcome = { changed: 0, same: 0, notFound: 0 };
@@ -596,8 +657,6 @@ export function verdictState(verdict: VerificationVerdict): AnnotationState {
   switch (verdict) {
     case 'approve':
       return 'verified';
-    case 'reject':
-      return 'rejected';
     case 'not-fixed':
       return 'not-fixed';
     case 'obsolete':
@@ -609,7 +668,7 @@ export function normalizeAnnotationState(value: unknown): AnnotationState {
   if (value === 'superseded') {
     return 'replaced';
   }
-  if (value === 'another-pass') {
+  if (value === 'another-pass' || value === 'rejected') {
     return 'not-fixed';
   }
   return typeof value === 'string' ? (value as AnnotationState) : 'draft';
@@ -635,7 +694,7 @@ function normalizeAnnotation(raw: Record<string, unknown>): Annotation {
 }
 
 function normalizeVerdictValue(value: unknown): VerificationVerdict {
-  return value === 'another-pass' ? 'not-fixed' : (value as VerificationVerdict);
+  return value === 'another-pass' || value === 'reject' ? 'not-fixed' : (value as VerificationVerdict);
 }
 
 function normalizePersistedState(raw: Record<string, unknown>): PersistedState {
@@ -654,6 +713,7 @@ function normalizePersistedState(raw: Record<string, unknown>): PersistedState {
       annotationIds: pass.annotationIds ?? [],
       state: pass.state ?? 'in-flight',
       outcome: normalizeOutcome(pass.outcome),
+      history: pass.history ?? [{ type: 'opened', at: pass.openedAt ?? pass.at }],
       openedAt: pass.openedAt ?? pass.at,
       at: pass.at ?? pass.openedAt
     };

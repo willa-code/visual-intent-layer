@@ -1,4 +1,4 @@
-import type { Annotation, AnnotationState, AnchorOutcome } from '../annotation/model.js';
+import type { Annotation, AnnotationState, AnchorOutcome, VerificationVerdict } from '../annotation/model.js';
 import { anchorOutcomeText, stateLabel } from '../annotation/model.js';
 import type { AgentPositionReport } from '../mcp/service.js';
 import type { SessionPass } from './api.js';
@@ -35,7 +35,6 @@ export function stateTone(state: AnnotationState): Tone {
       return 'progress';
     case 'verified':
       return 'success';
-    case 'rejected':
     case 'not-fixed':
     case 'replaced':
     case 'obsolete':
@@ -50,7 +49,6 @@ const STATE_CUES: Record<AnnotationState, IconName> = {
   resolved: 'recovered',
   acknowledged: 'check',
   verified: 'check',
-  rejected: 'reject',
   'not-fixed': 'redo',
   replaced: 'redo',
   obsolete: 'obsolete'
@@ -330,15 +328,15 @@ export function repointAction(annotation: Annotation, options: { active: boolean
 
 export function verdictControls(
   annotation: Annotation,
-  options: { blocked: string[]; recorded?: string; onVerdict: (verdict: string) => void }
+  options: { blocked: string[]; recorded?: VerificationVerdict; onVerdict: (verdict: string) => void }
 ): HTMLElement {
   const approveBlocked = options.blocked.length > 0;
   const group = h('div', { class: 'chips', attrs: { role: 'group', 'aria-label': 'Decision' } });
-  const primaryEntries: Array<[string, string, IconName]> = [
+  const visible: Array<[VerificationVerdict, string, IconName]> = [
     ['approve', 'Approve', 'check'],
-    ['reject', 'Reject', 'reject']
+    ['not-fixed', 'Not Fixed', 'redo']
   ];
-  for (const [verdict, label, iconName] of primaryEntries) {
+  for (const [verdict, label, iconName] of visible) {
     const disabled = verdict === 'approve' && approveBlocked;
     const control = button(label, {
       variant: verdict === 'approve' ? 'primary' : 'secondary',
@@ -347,31 +345,32 @@ export function verdictControls(
       onClick: () => options.onVerdict(verdict)
     });
     control.dataset['verdict'] = verdict;
+    markRecorded(control, options.recorded === verdict);
     control.prepend(icon(iconName, { size: 14 }));
     group.appendChild(control);
   }
   const overflow = h('details', { class: 'verdict-overflow' });
   overflow.appendChild(h('summary', { text: 'More verdicts' }));
   const overflowBody = h('div', { class: 'verdict-overflow__body' });
-  for (const [verdict, label, iconName] of [
-    ['not-fixed', 'Not Fixed', 'redo'],
-    ['obsolete', 'Mark obsolete', 'obsolete']
-  ] as Array<[string, string, IconName]>) {
-    const control = button(label, { variant: 'ghost', onClick: () => options.onVerdict(verdict) });
-    control.dataset['verdict'] = verdict;
-    control.prepend(icon(iconName, { size: 14 }));
-    overflowBody.appendChild(control);
-  }
+  const obsolete = button('Mark obsolete', { variant: 'ghost', onClick: () => options.onVerdict('obsolete') });
+  obsolete.dataset['verdict'] = 'obsolete';
+  markRecorded(obsolete, options.recorded === 'obsolete');
+  obsolete.prepend(icon('obsolete', { size: 14 }));
+  overflowBody.appendChild(obsolete);
   overflow.appendChild(overflowBody);
   group.appendChild(overflow);
   const wrapper = h('div', { class: 'section' }, group);
   if (approveBlocked) {
     wrapper.appendChild(h('p', { class: 'hint', text: `Approval is blocked: ${options.blocked.join(' ')}` }));
   }
-  if (options.recorded) {
-    wrapper.appendChild(h('p', { class: 'hint', text: options.recorded }));
-  }
   return wrapper;
+}
+
+function markRecorded(control: HTMLButtonElement, recorded: boolean): void {
+  control.setAttribute('aria-pressed', String(recorded));
+  if (recorded) {
+    control.dataset['recorded'] = 'true';
+  }
 }
 
 export function attachmentChips(
@@ -507,7 +506,12 @@ export function passHeader(options: {
     pill(passStateLabel(pass.state), passTone(pass.state)),
     h('span', {
       class: 'pass-header__outstanding',
-      text: options.outstanding === 0 ? 'Nothing left to decide' : `${options.outstanding} to decide`
+      text:
+        options.outstanding === 0
+          ? 'Nothing left to decide'
+          : pass.state === 'closed'
+            ? `${options.outstanding} never decided`
+            : `${options.outstanding} to decide`
     })
   );
   header.appendChild(head);

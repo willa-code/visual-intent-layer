@@ -566,7 +566,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     }
     const verdict = (body as { verdict?: unknown }).verdict;
     if (!isVerdict(verdict)) {
-      sendText(response, 400, 'Invalid verdict: expected approve, reject, not-fixed, or obsolete');
+      sendText(response, 400, 'Invalid verdict: expected approve, not-fixed, or obsolete');
       return;
     }
     try {
@@ -578,6 +578,27 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
       sendJson(response, 200, { annotation: updated });
     } catch (error) {
       sendText(response, 409, error instanceof Error ? error.message : 'verification refused');
+    }
+    return;
+  }
+
+  const reopenMatch = /^\/api\/annotations\/([^/]+)\/reopen$/.exec(path);
+  if (method === 'POST' && reopenMatch) {
+    const annotationId = decodeURIComponent(reopenMatch[1]!);
+    const annotation = review.annotations.get(annotationId);
+    if (!annotation) {
+      sendText(response, 404, `Unknown Annotation ${annotationId}`);
+      return;
+    }
+    const session = sessions.findByArtifact(annotation.artifactId);
+    if (!session || !authorize(context, session.sessionId, url)) {
+      sendText(response, 401, 'Unauthorized');
+      return;
+    }
+    try {
+      sendJson(response, 200, { annotation: review.annotations.reopenVerdict(annotationId) });
+    } catch (error) {
+      sendText(response, 409, error instanceof Error ? error.message : 'reopen refused');
     }
     return;
   }
@@ -1551,13 +1572,8 @@ function sendJson(response: ServerResponse, status: number, value: unknown): voi
   response.end(JSON.stringify(value, null, 2));
 }
 
-function isVerdict(value: unknown): value is 'approve' | 'reject' | 'not-fixed' | 'obsolete' {
-  return (
-    value === 'approve' ||
-    value === 'reject' ||
-    value === 'not-fixed' ||
-    value === 'obsolete'
-  );
+function isVerdict(value: unknown): value is 'approve' | 'not-fixed' | 'obsolete' {
+  return value === 'approve' || value === 'not-fixed' || value === 'obsolete';
 }
 
 function normalizeMedia(value: string | undefined): string {

@@ -72,7 +72,7 @@ Usage:
   lever restart-browser
   lever review
   lever verify
-  lever decide --verdict approve|reject|not-fixed|obsolete [--row <n>|--match <text>]
+  lever decide --verdict approve|not-fixed|obsolete [--row <n>|--match <text>]
   lever repoint --row <n> --target <css>
   lever compare --mode before|after [--row <n>]
   lever closed-rows
@@ -1483,11 +1483,11 @@ async function commandDecide(flags) {
   const runDir = resolveRun(flags.run);
   const secret = await assertHealthy(runDir);
   const verdict = typeof flags.verdict === 'string' ? flags.verdict : undefined;
-  const label = { approve: 'Approve', reject: 'Reject', 'not-fixed': 'Not Fixed', obsolete: 'Mark obsolete' }[verdict];
+  const label = { approve: 'Approve', 'not-fixed': 'Not Fixed', obsolete: 'Mark obsolete' }[verdict];
   if (!label) {
-    fail(EXIT.usage, 'decide needs --verdict approve|reject|not-fixed|obsolete.', 'A Replacement is reached through `lever amend`, not as a row verdict.');
+    fail(EXIT.usage, 'decide needs --verdict approve|not-fixed|obsolete.', 'A Replacement is reached through `lever amend`, not as a row verdict.');
   }
-  const behindOverflow = verdict === 'not-fixed' || verdict === 'obsolete';
+  const behindOverflow = verdict === 'obsolete';
   const rowIndex = typeof flags.row === 'string' ? Number(flags.row) : 0;
   const match = typeof flags.match === 'string' ? flags.match : undefined;
   if (flags['dry-run']) {
@@ -1506,7 +1506,7 @@ async function commandDecide(flags) {
   } else {
     await host('/click', { target: { selector: `.annotation-row [data-verdict="${verdict}"]`, nth: rowIndex } });
   }
-  const expected = { approve: 'verified', reject: 'rejected', 'not-fixed': 'not-fixed', obsolete: 'obsolete' }[verdict];
+  const expected = { approve: 'verified', 'not-fixed': 'not-fixed', obsolete: 'obsolete' }[verdict];
   const deadline = Date.now() + 10000;
   let annotations = [];
   let landed = false;

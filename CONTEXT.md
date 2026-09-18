@@ -21,7 +21,7 @@ The Review Surface's single state, in which Annotations are composed, queued, an
 _Avoid_: Annotate mode, edit mode, direct mode, design mode
 
 **Verify**:
-The act, on one Annotation, of comparing a resulting artifact revision against what that Annotation asked for and accepting it, rejecting it, marking it Not Fixed, or marking it obsolete. It is a state of an Annotation, not a place in the Review Surface: an Annotation is verified where it sits. A Replacement, not a verdict, is what closes a delivered Annotation.
+The act, on one Annotation, of comparing a resulting artifact revision against what that Annotation asked for and accepting it, marking it Not Fixed, or marking it obsolete. It is a state of an Annotation, not a place in the Review Surface: an Annotation is verified where it sits, and changing a decision is one act rather than a journey back to an undecided state. A Replacement, not a verdict, is what closes a delivered Annotation.
 _Avoid_: Approval screen, review mode, diff view, verify mode
 
 **Visual Intent Layer**:
@@ -41,7 +41,7 @@ The ordered set of Annotations a Builder-Reviewer has composed but not yet sent.
 _Avoid_: Cart, basket, backlog, inbox
 
 **Pass**:
-One delivery of Annotations and the artifact revision that answers it. A Pass has a state (open, in flight, ready, closed) and a set of member Annotations, and only the Builder-Reviewer closes it.
+One delivery of Annotations and the artifact revision that answers it. A Pass has a state (open, in flight, ready, closed) and a set of member Annotations, and only the Builder-Reviewer closes it. Closing it is a record: its outcome and its decisions freeze, and a Builder-Reviewer changing a decision on one of its Annotations reopens it.
 _Avoid_: Round, batch, iteration, cycle, review cycle
 
 **Replacement**:
@@ -49,7 +49,7 @@ The relationship in which a later Annotation replaces an earlier one that was al
 _Avoid_: Supersession, superseded, successor, follow-up, edit, update, revision
 
 **Not Fixed**:
-The verdict on one Annotation that the revision under review does not satisfy it and another attempt is wanted. It judges one Annotation and asks for no new delivery.
+The single verdict that the revision under review does not satisfy an Annotation and another attempt is wanted. It judges one Annotation and asks for no new delivery; what follows is the Builder-Reviewer adding to the note, re-annotating, or asking for Another Pass. It is the surface's only "no": the retired word **Rejected** reads as Not Fixed.
 _Avoid_: Another pass, request changes, retry, failed, rejected
 
 **Another Pass**:

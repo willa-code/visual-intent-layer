@@ -93,7 +93,7 @@ describe('Annotation model', () => {
   it('never blocks a non-approval verdict on a missing target', () => {
     const deleted = annotation({ resolutions: [resolution({ match: 'unresolved' })] });
     expect(verificationRefusedReason(deleted, 'obsolete')).toBeUndefined();
-    expect(verificationRefusedReason(deleted, 'reject')).toBeUndefined();
+    expect(verificationRefusedReason(deleted, 'not-fixed')).toBeUndefined();
   });
 
   it('names a target a relation refers to that is no longer in the Annotation', () => {

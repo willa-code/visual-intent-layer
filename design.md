@@ -283,17 +283,17 @@ gallery in §9 renders them.
 | `AnchoredCard` | positioned left/right/flipped, clamped to viewport, dismissed |
 | `AnnotationCard` | drafting; with attachment; with relation, showing the `RelationSentence`. Its target line is a kind icon plus what was pointed at, never the bare kind word, and an Area carries the drawn-boundary glyph. `Queue` is the only worded action, with attach and delete as icons. No instruction copy anywhere in the card: the placeholder carries the question and the attach control explains itself through its accessible name |
 | `AttachmentChip` | uploading, ready, failed, removed |
-| `PassLedger` | empty; one Pass open; several Passes. Rows grouped by Pass, where the state pill carries the difference so sending never moves an Annotation out of view; actionable Annotations first, and closed ones behind one toggle rather than deleted; a Pass header states its state and its outcome counts |
+| `PassLedger` | empty; one Pass open; several Passes. Rows grouped by Pass, where the state pill carries the difference so sending never moves an Annotation out of view; actionable Annotations first, and Replaced and obsolete rows behind one toggle rather than deleted, while a decided row stays visible because its decision can still be changed; a Pass header states its state and its outcome counts, and members left undecided when it was closed read as never decided |
 | `AnnotationPill` | draft, queued, delivered, acknowledged, resolved, verified, rejected, not-fixed, replaced, obsolete |
 | `Composer` | empty, typing, over threshold, disabled |
 | `SendAction` | one verb, with no intent selector to choose from; disabled with the reason stated; the agent's position and whether it is holding the call are stated beside it |
-| `ReplaceAction` | offered on a delivered Annotation that is not yet verified: Replaces it, links the Replacement, and delivers it with the steering intent |
+| `ReplaceAction` | offered on a delivered or Not Fixed Annotation that has not been accepted: Replaces it, links the Replacement, and delivers it with the steering intent |
 | `StopAction` | offered while the agent is working or has acknowledged an Annotation, and absent otherwise; states which delivery channel applies and when the agent last checked |
 | `ThemeControl` | auto, light, dark; the choice is remembered |
 | `AnnotationRow` | matched, recovered, ambiguous, deleted, advanced; states which revision its result came from |
 | `CandidateMark` | none, several, one chosen; drawn on the artifact, never presented as a ranked list; carries no evidence figure |
 | `RepointAction` | offered on an Annotation whose target could not be matched: the next selection re-points that Annotation rather than composing a new one |
-| `VerdictControls` | enabled, blocked with reason, recorded; `Approve` and `Reject` are visible, and `Not Fixed` and obsolete sit behind one overflow on that row |
+| `VerdictControls` | enabled, blocked with reason, recorded; `Approve` and `Not Fixed` are visible, obsolete sits behind one overflow on that row, and the decision already recorded is marked on its own control so choosing another changes it in one act |
 | `Drawer` | open, closed, scrollable body |
 | `DisclosureList` | populated, empty |
 | `Button` | primary, secondary, ghost, destructive; hover, active, focus, disabled, busy |
@@ -759,3 +759,27 @@ same comparison that decides the counts. No substitute mark takes their place:
 every mark on the artifact is something the Builder-Reviewer can act on — a
 target, a candidate or a relation ghost — and nothing derived is drawn there.
 ADR-0024 records the decision.
+
+### 2026-09-18 — One "no", and a decision that can be changed
+
+Reason: the surface offered two words for one act — `Reject` and `Not Fixed` —
+while `CONTEXT.md` defined only one of them, so a Builder-Reviewer had to guess
+the difference between two identical refusals. It also made a verdict terminal: a
+judged row rendered no controls, so a mis-tap could only be undone by a
+Replacement, which the domain reserves for new direction rather than a changed
+mind. And a closed Pass was a label rather than a record, because nothing stopped
+a later resolution write from moving its counts.
+
+Replaces:
+
+- §6's `VerdictControls` entry: `Reject` retires, `Not Fixed` becomes visible,
+  and the decision already recorded is marked on its own control.
+- §6's `PassLedger` entry: members left undecided when a Pass is closed read as
+  never decided rather than as work still to do.
+
+A decision is changed in one act: the verdict controls stay on a decided row, and
+choosing another verdict reopens the Pass it closed. A decided row is therefore
+not hidden behind the closed toggle, which now holds only Replaced and obsolete
+rows; hiding it would hide the act of changing it. Closing freezes a Pass's
+outcome, its result revision and its decisions, and close and reopen are recorded
+as events rather than one overwritten timestamp. ADR-0025 records the decision.

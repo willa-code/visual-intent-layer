@@ -96,7 +96,7 @@ Judging a result where it sits:
 $LEVER verify
 $LEVER compare --mode before --row 0
 $LEVER repoint --row 0 --target "h1"                           # re-point a target that could not be matched
-$LEVER decide --verdict approve --row 0                               # reject, not-fixed, obsolete
+$LEVER decide --verdict approve --row 0                               # not-fixed, obsolete; another verdict changes the decision
 $LEVER closed-rows                                                     # one toggle for verified, replaced and obsolete rows
 ```
 

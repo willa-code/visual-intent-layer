@@ -193,6 +193,13 @@ export class Api {
     return result.annotation;
   }
 
+  async reopenVerdict(annotationId: string): Promise<Annotation> {
+    const result = await this.json<{ annotation: Annotation }>(this.url(`/api/annotations/${annotationId}/reopen`), {
+      method: 'POST'
+    });
+    return result.annotation;
+  }
+
   async uploadAttachment(annotationId: string, file: File): Promise<Annotation> {
     const result = await this.json<{ annotation: Annotation }>(
       this.url(`/api/annotations/${annotationId}/attachments?name=${encodeURIComponent(file.name)}`),

@@ -237,7 +237,7 @@ function themeSection(theme: 'light' | 'dark'): HTMLElement {
           'div',
           { class: 'chips' },
           (
-            ['draft', 'queued', 'delivered', 'resolved', 'acknowledged', 'verified', 'rejected', 'not-fixed', 'replaced', 'obsolete'] as Annotation['state'][]
+            ['draft', 'queued', 'delivered', 'resolved', 'acknowledged', 'verified', 'not-fixed', 'replaced', 'obsolete'] as Annotation['state'][]
           ).map((state) => statePill(state))
         )
       ),
@@ -323,6 +323,7 @@ function themeSection(theme: 'light' | 'dark'): HTMLElement {
       panel('PassLedger — replaced with its Replacement', annotationRowSample(sampleAnnotation('replaced', { replacedBy: 'ann-successor' }), {})),
       panel('RepointAction', repointAction(sampleAnnotation('resolved'), { active: false, onRepoint: () => undefined }), ' ', repointAction(sampleAnnotation('resolved'), { active: true, onRepoint: () => undefined })),
       panel('VerdictControls', verdictControls(sampleAnnotation('acknowledged'), { blocked: [], onVerdict: () => undefined })),
+      panel('VerdictControls recorded', verdictControls(sampleAnnotation('verified', { verification: { verdict: 'approve', at: '' } }), { blocked: [], recorded: 'approve', onVerdict: () => undefined })),
       panel('VerdictControls blocked', verdictControls(sampleAnnotation('resolved', { resolutions: [RESOLUTION_RECORDS[3]!] }), { blocked: ['Place order button is deleted from this revision, so approval is blocked.'], onVerdict: () => undefined })),
       panel('AttachmentChip', attachmentChipSample()),
       panel(

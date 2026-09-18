@@ -87,9 +87,10 @@ work:
 
 `acknowledge_intent` confirms receipt. It is not implementation, and it is not
 verification. Only the Builder-Reviewer completes an Annotation, by approving,
-rejecting with another pass, amending it, or marking it obsolete. Never describe
-acknowledgement as a finished correction, and never claim you changed an artifact
-you have not changed.
+marking it Not Fixed, amending it, or marking it obsolete. A verdict is not
+terminal: the Builder-Reviewer changing one is the only act that changes it.
+Never describe acknowledgement as a finished correction, and never claim you
+changed an artifact you have not changed.
 
 ## Delivery timing
 

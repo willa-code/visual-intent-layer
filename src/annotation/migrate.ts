@@ -145,7 +145,7 @@ function mapStatus(status: string): AnnotationState {
     case 'verified':
       return 'verified';
     case 'rejected':
-      return 'rejected';
+      return 'not-fixed';
     case 'superseded':
     case 'replaced':
       return 'replaced';
@@ -192,10 +192,10 @@ function verificationOf(record: LegacyRecord): Annotation['verification'] | unde
 function normalizeVerdict(value: string): VerificationVerdict | undefined {
   switch (value) {
     case 'approve':
-    case 'reject':
     case 'obsolete':
       return value;
     case 'another-pass':
+    case 'reject':
     case 'not-fixed':
       return 'not-fixed';
     default:

@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { AnnotationStore } from './store.js';
+import { AnnotationStore, normalizeAnnotationState } from './store.js';
 import type { AnnotationTarget } from './model.js';
 import type { ResolutionCandidate } from '../resolution/resolve.js';
 import { resolveTarget } from '../resolution/resolve.js';
@@ -337,5 +337,100 @@ describe('Annotation store', () => {
     expect(moved.match).toBe('recovered');
     store.recordResolutions(annotation.annotationId, [moved], 'rev-2');
     expect(store.getPass(pass.passId)?.outcome).toEqual({ changed: 0, same: 1, notFound: 0 });
+  });
+
+  it('changes a decision in one act and reopens its closed Pass', () => {
+    const store = new AnnotationStore(dataDir());
+    const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });
+    const pass = store.markDelivered([annotation.annotationId], {
+      host: 'test',
+      intent: 'next-pass',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+    });
+    store.verify(annotation.annotationId, 'approve');
+    store.closePass(pass.passId);
+    expect(store.getPass(pass.passId)?.state).toBe('closed');
+
+    const changed = store.verify(annotation.annotationId, 'not-fixed');
+
+    expect(changed.state).toBe('not-fixed');
+    expect(changed.verification?.verdict).toBe('not-fixed');
+    expect(changed.history.filter((event) => event.type === 'reopened')).toHaveLength(1);
+    expect(store.getPass(pass.passId)?.state).toBe('ready');
+    expect(store.getPass(pass.passId)?.history.map((event) => event.type)).toEqual(['opened', 'closed', 'reopened']);
+  });
+
+  it('reopens a decision to undecided without delivering it again', () => {
+    const store = new AnnotationStore(dataDir());
+    const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });
+    store.markDelivered([annotation.annotationId], {
+      host: 'test',
+      intent: 'next-pass',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+    });
+    store.verify(annotation.annotationId, 'approve');
+
+    const reopened = store.reopenVerdict(annotation.annotationId);
+
+    expect(reopened.state).toBe('delivered');
+    expect(reopened.verification).toBeUndefined();
+    expect(reopened.history.filter((event) => event.type === 'delivered')).toHaveLength(1);
+  });
+
+  it('freezes a closed Pass against later resolution writes', () => {
+    const store = new AnnotationStore(dataDir());
+    const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });
+    const pass = store.markDelivered([annotation.annotationId], {
+      host: 'test',
+      intent: 'next-pass',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+    });
+    store.recordResolutions(annotation.annotationId, [resolveTarget(target(), [candidate('n-same')])], 'rev-2');
+    const frozen = store.getPass(pass.passId)!.outcome;
+    store.closePass(pass.passId);
+
+    store.recordResolutions(
+      annotation.annotationId,
+      [resolveTarget(target(), [{ ...candidate('n-changed'), accessibleName: 'Buy now' }])],
+      'rev-3'
+    );
+
+    expect(store.getPass(pass.passId)?.outcome).toEqual(frozen);
+    expect(store.getPass(pass.passId)?.toRevision).toBe('rev-2');
+  });
+
+  it('reads a retired rejected decision as Not Fixed', () => {
+    expect(normalizeAnnotationState('rejected')).toBe('not-fixed');
+  });
+
+  it('lets a Not Fixed note be amended, because a sharper attempt is what follows', () => {
+    const store = new AnnotationStore(dataDir());
+    const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });
+    store.markDelivered([annotation.annotationId], {
+      host: 'test',
+      intent: 'next-pass',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+    });
+    store.verify(annotation.annotationId, 'not-fixed');
+
+    const successor = store.amend(annotation.annotationId, { note: 'and make it bolder' });
+
+    expect(successor.state).toBe('draft');
+    expect(successor.replaces).toBe(annotation.annotationId);
+    expect(store.get(annotation.annotationId)?.state).toBe('replaced');
+    expect(store.get(annotation.annotationId)?.replacedBy).toBe(successor.annotationId);
+  });
+
+  it('refuses to amend an accepted note, which is changed by reopening first', () => {
+    const store = new AnnotationStore(dataDir());
+    const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });
+    store.markDelivered([annotation.annotationId], {
+      host: 'test',
+      intent: 'next-pass',
+      artifact: { id: 'a', kind: 'saved-html', revision: 'rev-1' }
+    });
+    store.verify(annotation.annotationId, 'approve');
+
+    expect(() => store.amend(annotation.annotationId, { note: 'x' })).toThrow(/cannot be amended/i);
   });
 });

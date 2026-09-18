@@ -14,12 +14,11 @@ export type AnnotationState =
   | 'resolved'
   | 'acknowledged'
   | 'verified'
-  | 'rejected'
   | 'not-fixed'
   | 'replaced'
   | 'obsolete';
 
-export type VerificationVerdict = 'approve' | 'reject' | 'not-fixed' | 'obsolete';
+export type VerificationVerdict = 'approve' | 'not-fixed' | 'obsolete';
 
 export type AnchorOutcome = 'changed' | 'same' | 'not-found';
 
@@ -67,6 +66,7 @@ export type AnnotationEvent = {
     | 'repointed'
     | 'acknowledged'
     | 'verified'
+    | 'reopened'
     | 'amended'
     | 'replaced';
   at: string;
@@ -124,7 +124,6 @@ const STATE_LABELS: Record<AnnotationState, string> = {
   resolved: 'Re-resolved',
   acknowledged: 'Acknowledged by agent',
   verified: 'Verified by you',
-  rejected: 'Rejected',
   'not-fixed': 'Not Fixed',
   replaced: 'Replaced',
   obsolete: 'Obsolete'
@@ -139,7 +138,11 @@ export function isInQueue(state: AnnotationState): boolean {
 }
 
 export function isVerification(state: AnnotationState): boolean {
-  return state === 'verified' || state === 'rejected' || state === 'not-fixed' || state === 'replaced' || state === 'obsolete';
+  return state === 'verified' || state === 'not-fixed' || state === 'replaced' || state === 'obsolete';
+}
+
+export function isAmendable(state: AnnotationState): boolean {
+  return state === 'delivered' || state === 'resolved' || state === 'acknowledged' || state === 'not-fixed';
 }
 
 export function approvalBlockers(
