@@ -66,13 +66,8 @@ no agent holding the loop, an envelope has nobody to reach.
 
 ## Use
 
-Start a session yourself, or let the agent open one:
-
-```sh
-visual-intent open --html ./checkout.html     # opens the browser, prints the URL
-visual-intent open --app http://localhost:5173
-visual-intent serve --port 3742               # local service only
-```
+The loop starts when an agent calls `open_visual_review`, or when you start a session
+yourself — the three commands are in [The same server, without an agent](#the-same-server-without-an-agent).
 
 Starting a session **launches the default browser on this machine** and prints
 the review URL as well, so the loop is a product experience rather than a
