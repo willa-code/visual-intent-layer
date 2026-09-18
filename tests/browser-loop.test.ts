@@ -1422,4 +1422,61 @@ describe('Review Surface: Runtime State Evidence, one document, and a proxied ap
       await shadowPage.close();
     }
   }, 120000);
+
+  it('says the surface read only part of a revision too large to walk whole', async () => {
+    const rows = Array.from({ length: 2500 }, (_, index) => `<div class="row">Row ${index}</div>`).join('');
+    const bigArtifact = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Large roster</title>
+    <style>body { margin: 0; font-family: system-ui, sans-serif; } .row { height: 20px; }</style>
+  </head>
+  <body>
+    <main class="roster">${rows}</main>
+  </body>
+</html>`;
+    const bigDir = mkdtempSync(join(tmpdir(), 'vil-big-artifact-'));
+    const bigPath = join(bigDir, 'roster.html');
+    writeFileSync(bigPath, bigArtifact, 'utf8');
+    const opened = await service.openSession({ kind: 'saved-html', path: bigPath });
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const bigPage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    try {
+      await bigPage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+      const frame = bigPage.frameLocator('iframe.artifact-frame');
+      await expectLater(() => frame.locator('.row').count(), (count) => count === 2500, 'the roster is in the document');
+
+      await bigPage.getByRole('button', { name: /Point at things/ }).click();
+      await frame.locator('.row').nth(2400).click();
+      const card = bigPage.locator('.anchored-card');
+      await card.waitFor({ state: 'visible' });
+      await card.locator('textarea').fill('Make this the summary row.');
+      await card.locator('textarea').press('Enter');
+      await bigPage.getByRole('button', { name: 'Send the queue' }).click();
+      await bigPage.reload({ waitUntil: 'domcontentloaded' });
+
+      await expectLater(
+        () => bigPage.locator('.annotation-row .hint').first().innerText(),
+        (text) => /part of this revision the surface read/i.test(text),
+        'the row states that the surface read only part of the revision'
+      );
+      await expectLater(
+        () => bigPage.locator('.annotation-row .resolution').first().getAttribute('data-label'),
+        (label) => label === 'unread',
+        'the resolution word says the surface did not read it, not that it is deleted'
+      );
+      await expectLater(
+        () => bigPage.getByRole('button', { name: 'Approve' }).first().isDisabled(),
+        (disabled) => disabled === true,
+        'the truncation still blocks approval rather than being waved through'
+      );
+      const stored = (await fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`).then(
+        (response) => response.json()
+      )) as { annotations: Array<{ resolutions: Array<{ match: string; candidates: unknown[] }> }> };
+      expect(stored.annotations[0]?.resolutions[0]?.match).toBe('unresolved');
+    } finally {
+      await bigPage.close();
+    }
+  }, 120000);
 });

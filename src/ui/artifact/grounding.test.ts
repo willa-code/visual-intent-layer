@@ -55,7 +55,7 @@ describe('artifact grounding', () => {
 
   it('extracts candidate evidence for every non-layer element', () => {
     const document = doc('<main><button aria-label="Place order">x</button><p>note</p></main>');
-    const candidates = extractCandidates(document);
+    const candidates = extractCandidates(document).candidates;
     const button = candidates.find((candidate) => candidate.tag === 'button');
     expect(button).toBeDefined();
     expect(button!.accessibleName).toBe('Place order');
@@ -66,7 +66,7 @@ describe('artifact grounding', () => {
     const document = doc(
       '<main><button class="stamped" data-vis-source="src/Orders.tsx:21:5">Ship it</button><button class="plain">Plain</button></main>'
     );
-    const candidates = extractCandidates(document);
+    const candidates = extractCandidates(document).candidates;
     const stamped = candidates.find((candidate) => candidate.tag === 'button' && candidate.sourceFile !== undefined);
     expect(stamped?.sourceFile).toBe('src/Orders.tsx');
     expect(stamped?.sourceLine).toBe(21);
@@ -78,7 +78,7 @@ describe('artifact grounding', () => {
     const document = doc('<main data-vil-layer="overlay"><div data-vil-layer="mark"></div></main>');
     const layerNode = document.querySelector('[data-vil-layer="mark"]') as HTMLElement;
     expect(isLayerNode(layerNode)).toBe(true);
-    expect(extractCandidates(document)).toHaveLength(0);
+    expect(extractCandidates(document).candidates).toHaveLength(0);
   });
 });
 
@@ -112,7 +112,7 @@ describe('artifact grounding across an open shadow root', () => {
 
   it('enumerates shadow content in composed order, right after its host', () => {
     const { document } = shadowedDoc();
-    const candidates = extractCandidates(document);
+    const candidates = extractCandidates(document).candidates;
     const hostIndex = candidates.findIndex((candidate) => candidate.tag === 'div');
     const shadowIndex = candidates.findIndex((candidate) => candidate.accessibleName === 'Shadow');
     expect(shadowIndex).toBe(hostIndex + 1);
@@ -121,7 +121,7 @@ describe('artifact grounding across an open shadow root', () => {
 
   it('re-finds the same node by its candidate id', () => {
     const { document, host } = shadowedDoc();
-    const candidates = extractCandidates(document);
+    const candidates = extractCandidates(document).candidates;
     const shadowCandidate = candidates.find((candidate) => candidate.accessibleName === 'Shadow');
     expect(shadowCandidate).toBeDefined();
     expect(elementByNodeId(document, shadowCandidate!.nodeId)).toBe(innerButton(host));
@@ -138,7 +138,7 @@ describe('artifact grounding across an open shadow root', () => {
     const selector = describeElement(deep).selectors?.[0] ?? '';
     expect(selector.split(SHADOW_SEPARATOR)).toHaveLength(3);
     expect(elementByComposedSelector(selector, document)).toBe(deep);
-    const candidate = extractCandidates(document).find((entry) => entry.accessibleName === 'Deep');
+    const candidate = extractCandidates(document).candidates.find((entry) => entry.accessibleName === 'Deep');
     expect(candidate).toBeDefined();
     expect(elementByNodeId(document, candidate!.nodeId)).toBe(deep);
   });
@@ -147,7 +147,7 @@ describe('artifact grounding across an open shadow root', () => {
     const document = doc('<main><div id="closed"></div></main>');
     const host = document.getElementById('closed') as HTMLElement;
     host.attachShadow({ mode: 'closed' }).innerHTML = '<button id="hidden">Hidden</button>';
-    expect(extractCandidates(document).some((candidate) => candidate.accessibleName === 'Hidden')).toBe(false);
+    expect(extractCandidates(document).candidates.some((candidate) => candidate.accessibleName === 'Hidden')).toBe(false);
   });
 
   it('still addresses a light-DOM element with an unqualified selector', () => {
@@ -156,5 +156,35 @@ describe('artifact grounding across an open shadow root', () => {
     const selector = describeElement(light).selectors?.[0] ?? '';
     expect(selector).not.toContain(SHADOW_SEPARATOR);
     expect(selector).toBe(cssPath(light));
+  });
+});
+
+describe('artifact grounding when the walk is bounded', () => {
+  function twoElements(): Document {
+    return doc('<main><button>One</button></main>');
+  }
+
+  it('says the walk stopped early rather than that nothing else exists', () => {
+    const bounded = extractCandidates(twoElements(), { limit: 1 });
+    expect(bounded.candidates).toHaveLength(1);
+    expect(bounded.truncated).toBe(true);
+  });
+
+  it('does not claim truncation when the walk finished inside the budget', () => {
+    expect(extractCandidates(twoElements(), { limit: 2 }).truncated).toBe(false);
+    expect(extractCandidates(twoElements(), { limit: 50 }).truncated).toBe(false);
+  });
+
+  it('does not let the interaction layer spend the budget', () => {
+    const document = doc('<main><button>One</button><div data-vil-layer="overlay"></div></main>');
+    const bounded = extractCandidates(document, { limit: 2 });
+    expect(bounded.candidates).toHaveLength(2);
+    expect(bounded.truncated).toBe(false);
+  });
+
+  it('binds a candidate id and its element to the same enumeration', () => {
+    const document = doc('<main><button>One</button><button>Two</button></main>');
+    const { candidates } = extractCandidates(document);
+    expect(elementByNodeId(document, candidates[candidates.length - 1]!.nodeId)?.textContent).toBe('Two');
   });
 });

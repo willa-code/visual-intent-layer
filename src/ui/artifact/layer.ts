@@ -61,12 +61,14 @@ function post(message: LayerMessage): void {
 
 function postCandidates(trigger: 'shell' | 'view' = 'shell'): void {
   const address = addressOf();
+  const extraction = extractCandidates(document);
   post({
     source: 'vil-layer',
     type: 'candidates',
-    candidates: extractCandidates(document),
+    candidates: extraction.candidates,
     revision,
     trigger,
+    ...(extraction.truncated ? { truncated: true } : {}),
     viewed: {
       ...(address ? { address } : {}),
       scroll: { x: window.scrollX, y: window.scrollY },

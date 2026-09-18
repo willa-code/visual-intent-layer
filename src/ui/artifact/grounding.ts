@@ -235,16 +235,20 @@ export function elementByComposedSelector(selector: string, doc: Document): HTML
   return found;
 }
 
-function composedElements(doc: Document, limit: number): HTMLElement[] {
+const WALK_LIMIT = 2000;
+
+function composedElements(doc: Document, limit: number): { elements: HTMLElement[]; truncated: boolean } {
   const elements: HTMLElement[] = [];
+  let truncated = false;
   const visit = (parent: ParentNode): void => {
     for (const child of Array.from(parent.children)) {
-      if (elements.length >= limit) {
-        return;
-      }
       const element = child as HTMLElement;
       if (isLayerNode(element)) {
         continue;
+      }
+      if (elements.length >= limit) {
+        truncated = true;
+        return;
       }
       elements.push(element);
       if (element.shadowRoot) {
@@ -256,12 +260,16 @@ function composedElements(doc: Document, limit: number): HTMLElement[] {
   if (doc.body) {
     visit(doc.body);
   }
-  return elements;
+  return { elements, truncated };
 }
 
-export function extractCandidates(doc: Document, options: { limit?: number } = {}): ResolutionCandidate[] {
-  const limit = options.limit ?? 2000;
-  const elements = composedElements(doc, limit);
+export type Extraction = {
+  candidates: ResolutionCandidate[];
+  truncated: boolean;
+};
+
+export function extractCandidates(doc: Document, options: { limit?: number } = {}): Extraction {
+  const { elements, truncated } = composedElements(doc, options.limit ?? WALK_LIMIT);
   const candidates: ResolutionCandidate[] = [];
   const total = elements.length;
   for (let index = 0; index < total; index += 1) {
@@ -287,7 +295,7 @@ export function extractCandidates(doc: Document, options: { limit?: number } = {
       ...(stamp ? { sourceFile: stamp.file, sourceLine: stamp.line, sourceColumn: stamp.column } : {})
     });
   }
-  return candidates;
+  return { candidates, truncated };
 }
 
 export function elementByNodeId(doc: Document, nodeId: string): HTMLElement | undefined {
@@ -296,6 +304,6 @@ export function elementByNodeId(doc: Document, nodeId: string): HTMLElement | un
     return undefined;
   }
   const index = Number(match[1]);
-  const elements = composedElements(doc, 2000);
+  const elements = composedElements(doc, WALK_LIMIT).elements;
   return elements[index];
 }

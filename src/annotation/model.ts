@@ -155,7 +155,8 @@ export function isAttemptable(state: AnnotationState): boolean {
 
 export function approvalBlockers(
   annotation: Annotation,
-  stateFor?: (resolution: TargetResolutionRecord) => RuntimeStateContext
+  stateFor?: (resolution: TargetResolutionRecord) => RuntimeStateContext,
+  truncated = false
 ): string[] {
   const blockers: string[] = [];
   for (const resolution of annotation.resolutions) {
@@ -163,8 +164,13 @@ export function approvalBlockers(
       continue;
     }
     const label = labelFor(annotation, resolution.targetId);
+    const declared = declaredMissingNow(annotation, resolution.targetId);
+    if (truncated && !declared) {
+      blockers.push(`${label} was not in the part of this revision the surface read, so approval is blocked.`);
+      continue;
+    }
     if (resolution.candidates.length === 0) {
-      if (declaredMissingNow(annotation, resolution.targetId)) {
+      if (declared) {
         continue;
       }
       const state = stateFor?.(resolution);

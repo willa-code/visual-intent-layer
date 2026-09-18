@@ -71,6 +71,7 @@ export type LayerCandidates = {
   revision: string;
   viewed?: ViewedState;
   trigger?: 'shell' | 'view';
+  truncated?: boolean;
 };
 export type LayerApplied = { source: 'vil-layer'; type: 'applied'; revision?: string };
 export type LayerRelationPreview = { source: 'vil-layer'; type: 'relation-preview'; sentence: string | null };

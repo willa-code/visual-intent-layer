@@ -88,23 +88,30 @@ export function resolutionItem(
   label: string,
   state?: RuntimeStateContext,
   outcome?: AnchorOutcome,
-  declared = false
+  declared = false,
+  truncated = false
 ): HTMLElement {
   const derived = deriveResolutionLabel(record, state);
+  const unread = truncated && record.match === 'unresolved';
+  const shown = unread ? 'unread' : derived;
   const cueName: IconName =
-    derived === 'matched'
-      ? 'check'
-      : derived === 'recovered'
-        ? 'recovered'
-        : derived === 'ambiguous' || derived === 'state-only'
-          ? 'ambiguous'
+    unread || derived === 'ambiguous' || derived === 'state-only'
+      ? 'ambiguous'
+      : derived === 'matched'
+        ? 'check'
+        : derived === 'recovered'
+          ? 'recovered'
           : 'deleted';
-  const item = h('li', { class: 'resolution', dataset: { label: derived }, attrs: { 'data-label': derived } });
+  const item = h('li', { class: 'resolution', dataset: { label: shown }, attrs: { 'data-label': shown } });
   const cue = h('span', { class: 'resolution__cue', attrs: { 'aria-hidden': 'true' } });
   cue.appendChild(icon(cueName, { size: 14 }));
   const comparison =
     outcome && (derived === 'matched' || derived === 'recovered') ? ` · ${anchorOutcomeText(outcome)}` : '';
-  const text = declared ? `${label}: Declared missing by you` : `${label}: ${resolutionLabelText(derived)}${comparison}`;
+  const text = declared
+    ? `${label}: Declared missing by you`
+    : unread
+      ? `${label}: Not in the part of this revision the surface read`
+      : `${label}: ${resolutionLabelText(derived)}${comparison}`;
   item.append(cue, h('span', { text }));
   return item;
 }

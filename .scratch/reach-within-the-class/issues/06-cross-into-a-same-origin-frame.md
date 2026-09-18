@@ -25,3 +25,12 @@ be found, and a cross-origin frame interior is refused with its own reason.
 is reachable only in a proxied application, whose content policy permits a same-origin
 frame; a saved-HTML artifact blocks every frame by policy, and relaxing that is a security
 decision that stays out of scope.
+
+2026-09-18 — this ticket also owns the frame-level half of ticket `03`'s bound. Ticket `03`
+is `done` for the composed tree inside one document and names the unticked box it moved
+here: a visited-document set and a one-frame-level nesting cap, so an artifact that embeds
+its own URL cannot recurse. `03` could not deliver it because it traverses no document but
+the artifact's own, and this ticket is the first that crosses a boundary. Add them when
+traversal enters the frame, and keep `03`'s rule with them: the budget stays one shared
+`WALK_LIMIT` visited top document first, and stopping early is recorded and stated rather
+than passed off as a search that found nothing.

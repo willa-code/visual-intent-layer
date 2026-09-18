@@ -53,6 +53,7 @@ class App {
   private repointFor?: string;
   private candidates?: ResolutionCandidate[];
   private viewed?: ViewedState;
+  private extractionTruncated = false;
   private resolvedRevision?: string;
   private currentRevision = this.config.revision;
   private adoptedRevision = this.config.revision;
@@ -483,7 +484,14 @@ class App {
       const label = target?.label ?? target?.renderedGrounding.accessibleName ?? target?.kind ?? resolution.targetId;
       const declared = declaredMissingNow(annotation, resolution.targetId) !== undefined;
       targets.appendChild(
-        resolutionItem(resolution, label, stateFor(resolution), anchorOutcome(annotation, resolution), declared)
+        resolutionItem(
+          resolution,
+          label,
+          stateFor(resolution),
+          anchorOutcome(annotation, resolution),
+          declared,
+          this.extractionTruncated
+        )
       );
     }
     if (annotation.resolutions.length > 0) {
@@ -501,7 +509,12 @@ class App {
       }
       const target = annotation.targets.find((entry) => entry.targetId === resolution.targetId);
       const label = target?.label ?? resolution.targetId;
-      row.appendChild(h('p', { class: 'hint', text: unresolvedSentence(label, resolution, stateFor(resolution)) }));
+      row.appendChild(
+        h('p', {
+          class: 'hint',
+          text: unresolvedSentence(label, resolution, stateFor(resolution), this.extractionTruncated)
+        })
+      );
       const unresolvedActions = h(
         'div',
         { class: 'chips' },
@@ -624,7 +637,7 @@ class App {
   }
 
   private verdictBlock(annotation: Annotation): HTMLElement {
-    const blocked = approvalBlockers(annotation, this.stateContextFor(annotation));
+    const blocked = approvalBlockers(annotation, this.stateContextFor(annotation), this.extractionTruncated);
     return verdictControls(annotation, {
       blocked,
       ...(annotation.verification ? { recorded: annotation.verification.verdict } : {}),
@@ -1076,7 +1089,7 @@ class App {
         void this.onRelation(message.relation);
         break;
       case 'candidates':
-        this.acceptCandidates(message.candidates, message.viewed, message.trigger);
+        this.acceptCandidates(message.candidates, message.viewed, message.trigger, message.truncated === true);
         void this.resolveAll(message.revision);
         break;      case 'notice':
         this.showNotice(
@@ -1556,13 +1569,19 @@ class App {
     this.renderCandidateMarks();
   }
 
-  private acceptCandidates(candidates: ResolutionCandidate[], viewed?: ViewedState, trigger?: 'shell' | 'view'): void {
+  private acceptCandidates(
+    candidates: ResolutionCandidate[],
+    viewed?: ViewedState,
+    trigger?: 'shell' | 'view',
+    truncated = false
+  ): void {
     const stateMoved = !sameViewedState(viewed, this.viewed);
-    if (trigger === 'view' || stateMoved) {
+    if (trigger === 'view' || stateMoved || truncated !== this.extractionTruncated) {
       this.resolvedRevision = undefined;
     }
     this.candidates = candidates;
     this.viewed = viewed;
+    this.extractionTruncated = truncated;
   }
 
   private async resolveAll(revision: string): Promise<void> {
@@ -2095,7 +2114,15 @@ function removedRelationsNotice(count: number): string {
     : `${count} relations were removed because they named targets no longer in this Annotation.`;
 }
 
-function unresolvedSentence(label: string, resolution: TargetResolutionRecord, state: RuntimeStateContext): string {
+function unresolvedSentence(
+  label: string,
+  resolution: TargetResolutionRecord,
+  state: RuntimeStateContext,
+  truncated = false
+): string {
+  if (truncated) {
+    return `${label} was not in the part of this revision the surface read, so approval is blocked.`;
+  }
   if (deriveResolutionLabel(resolution, state) === 'state-only') {
     return `${label} may exist only in a state no longer on screen, so approval is blocked.`;
   }

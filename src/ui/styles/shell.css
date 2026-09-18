@@ -654,7 +654,8 @@ body.gallery-body {
   border-color: var(--progress-ink);
 }
 .resolution[data-label='ambiguous'],
-.resolution[data-label='state-only'] {
+.resolution[data-label='state-only'],
+.resolution[data-label='unread'] {
   background: var(--attention-surface);
   color: var(--attention-ink);
   border-color: var(--attention-ink);

@@ -452,12 +452,12 @@ describe('Lever contract: the relation drive', () => {
   }, 180000);
 
   it('records comparative size with Shift held', () => {
+    expect(lever(['select', '--run', name, '--tool', 'point', '--target', '.a']).status).toBe(0);
+    expect(lever(['select', '--run', name, '--tool', 'point', '--target', '.b', '--add']).status).toBe(0);
     const related = lever([
       'relate',
       '--run',
       name,
-      '--from',
-      '.a',
       '--to',
       '.b',
       '--modifier',
@@ -476,12 +476,12 @@ describe('Lever contract: the relation drive', () => {
   }, 180000);
 
   it('records a shared property with Ctrl held', () => {
+    expect(lever(['select', '--run', name, '--tool', 'point', '--target', '.a']).status).toBe(0);
+    expect(lever(['select', '--run', name, '--tool', 'point', '--target', '.b', '--add']).status).toBe(0);
     const related = lever([
       'relate',
       '--run',
       name,
-      '--from',
-      '.a',
       '--to',
       '.b',
       '--modifier',

@@ -980,8 +980,16 @@ async function commandRelate(flags) {
     ...(modifier ? { modifiers: [modifier] } : {}),
     frame: 'artifact'
   });
-  await sleep(300);
-  const snapshot = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
+  let snapshot = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
+  for (
+    let attempt = 0;
+    attempt < 40 &&
+    JSON.stringify(snapshot.json.annotations?.[0]?.relationships ?? []) === beforeRelationships;
+    attempt += 1
+  ) {
+    await sleep(100);
+    snapshot = await productGet(secret, `/api/sessions/${secret.sessionId}/annotations`);
+  }
   const relationships = snapshot.json.annotations?.[0]?.relationships ?? [];
   if (JSON.stringify(relationships) === beforeRelationships) {
     fail(EXIT.unreachable, 'The drag recorded no relation.', 'Check the geometry and the modifier, then retry.');
