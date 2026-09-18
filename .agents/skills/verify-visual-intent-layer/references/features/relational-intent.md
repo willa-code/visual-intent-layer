@@ -53,3 +53,4 @@ exists.
 - The envelope still accepts `relationships`, so a hand-built or legacy envelope can carry a relation the surface would not infer. That is not coverage.
 - A relation is kept only while every target it names is still in the Annotation. Removing a member from the set, or re-pointing an Annotation, removes any relation that named it, and the surface says so in words rather than dropping it silently. Should a relation describe a target that is gone by any other route, the row states that too.
 - The stored relation never carries a pixel field. A drive that finds one has found a defect.
+- A relation drag survives another part of the surface taking focus. The rail focuses its note textarea whenever it re-renders the card, and that happens asynchronously after a selection; it must not cancel a drag that is still under the pointer. Only the page itself losing focus cancels the drag.

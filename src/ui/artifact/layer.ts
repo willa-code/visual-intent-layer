@@ -37,6 +37,16 @@ const addressBase = (script?.dataset['addressBase'] ?? '').replace(/\/+$/, '');
 const savedHtmlArtifact = addressBase.startsWith('/artifact/');
 const parentWindow = window.parent !== window ? window.parent : undefined;
 
+function topDocument(): Document {
+  return parentWindow?.document ?? document;
+}
+
+function cancelRelationDragIfPageLeft(): void {
+  if (pointDrag?.startedOnSelected && topDocument().visibilityState === 'hidden') {
+    cancelRelationDrag();
+  }
+}
+
 let tool: LayerTool = 'operate';
 let targets: SelectedTarget[] = [];
 let hovered: HTMLElement | null = null;
@@ -1150,10 +1160,16 @@ function start(): void {
   attachToDocument(document);
   document.addEventListener('click', onDocumentClick, true);
   window.addEventListener('blur', () => {
-    if (pointDrag?.startedOnSelected) {
-      cancelRelationDrag();
+    if (!pointDrag?.startedOnSelected) {
+      return;
     }
+    window.setTimeout(() => {
+      if (pointDrag?.startedOnSelected && !topDocument().hasFocus()) {
+        cancelRelationDrag();
+      }
+    }, 0);
   });
+  topDocument().addEventListener('visibilitychange', cancelRelationDragIfPageLeft);
   window.addEventListener('load', syncFrameDocuments);
   window.addEventListener('message', onMessage as EventListener);
   window.addEventListener('visual-intent:applied-revision', ((event: CustomEvent<{ revision?: unknown }>) => {

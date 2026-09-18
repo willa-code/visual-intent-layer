@@ -772,6 +772,148 @@ describe('Review Surface (primary seam: a real browser engine)', () => {
     await orderingPage.close();
   }, 120000);
 
+  it('keeps a relation drag alive when the rail pulls focus into the card', async () => {
+    const setArtifact = `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Focus artifact</title>
+    <style>body { margin: 0; } button.member { position: absolute; left: 8px; width: 120px; height: 40px; } .a { top: 0px; } .b { top: 600px; }</style>
+  </head>
+  <body>
+    <button class="member a" type="button">Member 1</button>
+    <button class="member b" type="button">Member 2</button>
+  </body>
+</html>`;
+    const setPath = join(artifactDir, 'focus.html');
+    writeFileSync(setPath, setArtifact, 'utf8');
+
+    const opened = await service.openSession({ kind: 'saved-html', path: setPath });
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const focusPage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await focusPage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+    const frame = focusPage.frameLocator('iframe.artifact-frame');
+    await expectLater(() => frame.locator('button.member').count(), (count) => count === 2, 'the artifact renders two members');
+
+    await focusPage.getByRole('button', { name: /Point at things/ }).click();
+    if (await focusPage.locator('.coachmark').count()) {
+      await focusPage.getByRole('button', { name: 'Got it' }).click();
+    }
+    await frame.locator('button.member').nth(0).click();
+    await frame.locator('button.member').nth(1).click({ modifiers: ['Shift'] });
+    await expectLater(
+      () => frame.locator('[data-vil-mark="owned"]').count(),
+      (count) => count === 2,
+      'both members carry an owned mark before the relation drag'
+    );
+
+    const member = await frame.locator('button.member').nth(0).boundingBox();
+    await focusPage.mouse.move(member!.x + member!.width / 2, member!.y + member!.height / 2);
+    await focusPage.mouse.down();
+    await focusPage.mouse.move(member!.x + member!.width / 2, member!.y + member!.height / 2 + 250, { steps: 10 });
+    await expectLater(
+      () => focusPage.locator('[data-relation-preview]').innerText(),
+      (text) => /should come after/.test(text),
+      'dragging past another shows the ordering sentence before release'
+    );
+
+    await focusPage.locator('.anchored-card textarea').focus();
+    await expectLater(
+      () => focusPage.locator('[data-relation-preview]').innerText(),
+      (text) => /should come after/.test(text),
+      'the sentence survives the rail taking focus into the card'
+    );
+    await focusPage.mouse.up();
+
+    const stored = () =>
+      fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`).then((response) => response.json()) as Promise<{
+        annotations: Array<{ relationships: Array<{ type: string; operator: string }> }>;
+      }>;
+    await expectLater(
+      async () => (await stored()).annotations[0]?.relationships?.[0]?.type,
+      (type) => type === 'ordering',
+      'the ordering relation is recorded even though the card took focus'
+    );
+    expect((await stored()).annotations[0]?.relationships?.[0]?.operator).toBe('after');
+
+    await focusPage.close();
+  }, 120000);
+
+  it('cancels a relation drag when the page itself loses focus', async () => {
+    const setArtifact = `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><title>Departure artifact</title>
+    <style>body { margin: 0; } button.member { position: absolute; left: 8px; width: 120px; height: 40px; } .a { top: 0px; } .b { top: 600px; }</style>
+  </head>
+  <body>
+    <button class="member a" type="button">Member 1</button>
+    <button class="member b" type="button">Member 2</button>
+  </body>
+</html>`;
+    const setPath = join(artifactDir, 'departure.html');
+    writeFileSync(setPath, setArtifact, 'utf8');
+
+    const opened = await service.openSession({ kind: 'saved-html', path: setPath });
+    const departurePage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await departurePage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+    const frame = departurePage.frameLocator('iframe.artifact-frame');
+    await expectLater(() => frame.locator('button.member').count(), (count) => count === 2, 'the artifact renders two members');
+
+    await departurePage.getByRole('button', { name: /Point at things/ }).click();
+    if (await departurePage.locator('.coachmark').count()) {
+      await departurePage.getByRole('button', { name: 'Got it' }).click();
+    }
+    await frame.locator('button.member').nth(0).click();
+    await frame.locator('button.member').nth(1).click({ modifiers: ['Shift'] });
+    await expectLater(
+      () => frame.locator('[data-vil-mark="owned"]').count(),
+      (count) => count === 2,
+      'both members carry an owned mark before the relation drag'
+    );
+
+    const member = await frame.locator('button.member').nth(0).boundingBox();
+    await departurePage.mouse.move(member!.x + member!.width / 2, member!.y + member!.height / 2);
+    await departurePage.mouse.down();
+    await departurePage.mouse.move(member!.x + member!.width / 2, member!.y + member!.height / 2 + 250, { steps: 10 });
+    await expectLater(
+      () => departurePage.locator('[data-relation-preview]').innerText(),
+      (text) => /should come after/.test(text),
+      'dragging past another shows the ordering sentence before release'
+    );
+
+    await departurePage.evaluate(() => {
+      const iframe = document.querySelector('iframe.artifact-frame') as HTMLIFrameElement;
+      document.hasFocus = () => false;
+      iframe.contentWindow?.dispatchEvent(new Event('blur'));
+    });
+    await expectLater(
+      () => departurePage.locator('[data-relation-preview]').innerText(),
+      (text) => !/should come after/.test(text),
+      'the sentence clears when the page itself loses focus'
+    );
+    await departurePage.mouse.up();
+
+    await departurePage.mouse.move(member!.x + member!.width / 2, member!.y + member!.height / 2);
+    await departurePage.mouse.down();
+    await departurePage.mouse.move(member!.x + member!.width / 2, member!.y + member!.height / 2 + 250, { steps: 10 });
+    await expectLater(
+      () => departurePage.locator('[data-relation-preview]').innerText(),
+      (text) => /should come after/.test(text),
+      'a second drag shows the ordering sentence before release'
+    );
+
+    await departurePage.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await expectLater(
+      () => departurePage.locator('[data-relation-preview]').innerText(),
+      (text) => !/should come after/.test(text),
+      'the sentence clears when the page goes hidden'
+    );
+
+    await departurePage.mouse.up();
+    await departurePage.close();
+  }, 120000);
+
   it('removes a relation whose target leaves the set, and states it in words', async () => {
     const setArtifact = `<!doctype html>
 <html lang="en">
