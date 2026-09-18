@@ -1,19 +1,22 @@
 name: Registry listing
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["Publish"]
+    types: [completed]
   workflow_dispatch:
 
 jobs:
   listing:
-    if: ${{ github.event_name == 'workflow_dispatch' || !github.event.release.prerelease }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
       - name: Install mcp-publisher
         run: |
           curl -sL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
@@ -23,4 +26,18 @@ jobs:
       - name: Authenticate as this repository
         run: ./mcp-publisher login github-oidc
       - name: Publish the listing
-        run: ./mcp-publisher publish
+        run: |
+          for attempt in 1 2 3 4 5 6 7 8; do
+            if output=$(./mcp-publisher publish 2>&1); then
+              echo "$output"
+              exit 0
+            fi
+            echo "$output"
+            if ! grep -q "404" <<< "$output"; then
+              exit 1
+            fi
+            echo "npm has not served the released version yet; retrying in 30s (attempt ${attempt} of 8)."
+            sleep 30
+          done
+          echo "The registry still could not see the released version after 8 attempts."
+          exit 1
