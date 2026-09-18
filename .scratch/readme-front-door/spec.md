@@ -227,3 +227,36 @@ flight.
 | **D6** | One guide file, not a `docs/guide/` tree. A split is anticipated, not done. |
 | **D7** | The troubleshooting section leads with the by-hand command, which was run and prints the service line, and keeps one no-agent recovery command. |
 | **D8** | `Layout` moves whole. The gallery-procedure paragraph and the module list both say things the file tree does not, so neither is trimmed in this change. |
+
+**D1 clarified, not rewritten.** D1 says the judgment sentence "no prose location
+descriptions, no lost context" is dropped. It is dropped from the front door and
+kept in the manual, where the argument is set out and `CONTEXT.md` and `VISION.md`
+govern its wording. The door is a door; the manual is where a reader goes to read
+the thesis.
+
+**2026-09-18 (later) — the two-axis review over `ce5c551..56a9841`, and what it
+changed.** Both lanes ran and both returned, with their reports kept at
+`review/standards-axis.md` and `review/spec-axis.md`. The corrections are a second
+commit rather than an amendment, because the reviewed revision is a record.
+
+- **Two false statements, both fixed.** The README said a restart clears the cached
+  command; `pi-mcp-adapter` reads its cache from disk, so a restart re-reads the
+  same entry (`npx-resolver.ts:503-507`). It now names
+  `~/.pi/agent/mcp-npx-cache.json` as the thing to delete. And the recovery command
+  was `visual-intent open …`, a bin the README never installs; it is now the npx
+  form, run here, which printed a review URL for `fixtures/gallery.html`.
+- **Vocabulary corrected to what the surface ships.** "reject with another pass" and
+  "snapshot bytes" named words `CONTEXT.md` lists under _Avoid_; they now read
+  Approve / Not Fixed / Mark obsolete — the labels in `src/ui/components.ts:366-387`
+  — and Captured View bytes. A lowercase "review surface" became **Review Surface**.
+- **One fact, one place.** The guide's opener repeated the front door's location,
+  which the guide's own Documentation section states, so the clause is gone, and the
+  README's recovery command no longer repeats the guide's block verbatim.
+- **Filenames and claims a reader can act on.** The global opencode config can be
+  `opencode.jsonc`; the pi route is `/mcp setup` rather than the `/mcp` panel; the
+  global-install form is given as a command; the boundary sentence mirrors the
+  guide's ("generated", "mobile build"); and the claim about the guide naming each
+  Harness's entry file is now "the Harnesses that keep one", because Claude Code's
+  config is not a file the guide can name without asserting something unverified.
+- **The maintain skill's outside-facts rule extends to the guide's removal section**,
+  not only the README, so Docs sync still covers what the product does not own.

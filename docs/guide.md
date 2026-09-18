@@ -1,12 +1,11 @@
 # Visual Intent Layer
 
 The product manual: what the loop is, how the Review Surface behaves, what the
-agent is told, and where the data lives. Installing, updating and uninstalling is
-[`README.md`](../README.md).
+agent is told, and where the data lives.
 
 ## What this is
 
-A local-first **Visual Direction Loop**: open a review surface on an
+A local-first **Visual Direction Loop**: open the Review Surface on an
 agent-produced interface, point at visible targets, compose **Annotations**, and
 verify the result by hand. No prose location descriptions, no lost context.
 
@@ -40,7 +39,9 @@ session and its URL, so a review does not accumulate tabs.
 
 ### The same server, without an agent
 
-The local commands need no agent and no registration:
+The local commands need no agent and no registration. The `visual-intent` bin
+comes from a global install (`npm install -g visual-intent-layer`); without one,
+prefix any of them with `npx -y --package visual-intent-layer@latest`:
 
 ```sh
 visual-intent open --html ./checkout.html     # opens the browser, prints the review URL
@@ -59,8 +60,8 @@ right holds the artifact's identity, its revision, the agent's position and
 every Annotation — unsent and sent alike, in one list with the state pill
 carrying the difference, so nothing leaves the view when it is sent. An
 Annotation that needs a decision comes first; closed ones stay behind one
-toggle. Verdicts are decided where the Annotation sits: approve, reject with
-another pass, or mark obsolete. Amending one that was already sent supersedes
+toggle. Verdicts are decided where the Annotation sits: Approve, Not Fixed, or
+Mark obsolete. Amending one that was already sent supersedes
 it and delivers the amendment; it is never rewritten in place.
 
 A small **island** over the artifact holds two icon-only tiles: point at things,
@@ -193,8 +194,8 @@ knows to call `check_in` between its own steps.
 | `VISUAL_INTENT_NO_OPEN`   | Set to `1` to suppress automatic browser opening.                        |
 | `VISUAL_INTENT_WAIT_MS`   | How long the agent-facing entry tool holds the call, in milliseconds.    |
 
-Annotations, sessions, attachments, snapshot bytes and Check-In contact all live
-under the data directory, so a service restart loses nothing — and uninstalling
+Annotations, sessions, attachments, Captured View bytes and Check-In contact all
+live under the data directory, so a service restart loses nothing — and uninstalling
 the package deletes none of it: the directory stays until you remove it.
 
 ### Where the entry lives, when you want it gone
@@ -205,8 +206,8 @@ Removal is the same act as registration, in the same place. Codex ships
 `pi-mcp-adapter`'s `/mcp disable <server>` only persists a `disabled` flag in
 `.pi/mcp.json` — neither removes anything, so delete the entry from the file you
 added it to: a project `opencode.json` or an existing `opencode.jsonc`, or the
-global `~/.config/opencode/opencode.json`; a project `.mcp.json`, `.pi/mcp.json`,
-or `~/.config/mcp/mcp.json`.
+global `~/.config/opencode/opencode.json` or an existing `opencode.jsonc`; a
+project `.mcp.json`, `.pi/mcp.json`, or `~/.config/mcp/mcp.json`.
 
 ## The envelope schema
 
@@ -301,7 +302,7 @@ with `UPDATE_GALLERY=1` once the change is intended.
 ## Documentation
 
 The front door — install, update, uninstall — is [`README.md`](../README.md).
-Paths in this file are from the repository root:
+Inline paths are from the repository root:
 
 - `docs/adr/` — architecture decisions, including ADR-0018 on Check-In replacing
   a steering capability

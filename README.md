@@ -1,9 +1,10 @@
 # Visual Intent Layer
 
 Point at what you see and say what should change. The agent changes exactly that,
-and you verify by hand. It reviews a browser-rendered artifact — a saved HTML
-document, or a web app running on this machine; a native window, a design file or
-a PDF is outside it by decision rather than omission.
+and you verify by hand. It reviews a browser-rendered artifact — a saved or
+generated HTML document, or a local web app running on this machine; a mobile
+build, a native window, a design file and a PDF are outside it by decision rather
+than omission.
 
 ## Install
 
@@ -18,7 +19,7 @@ that we write.
 | Claude Code | `claude mcp add visual-intent-layer -- npx -y --package visual-intent-layer@latest visual-intent-mcp`      |
 | Codex       | `codex mcp add visual-intent-layer -- npx -y --package visual-intent-layer@latest visual-intent-mcp`       |
 | opencode    | `opencode mcp add visual-intent-layer`, then give it `npx` and the arguments above when it asks             |
-| pi          | the entry below, with `pi-mcp-adapter` installed, or the adapter's `/mcp` panel                             |
+| pi          | the entry below, with `pi-mcp-adapter` installed, or the adapter's `/mcp setup` panel                             |
 | any other   | any host that can launch a local stdio server: command `npx`, arguments `-y --package visual-intent-layer@latest visual-intent-mcp` |
 
 Registry-aware clients can also find the server as
@@ -50,16 +51,17 @@ replacing the file:
 ```
 
 A project `.mcp.json` applies to that project only. `.pi/mcp.json` is the Pi-only
-project override, and `~/.config/mcp/mcp.json` applies to every project. With the
-package installed globally, the entry's `command` is `visual-intent` and its
-`args` are `["mcp"]`.
+project override, and `~/.config/mcp/mcp.json` applies to every project. Install
+the package globally (`npm install -g visual-intent-layer`) and the entry's
+`command` becomes `visual-intent` with `args` `["mcp"]`.
 
 ### Update
 
 `@latest` is resolved when npx fetches the package, so there is nothing to update
 by hand — unless your Harness caches the resolved command and keeps serving it:
-`pi-mcp-adapter` caches for 24 hours. Restart the agent, or clear that cache, to
-force a fetch. `npm view visual-intent-layer version` says what is current.
+`pi-mcp-adapter` caches for 24 hours, reading the cache from disk, so a restart
+does not renew it. Delete `~/.pi/agent/mcp-npx-cache.json` to force a fresh
+fetch. `npm view visual-intent-layer version` says what is current.
 
 To hold a version still, replace `@latest` with an exact version in the entry. A
 global install updates with `npm install -g visual-intent-layer@latest`.
@@ -73,7 +75,7 @@ else. A global install comes out with `npm uninstall -g visual-intent-layer`.
 
 Uninstalling deletes none of your reviews: Annotations, sessions and attachments
 stay in `~/.visual-intent-layer/data` until you remove that directory.
-`docs/guide.md` names the file each Harness keeps its entry in.
+`docs/guide.md` names the file for the Harnesses that keep one.
 
 ### If the tools do not appear
 
@@ -92,7 +94,7 @@ reads none.
 The server runs without an agent too:
 
 ```sh
-visual-intent open --html ./checkout.html     # opens the browser, prints the review URL
+npx -y --package visual-intent-layer@latest visual-intent open --html ./checkout.html
 ```
 
 ## Documentation

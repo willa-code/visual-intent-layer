@@ -49,7 +49,9 @@ Read the surface from its own sources, not from the docs:
 - `schema/`, `package.json` (`bin`, `files`, `mcpName`, `scripts`), `server.json` and `src/host/capabilities.ts`
 - `src/ui/` — the modes, keys and surfaces a Builder-Reviewer sees
 
-The install, update and uninstall lines in `README.md` are the one docs whose
+The install, update and uninstall lines in `README.md`, and the per-Harness
+removal detail in `docs/guide.md`,
+are the one docs whose
 facts come from outside this repository: verify each command against that Harness's
 own CLI (`<harness> mcp add --help`, `<harness> mcp remove --help`) rather than
 trusting the text, since the Harness owns the syntax. pi ships no MCP of its own:
