@@ -182,3 +182,54 @@ version decision as settled and then re-posed it as open. That is fixed above.
   longer reads or repairs one, and the release notes say so.
 - Windows-specific configuration paths, which the deleted registry was the only place
   to name.
+
+## Comments
+
+**Implemented, 2026-09-18.** Landed in four commits on top of `a3c5b7b`:
+
+- `3dc90cd` — the install story: `cli-setup.ts`, `harness-registry.ts` and their tests
+  deleted with the `setup` verb and its four flags, `skills/` with the `pi` key, the
+  packaged `mcp.json` and `check-bins`' pin check. README's install table names each
+  Harness's registrar, verified against `codex mcp add --help` and
+  `opencode mcp add --help` rather than copied from the deleted writer. ADR-0031
+  supersedes 0014 in full and 0002's Skill clause.
+- `ee676f6` — `serverVersion` in every open result, read from `package.json`; the four
+  triggers ported into `open_visual_review`'s description; `mcpName` and `server.json`
+  for the registry; `maintain-visual-intent-layer` rewritten, with Publish refusing a
+  pre-release rather than publishing it to `latest`.
+- `6d804bd` — ticket 06's doc sync, including the Lever's own `setup` command and the
+  feature file that described it.
+- `1358b49` — ticket 08: `describeTarget`'s fallback reads as words the glossary
+  permits, moved to `src/ui/target-label.ts` so a node test can reach it.
+
+**Verification Run:** `.visual-intent-verify/runs/2026-09-18_11-31-30-standard-mcp-distribution/`
+— outcome `clean` at revision `1358b49` on a clean tree, evidence intact after cleanup
+(six screenshots, the recording, the trace, an ARIA snapshot and the stored-state
+read-back). Driven: `open-artifact` [open-html, open-identity, open-isolation,
+open-faithful, open-health], `annotate-and-send` [select-box, annotate-note, queue-add,
+send-next-pass, read-back], `mcp-agent-loop` [mcp-open]. Proven live: box → annotate →
+queue → send produced a delivered Annotation whose target is a `region`, and
+`open_visual_review` carried `serverVersion: "0.3.0-next.3"`.
+
+Two behaviours have no live drive by construction and are held by tests instead: the
+Area's fallback words, because a Lever-run Area carries a label, and the
+browser-cannot-open sentence, because a run suppresses the browser and always has a
+host. `open-artifact.md`'s Gotchas states both.
+
+**The review of this change is not done.** A two-axis review was dispatched over
+`f555a4d..HEAD` and both lanes failed on a provider billing error — `402`, first
+`openrouter_in_flight_budget_exhausted` then `openrouter_credits` ("requires more
+credits, or fewer max_tokens"). No review artifact was produced. Per the delegation
+rules this is a lane infrastructure blocker: the run is reported rather than rerouted
+to a different agent or CLI without the owner's approval.
+
+Checks I ran directly instead, which are not a substitute for the independent review:
+no live file references `cli-setup`, `harness-registry`, `skills/visual-intent`,
+`visual-intent setup` or `--no-skill` — the only hits are inside ADR-0014 and ADR-0031
+naming what was deleted; every relative markdown link in the three documents touched
+resolves; and `npm pack --dry-run` shows 179 files with both bin entries, four schema
+files, and neither `skills/` nor `mcp.json`.
+
+**Blocking the release, not the change:** `latest` on npm is still `0.2.1`, so the
+README's documented `@latest` command installs a product older than the entire
+review-surface rework. The release has to happen for that claim to be true.
