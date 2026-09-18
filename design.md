@@ -275,7 +275,7 @@ gallery in §9 renders them.
 | `RevisionChip` | current, advanced; mono identity |
 | `AttentionTrigger` | hidden at zero, badge with count |
 | `OverflowMenu` | closed, open, item focus |
-| `ArtifactFrame` | loading, ready, unreachable, policy-blocked, changed |
+| `ArtifactFrame` | loading, ready, unreachable (its trigger named, with a retry that can work), policy-blocked, changed |
 | `OverlayMark` | hover, selected, focused, drawn-target boundary, relation ghost, candidate mark |
 | `RelationSentence` | preview before release; recorded on the Annotation in the card and the rail row, from one formatter; names the targets and the desired relationship, never a pixel value |
 | `DrawnTargetBoundary` | drawing; drawn; below the minimum-size threshold it produces nothing |
@@ -295,6 +295,7 @@ gallery in §9 renders them.
 | `RepointAction` | offered on an Annotation whose target could not be matched: the next selection re-points that Annotation rather than composing a new one |
 | `DeclareMissingAction` | offered beside `RepointAction`, and only where the target found no candidate: records the Builder-Reviewer's own declaration, which reads as theirs and clears that target's approval blocker |
 | `TakeBackAction` | icon-only, offered on a delivered Annotation whose Pass the agent has not collected: returns it to the queue and marks the Pass taken back. Absent once the Pass is collected, where a Replacement is the act, and a read delivery is never deleted |
+| `TerminalState` | shown when the review has stopped authorizing: one sentence naming the cause and one action that opens the artifact again over the same stored notes; never an `ArtifactFrame` failure |
 | `VerdictControls` | enabled, blocked with reason, recorded; `Approve` and `Not Fixed` are visible, obsolete sits behind one overflow on that row, and the decision already recorded is marked on its own control so choosing another changes it in one act |
 | `Drawer` | open, closed, scrollable body |
 | `DisclosureList` | populated, empty |
@@ -840,3 +841,37 @@ moment is absent. Once collected, the action is gone and a Replacement is the on
 act; a delivered Annotation is never deleted. Re-pointing a target is offered only
 on an undecided Annotation, or after its decision is reopened, so a judgement is
 never silently re-aimed. ADR-0028 records the decision.
+
+### 2026-09-18 — A review that stops authorizing says so
+
+Reason: a session that was never ended authorized forever, and when one did stop
+authorizing the surface failed silently or scattered notices. Expiry bounds an idle
+review; the moment it dies while the surface is open has to be stated rather than
+inferred from a request that stopped working.
+
+Replaces:
+
+- §6's component inventory, which had no terminal state.
+
+A session expires after seven days without a human act, renewed by acts rather
+than by the status poll, and it never expires mid-review. The refusal names its
+cause, and an open surface shows one `TerminalState` whose single action opens the
+artifact again over the same stored notes. An ended or expired session is never an
+`ArtifactFrame.unreachable`; that state stays for an artifact fetch failure.
+ADR-0029 records the decision.
+
+### 2026-09-18 — The frame fails honestly, and never for a dead session
+
+Reason: §6 promised `loading, ready, unreachable, policy-blocked, changed`, but
+`unreachable` existed only as a string in the gallery. A failed fetch rendered as a
+blank or browser-error frame, and there was no trigger named and no retry.
+
+Replaces:
+
+- §6's `ArtifactFrame` entry, which named the states without saying what each does.
+
+`unreachable` is reached by a failed fetch of the artifact document, names the
+failure and offers a retry that can work; `policy-blocked` stays the consent gate
+for a remote origin, and `changed` stays the banner for a new revision. A dead
+session is never an `ArtifactFrame.unreachable`: the review's own terminal state
+covers that, and the two never share a surface. The gallery renders every state.

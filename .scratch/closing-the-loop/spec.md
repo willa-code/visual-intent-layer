@@ -1,6 +1,6 @@
 # Closing the loop: changing your mind, and saying what a revision answered
 
-Status: ready-for-agent
+Status: done
 
 Scope accepted; the design and the tickets are not written. This file exists because
 each item below is either promised by a normative document today or named as Pass B by
@@ -154,3 +154,13 @@ Lever gained `close-pass` and `another-pass`, which the harness lacked. Run
 runs; that is pre-existing fixture noise, not this iteration. Both runs worked from
 a dirty tree, and only the darwin gallery baselines are recorded here; the Linux
 pair comes from CI's `gallery-actual`.
+
+2026-09-18 — all seven tickets landed; status `ready-for-agent` → `done`. The final
+Verification Run `.visual-intent-verify/runs/2026-09-18_00-58-35-closing-the-loop-2`
+ended `changed`: it drove taking back an unread send, the expired-session terminal
+state, and the reload of a changed artifact, and found a second defect — a re-send
+after a take-back returned the withdrawn Pass by idempotency key, so the note never
+re-delivered. Fixed by salting the key past a withdrawn Pass. `Declare missing`
+and the unreachable frame could not be forced live through the Lever and are
+recorded as `unreachable` with their preconditions; both are driven by the browser
+loop. The darwin gallery baselines were regenerated again for the frame-state panels.

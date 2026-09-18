@@ -1171,3 +1171,28 @@ body.gallery-body {
     border-top: 1px solid var(--line-default);
   }
 }
+
+.terminal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  text-align: center;
+  background: var(--canvas);
+  color: var(--ink-primary);
+}
+
+.terminal h2 {
+  font: var(--type-stage-title);
+}
+
+.terminal p {
+  margin: 0;
+  max-width: 46ch;
+  color: var(--ink-secondary);
+  font: var(--type-body);
+}

@@ -307,9 +307,48 @@ function themeSection(theme: 'light' | 'dark'): HTMLElement {
         )
       ),
       panel(
-        'ArtifactFrame states',
-        h('p', { class: 'hint', text: 'loading · ready · unreachable · policy-blocked · changed' }),
-        h('div', { class: 'stage__placeholder', style: 'position:static;padding:16px' }, h('h2', { text: 'This artifact will contact a remote origin' }), h('ul', {}, h('li', {}, h('code', { text: 'https://cdn.example.com' }))))
+        'ArtifactFrame — loading',
+        h(
+          'div',
+          { class: 'stage__placeholder', style: 'position:static;padding:16px' },
+          h('h2', { text: 'Loading the artifact' }),
+          h('p', { class: 'hint', text: 'No remote origin was declared by this artifact.' })
+        )
+      ),
+      panel(
+        'ArtifactFrame — ready',
+        h(
+          'div',
+          { style: 'height:96px;border:1px solid var(--line-default);border-radius:12px;background:var(--surface)' },
+          h('p', { class: 'hint', style: 'padding:12px', text: 'The artifact renders in the frame.' })
+        )
+      ),
+      panel(
+        'ArtifactFrame — unreachable',
+        h(
+          'div',
+          { class: 'stage__placeholder', style: 'position:static;padding:16px' },
+          h('h2', { text: 'The artifact is unreachable' }),
+          h('p', { class: 'hint', text: 'The artifact could not be fetched (404 Not Found).' }),
+          button('Try again', { variant: 'primary', onClick: () => undefined })
+        )
+      ),
+      panel(
+        'ArtifactFrame — policy-blocked',
+        h(
+          'div',
+          { class: 'stage__placeholder', style: 'position:static;padding:16px' },
+          h('h2', { text: 'This artifact will contact a remote origin' }),
+          h('ul', {}, h('li', {}, h('code', { text: 'https://cdn.example.com' })))
+        )
+      ),
+      panel(
+        'ArtifactFrame — changed',
+        h(
+          'div',
+          { class: 'banner', style: 'position:static' },
+          h('p', { text: 'The artifact has moved on. Reload to review the new revision.' })
+        )
       )
     ),
     h('h2', { text: 'Annotations and verification' }),

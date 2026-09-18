@@ -279,6 +279,28 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     return;
   }
 
+  const sessionReopenMatch = /^\/api\/sessions\/([^/]+)\/reopen$/.exec(path);
+  if (method === 'POST' && sessionReopenMatch) {
+    const sessionId = decodeURIComponent(sessionReopenMatch[1]!);
+    const capability = capabilityFrom(request, url);
+    const record = capability ? sessions.verifyCapability(sessionId, capability) : undefined;
+    if (!record) {
+      sendText(response, 401, 'Unauthorized: missing or invalid session capability');
+      return;
+    }
+    if (record.endedAt) {
+      sendText(response, 409, 'This review was ended rather than expired, so it has to be opened again by the agent.');
+      return;
+    }
+    sessions.revive(sessionId);
+    sendJson(response, 200, {
+      reopened: true,
+      sessionId,
+      message: 'Opened again. Your notes are still stored on this machine.'
+    });
+    return;
+  }
+
   const sessionMatch = /^\/api\/sessions\/([^/]+)$/.exec(path);
   if (method === 'GET' && sessionMatch) {
     const session = authorizedOrRefuse(context, sessionMatch[1]!, url);
@@ -457,7 +479,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     }
     const session = sessions.findByArtifact(pass.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
-      sendText(response, 401, 'Unauthorized');
+      sendText(response, 401, unauthorizedText(context, session?.sessionId ?? '', url));
       return;
     }
     sendJson(response, 200, { pass: review.annotations.closePass(passId) });
@@ -474,7 +496,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     }
     const session = sessions.findByArtifact(pass.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
-      sendText(response, 401, 'Unauthorized');
+      sendText(response, 401, unauthorizedText(context, session?.sessionId ?? '', url));
       return;
     }
     try {
@@ -496,7 +518,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     }
     const session = sessions.findByArtifact(pass.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
-      sendText(response, 401, 'Unauthorized');
+      sendText(response, 401, unauthorizedText(context, session?.sessionId ?? '', url));
       return;
     }
     try {
@@ -527,7 +549,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     }
     const session = sessions.findByArtifact(annotation.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
-      sendText(response, 401, 'Unauthorized');
+      sendText(response, 401, unauthorizedText(context, session?.sessionId ?? '', url));
       return;
     }
     const body = await readJsonBody(request, response);
@@ -564,7 +586,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     }
     const session = sessions.findByArtifact(annotation.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
-      sendText(response, 401, 'Unauthorized');
+      sendText(response, 401, unauthorizedText(context, session?.sessionId ?? '', url));
       return;
     }
     const body = await readJsonBody(request, response);
@@ -600,7 +622,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     }
     const session = sessions.findByArtifact(annotation.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
-      sendText(response, 401, 'Unauthorized');
+      sendText(response, 401, unauthorizedText(context, session?.sessionId ?? '', url));
       return;
     }
     const body = await readJsonBody(request, response);
@@ -630,7 +652,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     }
     const session = sessions.findByArtifact(annotation.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
-      sendText(response, 401, 'Unauthorized');
+      sendText(response, 401, unauthorizedText(context, session?.sessionId ?? '', url));
       return;
     }
     const body = await readJsonBody(request, response);
@@ -665,7 +687,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     }
     const session = sessions.findByArtifact(annotation.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
-      sendText(response, 401, 'Unauthorized');
+      sendText(response, 401, unauthorizedText(context, session?.sessionId ?? '', url));
       return;
     }
     try {
@@ -686,7 +708,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     }
     const session = sessions.findByArtifact(annotation.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
-      sendText(response, 401, 'Unauthorized');
+      sendText(response, 401, unauthorizedText(context, session?.sessionId ?? '', url));
       return;
     }
     sendJson(response, 200, { annotation: review.annotations.queue(annotationId) });
@@ -703,7 +725,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     }
     const session = sessions.findByArtifact(annotation.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
-      sendText(response, 401, 'Unauthorized');
+      sendText(response, 401, unauthorizedText(context, session?.sessionId ?? '', url));
       return;
     }
     if (method === 'PATCH') {
@@ -744,7 +766,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     }
     const session = sessions.findByArtifact(annotation.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
-      sendText(response, 401, 'Unauthorized');
+      sendText(response, 401, unauthorizedText(context, session?.sessionId ?? '', url));
       return;
     }
     const declaredLength = Number(request.headers['content-length']);
@@ -782,7 +804,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     }
     const session = sessions.findByArtifact(annotation.artifactId);
     if (!session || !authorize(context, session.sessionId, url)) {
-      sendText(response, 401, 'Unauthorized');
+      sendText(response, 401, unauthorizedText(context, session?.sessionId ?? '', url));
       return;
     }
     const updated = review.annotations.removeAttachment(annotationId, attachmentId);
@@ -851,7 +873,7 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     const batch = review.annotations.getPass(envelopeId);
     const session = batch ? sessions.findByArtifact(batch.artifactId) : undefined;
     if (!session || !authorize(context, session.sessionId, url)) {
-      sendText(response, 401, 'Unauthorized');
+      sendText(response, 401, unauthorizedText(context, session?.sessionId ?? '', url));
       return;
     }
     sendJson(response, 200, await review.acknowledge(envelopeId, agentId));
@@ -953,10 +975,21 @@ async function computeRemoteOrigins(session: SessionRecord): Promise<RemoteOrigi
 function authorizedOrRefuse(context: RequestContext, sessionId: string, url: URL): SessionRecord | undefined {
   const session = authorize(context, sessionId, url);
   if (!session) {
-    sendText(context.response, 401, 'Unauthorized: missing or invalid session capability');
+    sendText(context.response, 401, unauthorizedText(context, sessionId, url));
     return undefined;
   }
   return session;
+}
+
+function unauthorizedText(context: RequestContext, sessionId: string, url: URL): string {
+  const record = context.sessions.verifyCapability(sessionId, capabilityFrom(context.request, url));
+  if (!record) {
+    return 'Unauthorized: missing or invalid session capability';
+  }
+  if (record.endedAt) {
+    return 'This review was ended, so its link no longer authorizes. Your notes are still stored on this machine.';
+  }
+  return 'This review link expired after a week without use. Your notes are still stored on this machine.';
 }
 
 function authorize(context: RequestContext, sessionId: string, url: URL): SessionRecord | undefined {
@@ -964,7 +997,14 @@ function authorize(context: RequestContext, sessionId: string, url: URL): Sessio
   if (!sessionId || !capability) {
     return undefined;
   }
-  return context.sessions.authorized(sessionId, capability);
+  const session = context.sessions.authorized(sessionId, capability);
+  if (!session) {
+    return undefined;
+  }
+  if (context.request.method !== 'GET') {
+    return context.sessions.touch(sessionId) ?? session;
+  }
+  return session;
 }
 
 function capabilityFrom(request: IncomingMessage, url: URL): string | undefined {

@@ -60,6 +60,16 @@ export type SendResponse = {
   reason?: string;
 };
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 export class Api {
   constructor(
     private readonly sessionId: string,
@@ -195,6 +205,10 @@ export class Api {
     await this.json(this.url(`/api/passes/${passId}/withdraw`), { method: 'POST' });
   }
 
+  async reopen(): Promise<void> {
+    await this.json(this.url(`/api/sessions/${this.sessionId}/reopen`), { method: 'POST' });
+  }
+
   async verify(annotationId: string, verdict: string): Promise<Annotation> {
     const result = await this.json<{ annotation: Annotation }>(this.url(`/api/annotations/${annotationId}/verify`), {
       method: 'POST',
@@ -249,7 +263,10 @@ export class Api {
       credentials: 'same-origin'
     });
     if (!response.ok) {
-      throw new Error((await response.text()).trim() || `${response.status} ${response.statusText}`);
+      throw new ApiError(
+        (await response.text()).trim() || `${response.status} ${response.statusText}`,
+        response.status
+      );
     }
     return (await response.json()) as T;
   }

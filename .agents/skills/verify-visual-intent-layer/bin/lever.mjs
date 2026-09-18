@@ -79,6 +79,8 @@ Usage:
   lever close-pass [--row <n>]
   lever another-pass [--row <n>]
   lever withdraw-pass
+  lever expire-session
+  lever declare-missing [--match <text>]
   lever measure
   lever unreachable --command <text> --precondition <text>
 
@@ -1676,6 +1678,48 @@ async function commandWithdrawPass(flags) {
   output({ ok: true, command: 'withdraw-pass', screenshot: shot.path });
 }
 
+async function commandDeclareMissing(flags) {
+  const runDir = resolveRun(flags.run);
+  const secret = await assertHealthy(runDir);
+  const match = typeof flags.match === 'string' ? flags.match : undefined;
+  if (flags['dry-run']) {
+    output({ dryRun: true, would: { declareMissing: match ?? 'first unresolved row' } });
+    return;
+  }
+  const host = hostCall(secret);
+  const scope = match ? `.annotation-row:has-text(${JSON.stringify(match)})` : '.annotation-row';
+  await host('/click', { target: { selector: `${scope} [data-action="declare-missing"]` } });
+  await sleep(300);
+  const shot = await host('/screenshot', { name: `declare-missing-${Date.now()}` });
+  recordEvidence(runDir, { kind: 'screenshot', name: 'declare-missing', path: shot.path });
+  recordCoverage(runDir, 'verify-each-annotation', 'driven', 'declared a target missing', ['declare-missing']);
+  output({ ok: true, command: 'declare-missing', screenshot: shot.path });
+}
+
+async function commandExpireSession(flags) {
+  const runDir = resolveRun(flags.run);
+  const secret = await assertHealthy(runDir);
+  if (flags['dry-run']) {
+    output({ dryRun: true, would: { expireSession: secret.sessionId } });
+    return;
+  }
+  const sessionsFile = join(secret.dataDir, 'service-sessions.json');
+  const records = readJson(sessionsFile, {});
+  const record = records[secret.sessionId];
+  if (!record) {
+    fail(EXIT.precondition, 'The run has no stored session record to expire.', 'Launch a run first.');
+  }
+  records[secret.sessionId] = { ...record, expiresAt: new Date(Date.now() - 60000).toISOString() };
+  writeJson(sessionsFile, records);
+  const host = hostCall(secret);
+  await sleep(3500);
+  const terminal = await host('/count', { target: { selector: '.terminal' } });
+  const shot = await host('/screenshot', { name: `expire-session-${Date.now()}` });
+  recordEvidence(runDir, { kind: 'screenshot', name: 'expire-session', path: shot.path });
+  recordCoverage(runDir, 'session-and-overflow', 'driven', 'an expired review shows one terminal state', ['session-expiry', 'session-terminal']);
+  output({ ok: true, command: 'expire-session', terminal: terminal.count, screenshot: shot.path });
+}
+
 async function commandClosePass(flags) {
   const runDir = resolveRun(flags.run);
   const secret = await assertHealthy(runDir);
@@ -1968,6 +2012,8 @@ async function main() {
     'close-pass': commandClosePass,
     'another-pass': commandAnotherPass,
     'withdraw-pass': commandWithdrawPass,
+    'expire-session': commandExpireSession,
+    'declare-missing': commandDeclareMissing,
     measure: commandMeasure,
     unreachable: commandUnreachable,
     state: commandState,

@@ -652,6 +652,25 @@ describe('Annotation store', () => {
     expect(() => store.withdrawPass(pass.passId)).toThrow(/already collected/i);
   });
 
+  it('delivers again after a take-back instead of returning the withdrawn Pass', () => {
+    const store = new AnnotationStore(dataDir());
+    const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });
+    const options = {
+      host: 'test',
+      intent: 'next-pass' as const,
+      artifact: { id: 'a', kind: 'saved-html' as const, revision: 'rev-1' }
+    };
+    const first = store.markDelivered([annotation.annotationId], options);
+    store.withdrawPass(first.passId);
+
+    const second = store.markDelivered([annotation.annotationId], options);
+
+    expect(second.passId).not.toBe(first.passId);
+    expect(second.state).toBe('in-flight');
+    expect(store.get(annotation.annotationId)?.state).toBe('delivered');
+    expect(store.getPass(first.passId)?.state).toBe('withdrawn');
+  });
+
   it('re-points a decided note only after its decision is reopened', () => {
     const store = new AnnotationStore(dataDir());
     const annotation = store.createDraft({ artifactId: 'a', writtenRevision: 'rev-1', targets: [target()] });

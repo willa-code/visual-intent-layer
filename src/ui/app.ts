@@ -3,7 +3,7 @@ import { anchorOutcome, approvalBlockers, declaredMissingNow, isAmendable, isAtt
 import { relationSentence } from '../annotation/relations.js';
 import { deriveResolutionLabel, type RuntimeStateContext } from '../resolution/model.js';
 import type { ResolutionCandidate, TargetResolutionRecord } from '../resolution/resolve.js';
-import { Api, type Policy, type SessionPass, type SessionSnapshot, type SessionStatus } from './api.js';
+import { Api, ApiError, type Policy, type SessionPass, type SessionSnapshot, type SessionStatus } from './api.js';
 import {
   agentDisclosure,
   attachmentChips,
@@ -58,6 +58,7 @@ class App {
   private revisionBasis: 'document' | 'files' = 'document';
   private reading = false;
   private artifactLoaded = false;
+  private frameState: 'loading' | 'ready' | 'unreachable' | 'policy-blocked' | 'changed' = 'loading';
   private drawerOpen = false;
   private menuOpen = false;
   private noticeTimer?: number;
@@ -150,6 +151,10 @@ class App {
     try {
       this.snapshot = await this.api.snapshot();
     } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        this.showTerminal(error.message);
+        return;
+      }
       this.showNotice(`Could not read local state: ${messageOf(error)}`);
       return;
     }
@@ -176,9 +181,11 @@ class App {
         h('h2', { text: 'Loading the artifact' }),
         h('p', { class: 'hint', text: 'No remote origin was declared by this artifact.' })
       );
-      this.loadArtifact();
+      this.frameState = 'loading';
+      void this.loadArtifact();
       return;
     }
+    this.frameState = 'policy-blocked';
     const gate = h(
       'div',
       { class: 'policy-gate' },
@@ -210,11 +217,49 @@ class App {
     this.placeholder.append(gate);
   }
 
-  private loadArtifact(): void {
+  private async loadArtifact(): Promise<void> {
     this.artifactLoaded = true;
+    const url = this.config.src || `/artifact/${this.config.sessionId}`;
+    this.frameState = 'loading';
+    this.iframe.hidden = true;
+    this.placeholder.hidden = false;
+    clear(this.placeholder);
+    this.placeholder.append(
+      h('h2', { text: 'Loading the artifact' }),
+      h('p', { class: 'hint', text: 'No remote origin was declared by this artifact.' })
+    );
+    if (this.snapshot?.artifact.kind === 'saved-html') {
+      let reachable = true;
+      let detail = '';
+      try {
+        const probe = await fetch(url, { credentials: 'same-origin' });
+        reachable = probe.ok;
+        detail = probe.ok ? '' : `The artifact could not be fetched (${probe.status} ${probe.statusText}).`;
+      } catch {
+        reachable = false;
+        detail = 'The artifact could not be fetched: the service did not answer.';
+      }
+      if (!reachable) {
+        this.showUnreachable(detail);
+        return;
+      }
+    }
     this.placeholder.hidden = true;
     this.iframe.hidden = false;
-    this.iframe.src = this.config.src || `/artifact/${this.config.sessionId}`;
+    this.iframe.src = url;
+    this.frameState = 'ready';
+  }
+
+  private showUnreachable(detail: string): void {
+    this.frameState = 'unreachable';
+    this.iframe.hidden = true;
+    this.placeholder.hidden = false;
+    clear(this.placeholder);
+    this.placeholder.append(h('h2', { text: 'The artifact is unreachable' }));
+    this.placeholder.append(h('p', { class: 'hint', text: detail }));
+    const retry = button('Try again', { variant: 'primary', onClick: () => void this.loadArtifact() });
+    retry.dataset['action'] = 'retry-artifact';
+    this.placeholder.append(retry);
   }
 
   private renderRailHead(): void {
@@ -1603,8 +1648,36 @@ class App {
       this.snapshot.agent = agent;
       this.renderRailHead();
       this.renderFooter();
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        this.showTerminal(error.message);
+      }
       return;
+    }
+  }
+
+  private showTerminal(message: string): void {
+    if (document.querySelector('.terminal')) {
+      return;
+    }
+    const overlay = h('div', {
+      class: 'terminal',
+      attrs: { role: 'alertdialog', 'aria-label': 'This review has closed' }
+    });
+    overlay.appendChild(h('h2', { text: 'This review has closed' }));
+    overlay.appendChild(h('p', { text: message }));
+    const reopen = button('Open this artifact again', { variant: 'primary', onClick: () => void this.reopenSession() });
+    reopen.dataset['action'] = 'reopen';
+    overlay.appendChild(reopen);
+    document.body.appendChild(overlay);
+  }
+
+  private async reopenSession(): Promise<void> {
+    try {
+      await this.api.reopen();
+      window.location.reload();
+    } catch (error) {
+      this.showNotice(messageOf(error));
     }
   }
 

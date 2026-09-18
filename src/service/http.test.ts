@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { connect, type AddressInfo } from 'node:net';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createReviewService } from '../mcp/service.js';
 import { autoOpenSuppressed } from './browser.js';
 import { confinePath, startLocalService, type LocalService } from './http.js';
@@ -246,6 +246,64 @@ describe('local service boundary', () => {
       delete process.env['VISUAL_INTENT_NO_OPEN'];
     } else {
       process.env['VISUAL_INTENT_NO_OPEN'] = previous;
+    }
+  });
+});
+
+describe('session expiry', () => {
+  it('expires an idle review, renews it on an act and never on the poll, then reopens it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+      const dataDir = mkdtempSync(join(tmpdir(), 'vil-http-expiry-'));
+      const review = createReviewService({ dataDir });
+      const service = await startLocalService({ dataDir, reviewService: review, port: 0 });
+      running.push(service);
+      const { sessionId, capability, revision } = await openGallery(service);
+      const auth = `session=${sessionId}&cap=${capability}`;
+      const expiresAt = () => review.sessions.verifyCapability(sessionId, capability)?.expiresAt;
+
+      expect(expiresAt()).toBe('2026-01-08T00:00:00.000Z');
+      await fetch(`${service.baseUrl}/api/sessions/${sessionId}?${auth}`);
+      expect(expiresAt()).toBe('2026-01-08T00:00:00.000Z');
+
+      vi.setSystemTime(new Date('2026-01-05T00:00:00.000Z'));
+      const act = await fetch(`${service.baseUrl}/api/sessions/${sessionId}/adopted?${auth}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ revision })
+      });
+      expect(act.status).toBe(200);
+      expect(expiresAt()).toBe('2026-01-12T00:00:00.000Z');
+
+      vi.setSystemTime(new Date('2026-01-13T00:00:00.000Z'));
+      expect((await fetch(`${service.baseUrl}/api/sessions/${sessionId}?${auth}`)).status).toBe(401);
+
+      const reopened = await fetch(`${service.baseUrl}/api/sessions/${sessionId}/reopen?${auth}`, { method: 'POST' });
+      expect(reopened.status).toBe(200);
+      expect((await fetch(`${service.baseUrl}/api/sessions/${sessionId}?${auth}`)).status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refuses to reopen a session that was ended rather than expired', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+      const dataDir = mkdtempSync(join(tmpdir(), 'vil-http-ended-'));
+      const review = createReviewService({ dataDir });
+      const service = await startLocalService({ dataDir, reviewService: review, port: 0 });
+      running.push(service);
+      const { sessionId, capability } = await openGallery(service);
+      const auth = `session=${sessionId}&cap=${capability}`;
+      expect((await fetch(`${service.baseUrl}/api/sessions/${sessionId}/end?${auth}`, { method: 'POST' })).status).toBe(200);
+
+      const reopened = await fetch(`${service.baseUrl}/api/sessions/${sessionId}/reopen?${auth}`, { method: 'POST' });
+      expect(reopened.status).toBe(409);
+      expect(await reopened.text()).toMatch(/ended/i);
+    } finally {
+      vi.useRealTimers();
     }
   });
 });

@@ -16,7 +16,17 @@ export type SessionRecord = {
   displayName: string;
   capabilities?: HostCapabilities;
   endedAt?: string;
+  expiresAt?: string;
 };
+
+export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function isLive(record: SessionRecord, at = Date.now()): boolean {
+  if (record.endedAt) {
+    return false;
+  }
+  return record.expiresAt === undefined || Date.parse(record.expiresAt) > at;
+}
 
 export class SessionRecords {
   private readonly file: string;
@@ -34,7 +44,11 @@ export class SessionRecords {
   }
 
   mint(entry: Omit<SessionRecord, 'capability'>): SessionRecord {
-    const record: SessionRecord = { ...entry, capability: randomBytes(32).toString('hex') };
+    const record: SessionRecord = {
+      ...entry,
+      capability: randomBytes(32).toString('hex'),
+      expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString()
+    };
     this.put(record);
     return record;
   }
@@ -42,7 +56,34 @@ export class SessionRecords {
   get(sessionId: string): SessionRecord | undefined {
     this.records = this.load();
     const record = this.records[sessionId];
-    return record && !record.endedAt ? record : undefined;
+    return record && isLive(record) ? record : undefined;
+  }
+
+  touch(sessionId: string): SessionRecord | undefined {
+    this.records = this.load();
+    const record = this.records[sessionId];
+    if (!record || record.endedAt) {
+      return undefined;
+    }
+    const touched: SessionRecord = { ...record, expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString() };
+    this.records[sessionId] = touched;
+    this.persist();
+    return touched;
+  }
+
+  revive(sessionId: string): SessionRecord | undefined {
+    this.records = this.load();
+    const record = this.records[sessionId];
+    if (!record || record.endedAt) {
+      return undefined;
+    }
+    const revived: SessionRecord = {
+      ...record,
+      expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString()
+    };
+    this.records[sessionId] = revived;
+    this.persist();
+    return revived;
   }
 
   end(sessionId: string): void {
@@ -69,8 +110,14 @@ export class SessionRecords {
       .sort((a, b) => (a.sessionId < b.sessionId ? 1 : -1))[0];
   }
 
-  authorized(sessionId: string, capability: string | null): SessionRecord | undefined {
-    const record = this.get(sessionId);
+  authorized(sessionId: string, capability: string | null | undefined): SessionRecord | undefined {
+    const record = this.verifyCapability(sessionId, capability);
+    return record && isLive(record) ? record : undefined;
+  }
+
+  verifyCapability(sessionId: string, capability: string | null | undefined): SessionRecord | undefined {
+    this.records = this.load();
+    const record = this.records[sessionId];
     if (!record || !capability) {
       return undefined;
     }
@@ -83,7 +130,8 @@ export class SessionRecords {
   }
 
   private liveRecords(): SessionRecord[] {
-    return Object.values(this.records).filter((record) => !record.endedAt);
+    const at = Date.now();
+    return Object.values(this.records).filter((record) => isLive(record, at));
   }
 
   private load(): Record<string, SessionRecord> {

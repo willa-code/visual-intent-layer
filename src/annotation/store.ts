@@ -278,15 +278,26 @@ export class AnnotationStore {
       }
       return annotation;
     });
-    const key = batchIdempotencyKey(annotations);
-    const existingId = this.state.byIdempotencyKey[key];
-    if (existingId && this.state.passes[existingId]) {
-      return this.state.passes[existingId]!;
+    let key = batchIdempotencyKey(annotations);
+    let salt: string | undefined;
+    for (;;) {
+      const existingId = this.state.byIdempotencyKey[key];
+      const existing = existingId ? this.state.passes[existingId] : undefined;
+      if (!existing) {
+        break;
+      }
+      if (existing.state !== 'withdrawn') {
+        return existing;
+      }
+      salt = `${existing.passId}|${existing.sequence}`;
+      key = batchIdempotencyKey(annotations, salt);
     }
+
     const envelope = buildBatchEnvelope({
       artifact: input.artifact,
       annotations,
-      intent: input.intent
+      intent: input.intent,
+      ...(salt ? { idempotencyKeySalt: salt } : {})
     });
     const at = now();
     const pass: Pass = {

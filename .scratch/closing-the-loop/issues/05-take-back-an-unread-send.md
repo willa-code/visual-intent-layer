@@ -39,3 +39,12 @@ and the session status reports one, so the shell re-reads the ledger when it
 changes. Covered by four store tests, an MCP test that a status read collects the
 Pass, and a browser-loop drive that offers Take back before the agent reads and
 withholds it after.
+
+**Verification Run, 2026-09-18.** Run
+`.visual-intent-verify/runs/2026-09-18_00-58-35-closing-the-loop-2` found a second
+defect while driving the take-back live: after a take-back, re-sending the same
+note returned the **withdrawn** Pass by its batch idempotency key, so the note
+stayed `queued` and never re-delivered. `markDelivered` now salts its key past a
+withdrawn Pass — `batchIdempotencyKey(annotations, passId|sequence)` — and a store
+test covers the re-send. The run drove `withdraw-pass` to `withdrawn` with the note
+back in `queued`, then a new `in-flight` Pass on the re-send.

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -844,6 +844,61 @@ describe('Review Surface (primary seam: a real browser engine)', () => {
     ).toBe(401);
 
     await ending.close();
+  }, 60000);
+
+  it('names the artifact frame unreachable when the file is gone, and retries', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vil-missing-artifact-'));
+    const file = join(dir, 'gone.html');
+    writeFileSync(file, '<!doctype html><html><body><h1>Gone</h1></body></html>', 'utf8');
+    const opened = await service.openSession({ kind: 'saved-html', path: file });
+    rmSync(file);
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await page.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+    await expectLater(
+      () => page.locator('.stage__placeholder').innerText(),
+      (text) => /unreachable/i.test(text),
+      'the frame names the artifact unreachable'
+    );
+    expect(await page.getByRole('button', { name: 'Try again' }).count()).toBe(1);
+
+    writeFileSync(file, '<!doctype html><html><body><h1>Back</h1></body></html>', 'utf8');
+    await page.getByRole('button', { name: 'Try again' }).click();
+    await expectLater(
+      () => page.frameLocator('iframe.artifact-frame').locator('h1').innerText(),
+      (text) => /Back/.test(text),
+      'the retry loads the artifact'
+    );
+    await page.close();
+  }, 60000);
+
+  it('shows one terminal state when the review dies while it is open', async () => {
+    const opened = await service.openSession({ kind: 'saved-html', path: artifactPath });
+    const dying = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await dying.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+    await expectLater(
+      () => dying.locator('.workspace').count(),
+      (count) => count === 1,
+      'the review surface is open'
+    );
+
+    const ended = await fetch(
+      `${service.baseUrl}/api/sessions/${opened.sessionId}/end?session=${opened.sessionId}&cap=${opened.capability}`,
+      { method: 'POST' }
+    );
+    expect(ended.status).toBe(200);
+
+    await expectLater(
+      () => dying.locator('.terminal').count(),
+      (count) => count === 1,
+      'the open surface shows one terminal state instead of failing silently'
+    );
+    expect(await dying.locator('.terminal').innerText()).toMatch(/ended/i);
+    await expectLater(
+      () => dying.locator('iframe.artifact-frame').count(),
+      () => true,
+      'the terminal state is not an artifact frame failure'
+    );
+    await dying.close();
   }, 60000);
 });
 
