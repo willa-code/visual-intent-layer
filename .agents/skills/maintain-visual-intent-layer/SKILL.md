@@ -49,13 +49,17 @@ Read the surface from its own sources, not from the docs:
 - `schema/`, `package.json` (`bin`, `files`, `mcpName`, `scripts`), `server.json` and `src/host/capabilities.ts`
 - `src/ui/` — the modes, keys and surfaces a Builder-Reviewer sees
 
-The install table in `README.md` is the one doc whose facts come from outside this
-repository: verify each command against that Harness's own CLI (`<harness> mcp add
---help`) rather than trusting the table, since the Harness owns the syntax.
+The install, update and uninstall lines in `README.md` are the one docs whose
+facts come from outside this repository: verify each command against that Harness's
+own CLI (`<harness> mcp add --help`, `<harness> mcp remove --help`) rather than
+trusting the text, since the Harness owns the syntax. pi ships no MCP of its own:
+verify its entry against the installed `pi-mcp-adapter`'s own README and record the
+adapter version, and re-check any cache claim against the adapter's source
+(`npx-resolver.ts`), since a cache changes what "`@latest`" means.
 
-Then correct the current docs that claim otherwise: `README.md`, `CONTEXT.md`,
-`design.md`, `SECURITY.md`, `docs/pi-validation.md`, and the verification feature
-map under `.agents/skills/verify-visual-intent-layer/references/features/`.
+Then correct the current docs that claim otherwise: `README.md`, `docs/guide.md`,
+`CONTEXT.md`, `design.md`, `SECURITY.md`, `docs/pi-validation.md`, and the
+verification feature map under `.agents/skills/verify-visual-intent-layer/references/features/`.
 
 Rules:
 

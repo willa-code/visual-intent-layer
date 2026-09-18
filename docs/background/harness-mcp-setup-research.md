@@ -5,9 +5,13 @@ Research snapshot: 2026-09-15. Sources are official product documentation, first
 > **Historical, superseded 2026-09-18 by ADR-0031.** The `visual-intent setup` command
 > this document was written to specify is deleted, with the Harness Registry. Sections
 > 1–9's per-Harness survey of where each Harness keeps its MCP configuration is still
-> useful reference material for a human registering the server by hand, and the README's
-> install table points at it. Sections 7, 10 and 11 analyse and recommend a command that
-> no longer exists: read them as history, not as pending work.
+> useful reference material for a human registering the server by hand. Sections 7, 10
+> and 11 analyse and recommend a command that no longer exists: read them as history,
+> not as pending work.
+>
+> **Corrected 2026-09-18 (later).** The README no longer names this survey: the product
+> manual moved to `docs/guide.md`, whose Documentation section lists `docs/background/`.
+> The survey sections above are unchanged.
 
 ## Executive conclusion
 
