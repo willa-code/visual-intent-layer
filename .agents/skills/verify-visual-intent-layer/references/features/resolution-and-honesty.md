@@ -1,6 +1,6 @@
 # Resolution and honest outcomes
 
-When the Artifact moves on, the product locates each Annotation's target again in the new revision and reports the outcome honestly: matched, recovered on weaker evidence, ambiguous with its candidates marked on the artifact, or deleted. It never chooses an uncertain target, and whether the Annotation was written before the revision now on screen stays a separate Annotation-level fact.
+When the Artifact moves on, the product locates each Annotation's target again in the new revision and reports the outcome honestly: matched, recovered on weaker evidence, ambiguous with its candidates marked on the artifact, or deleted. It never chooses an uncertain target, and whether the Annotation was written before the revision now on screen stays a separate Annotation-level fact. Where the product can only fail to find a target, the Builder-Reviewer may declare it missing, which reads in their own words rather than as the derived Deleted.
 
 ## Sub-features
 
@@ -9,6 +9,7 @@ When the Artifact moves on, the product locates each Annotation's target again i
 - `resolution-recovered` reports a target found on weaker evidence.
 - `resolution-ambiguous` reports an unresolved target with its candidates marked on the artifact, and no ranked list or figure.
 - `resolution-deleted` reports an unresolved target with no candidates.
+- `resolution-declared-missing` lets the Builder-Reviewer declare a target with no candidate missing, in their own words, which clears that target's approval wall and travels to the agent.
 - `resolution-state-only` reports an unresolved target whose recorded address differs from the address now on screen, while the revision has not changed, as possibly existing only in a state no longer on screen.
 - `resolution-adopted-revision` stamps the Annotation with the revision the artifact reported, not the revision the source offers.
 - `resolution-repoint` lets the Builder-Reviewer re-point the Annotation at the right target by pointing.
@@ -35,6 +36,7 @@ Preconditions:
 - **Ambiguity is never auto-chosen.** An `unresolved` target with candidates is reported as ambiguous, its candidates are marked on the artifact with a numeral, and approval is blocked. Run `… lever.mjs decide --verdict approve` in that state; the surface refuses and states the reason.
 - **Re-point the lost target.** Run `… lever.mjs repoint --row 0 --target "h1"`. The next selection becomes that Annotation's target; `state` clears its old resolution and approval is no longer blocked by it, with no candidate ever chosen.
 - **Deleted target.** An `unresolved` target with no candidates is reported as deleted. No candidate list appears, the candidates are not marked, and approval stays blocked with the reason named.
+- **Declare a target missing.** With that deleted target, run `… lever.mjs declare-missing --match "…"`. Exit `0`; `state` shows the Annotation carrying a `declaredMissing` entry stamped with the result revision, the row reads it in the Builder-Reviewer's own words rather than `Deleted`, and approval is no longer blocked by that target. The act is offered only where no candidate was found; an ambiguous target offers re-pointing instead.
 - **A target that only existed in another state.** Point at something in a filtered or routed state, return the artifact to its default state while the revision is unchanged, and run `… lever.mjs state`. The row says the target **may exist only in a state no longer on screen** rather than reporting a bare Deleted; no percentage or score appears. A target that is unresolved without a state difference still reads as Deleted.
 - **The Adopted Revision is the artifact's report.** After the artifact loads, run `… lever.mjs state`. `adoptedRevision` is the revision the document reported it holds, and a new Annotation carries that `writtenRevision`; where the source's `currentRevision` differs, the surface states the disagreement rather than substituting it.
 - **Provenance stays separate.** `state` reports `provenanceConfidence` per target independently of `resolutions[].match`; neither shares the word "exact" in the surface.
@@ -46,6 +48,6 @@ Preconditions:
 - Reloading the Artifact is a different act from reloading the Review Surface. `reload` reloads the Artifact; `reload-surface` reloads the page.
 - The change banner only appears while the file differs from the opened revision. Reload clears it for the new revision.
 - Ambiguous selection needs candidates from the layer. If the layer has not reported candidates yet, wait for the marks on the artifact before re-pointing.
-- Approval is refused, not silently ignored, while any target is ambiguous or deleted; the refusal states which target and why, and re-pointing clears it.
+- Approval is refused, not silently ignored, while any target is ambiguous or deleted; the refusal states which target and why, and re-pointing or declaring missing clears it.
 - Restore the Artifact file after the drive. A leftover appended paragraph changes the revision for the next run.
 - A `recovered` match is weaker evidence, not a failure. Assert the reported outcome, not a preference for `exact`.

@@ -81,6 +81,7 @@ Usage:
   lever withdraw-pass
   lever expire-session
   lever declare-missing [--match <text>]
+  lever undo-decision [--match <text>]
   lever measure
   lever unreachable --command <text> --precondition <text>
 
@@ -1678,6 +1679,24 @@ async function commandWithdrawPass(flags) {
   output({ ok: true, command: 'withdraw-pass', screenshot: shot.path });
 }
 
+async function commandUndoDecision(flags) {
+  const runDir = resolveRun(flags.run);
+  const secret = await assertHealthy(runDir);
+  const match = typeof flags.match === 'string' ? flags.match : undefined;
+  if (flags['dry-run']) {
+    output({ dryRun: true, would: { undoDecision: match ?? 'first decided row' } });
+    return;
+  }
+  const host = hostCall(secret);
+  const scope = match ? `.annotation-row:has-text(${JSON.stringify(match)})` : '.annotation-row';
+  await host('/click', { target: { selector: `${scope} [data-action="undo-decision"]` } });
+  await sleep(300);
+  const shot = await host('/screenshot', { name: `undo-decision-${Date.now()}` });
+  recordEvidence(runDir, { kind: 'screenshot', name: 'undo-decision', path: shot.path });
+  recordCoverage(runDir, 'verify-each-annotation', 'driven', 'undid a decision', ['undo-decision']);
+  output({ ok: true, command: 'undo-decision', screenshot: shot.path });
+}
+
 async function commandDeclareMissing(flags) {
   const runDir = resolveRun(flags.run);
   const secret = await assertHealthy(runDir);
@@ -2014,6 +2033,7 @@ async function main() {
     'withdraw-pass': commandWithdrawPass,
     'expire-session': commandExpireSession,
     'declare-missing': commandDeclareMissing,
+    'undo-decision': commandUndoDecision,
     measure: commandMeasure,
     unreachable: commandUnreachable,
     state: commandState,

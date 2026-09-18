@@ -1,6 +1,6 @@
 # Compose, queue and send an Annotation
 
-A Builder-Reviewer points at one or more visible targets, writes a note onto the selection, queues the Annotation, optionally reorders the queue, and sends it as Next-Pass Intent. The product stores each Annotation as a durable object with its own identity, and sending never removes it from the one list.
+A Builder-Reviewer points at one or more visible targets, writes a note onto the selection, queues the Annotation, optionally reorders the queue, and sends it as Next-Pass Intent. The product stores each Annotation as a durable object with its own identity, and sending never removes it from the one list. A send the agent has not yet collected can be taken back, which returns the Annotation to the queue rather than deleting it.
 
 ## Sub-features
 
@@ -13,6 +13,7 @@ A Builder-Reviewer points at one or more visible targets, writes a note onto the
 - `queue-add` puts the Annotation in the Annotation Queue.
 - `queue-reorder` moves a queued Annotation up or down.
 - `send-next-pass` delivers the queue as Next-Pass Intent from the one send action.
+- `withdraw-send` takes back a send the agent has not collected, returning the Annotations to the queue; the control is absent once the Pass is collected.
 - `send-draft-refused` refuses a draft intent rather than pretending to deliver it.
 - `read-back` reads the stored Annotation with its delivery state.
 
@@ -41,6 +42,7 @@ Preconditions:
 - **Add a second Annotation.** Select another target and queue it. Run `… lever.mjs select --tool point --target ".gallery-note"`, `… lever.mjs annotate --note "…"`, `… lever.mjs queue`. `state` shows two Annotations in queue order.
 - **Reorder the queue.** Move one up or down. Run `… lever.mjs reorder --from 1 --direction up`; the queue order in `state` changes and `order` reflects it.
 - **Send.** Choose `Send the queue`. Run `… lever.mjs send --intent next-pass`. Exit `0` and `state` showing each Annotation `delivered` (or `resolved` after a re-resolution), and the row still present.
+- **Take back an unread send.** Before the agent reads the delivery, run `… lever.mjs withdraw-pass`. Exit `0`; `state` shows the Pass `withdrawn` and the Annotation back in `queued`, ready to send again. Once the agent has collected the delivery the control is gone and the command exits `4`.
 - **A draft is refused.** Run `… lever.mjs send --intent draft`. Exit `2`: a draft intent creates no batch and moves nothing out of draft or queued.
 - **Dry run the send.** Run `… lever.mjs send --dry-run` before sending. Exit `0`; `state` shows the same states as before, proving nothing was delivered.
 - **Proof.** Run `… lever.mjs state` and `… lever.mjs screenshot --name queued`. The state names each Annotation, its delivery state and its target; the screenshot shows the one list.
@@ -54,3 +56,5 @@ Preconditions:
 - `Send the queue` is disabled while the queue is empty. Send in that state is a precondition failure, not a silent no-op.
 - A `draft` intent is not a delivery the surface can produce: the tool description and the driver reject it rather than creating a batch.
 - Sending does not clear the Annotation from the list; it changes the state pill and closes the active card. The selected targets stay marked until a new selection or `Escape`.
+- A delivered Annotation can be taken back only until the agent collects it. Collection is a held call, a `check_in` or a status read, so it can happen without an acknowledgement; after that a Replacement is the act, and a read delivery is never deleted.
+- Sending again after a take-back opens a new Pass rather than reusing the withdrawn one.
