@@ -29,7 +29,7 @@ import {
   type VerificationVerdict
 } from './model.js';
 
-export type PassState = 'open' | 'in-flight' | 'ready' | 'closed' | 'withdrawn';
+export type PassState = 'in-flight' | 'ready' | 'closed' | 'withdrawn';
 
 export type PassEvent = { type: 'opened' | 'closed' | 'reopened' | 'withdrawn'; at: string };
 
@@ -753,7 +753,7 @@ export class AnnotationStore {
     this.reload();
     const touched: Pass[] = [];
     for (const pass of this.readPassesOfArtifact(artifactId)) {
-      if (pass.state === 'open' || pass.state === 'in-flight') {
+      if (pass.state === 'in-flight') {
         pass.state = 'ready';
         pass.toRevision = toRevision;
         touched.push(pass);

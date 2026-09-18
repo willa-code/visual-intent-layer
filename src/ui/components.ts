@@ -179,8 +179,6 @@ export function passNumber(passes: SessionPass[], pass: SessionPass): number {
 
 export function passStateLabel(state: SessionPass['state']): string {
   switch (state) {
-    case 'open':
-      return 'Open';
     case 'in-flight':
       return 'In flight';
     case 'ready':
@@ -591,7 +589,6 @@ export function passHeader(options: {
 
 function passTone(state: SessionPass['state']): Tone {
   switch (state) {
-    case 'open':
     case 'in-flight':
       return 'progress';
     case 'ready':

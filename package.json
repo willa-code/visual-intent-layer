@@ -29,6 +29,9 @@
   },
   "files": [
     "dist",
+    "!dist/benchmark",
+    "!dist/eval",
+    "!dist/instrumentation",
     "schema",
     "skills",
     "mcp.json"

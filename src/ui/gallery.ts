@@ -242,7 +242,7 @@ function themeSection(theme: 'light' | 'dark'): HTMLElement {
           ).map((state) => statePill(state))
         )
       ),
-      panel('Pass states', h('div', { class: 'chips' }, ...(['open', 'in-flight', 'ready', 'closed'] as const).map((state) => passHeader({ pass: samplePass(state), number: 1, outstanding: 2, onClose: () => undefined })))),
+      panel('Pass states', h('div', { class: 'chips' }, ...(['in-flight', 'ready', 'closed', 'withdrawn'] as const).map((state) => passHeader({ pass: samplePass(state), number: 1, outstanding: 2, onClose: () => undefined })))),
       panel('Resolution labels', h('ul', { class: 'resolution-list' }, ...RESOLUTION_RECORDS.map((record) => resolutionItem(record, record.targetId)))),
       panel('Revision', revisionChip('blake3:0123456789abcdef', false, 'current revision'), revisionChip('blake3:0123456789abcdef', true, 'written before this revision')),
       panel('Provenance confidence labelled separately', pill('exact source span', 'progress'), ' ', pill('inferred', 'closed'), ' ', pill('unavailable', 'attention'))

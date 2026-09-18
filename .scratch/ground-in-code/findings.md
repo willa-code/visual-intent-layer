@@ -139,3 +139,21 @@ documents the code contradicted, the feature map and `maintain-visual-intent-lay
 and three ADR headers. `npm run typecheck`, `node scripts/check-records.js`,
 `node scripts/check-bins.js` and `npm test` (414 passed, 30 files) were green before
 the commit. Tickets 04–07 remain open; 06 is deferred on the change spec.
+
+**Correction to §5 and §7, 2026-09-18.** Two register entries were wrong or are now
+stale, both settled while landing tickets 04 and 05:
+
+- §7 said `design.md:272` was "the one survivor" that still named the `open` Pass
+  state. It is not a Pass state at all: the word comes from `statusState`
+  (`src/ui/components.ts:137-151`), which returns the string `open` when the queue is
+  non-empty. That function returns `string`, so `PassState` cannot reach it, and the
+  line needs no change. My reading was wrong, not the document's.
+- §5's three dead-weight rows are all resolved. Dev tooling is out of the tarball
+  (209 files to 181, verified with `npm pack --dry-run --json`); `PassState 'open'` is
+  deleted, and the gallery's Pass-states panel now shows the four real states instead of
+  naming `open` and omitting `withdrawn`; `src/envelope/fixtures.ts` and the gallery are
+  kept deliberately, with reasons recorded in ticket 04.
+
+Ticket 05 is also done: the browser opener resolves a result, the four call sites use
+it, and both the tool result and the CLI say when no browser could be opened here.
+The feature map gained `open-no-browser` with its lack of a live drive stated.
