@@ -4,7 +4,7 @@
 
 **Blocked by:** 16 (Make the documentation match the behaviour)
 
-**Status:** deferred
+**Status:** wontfix
 
 **Trigger:** the Verification Run of `.scratch/several-targets-and-relations/`, the first feature spec after `.scratch/truth-and-sync/`, plus maintainer time for the parts only a human can do — 2026-09-17
 
@@ -16,3 +16,5 @@
 ## Comments
 
 Deferred 2026-09-17: re-recording dogfood and the preview verdicts is parked until the next spec's Verification Run plus maintainer time. The keep-or-kill verdict for direct-manipulation relation input belongs to `.scratch/several-targets-and-relations/`, which owns the relation gesture; the preview verdicts cannot be recorded as written because the `preview` object left the wire at `schema/envelope-v0.2.schema.json`.
+
+2026-09-18 — `Status: deferred` → `wontfix`, closed by maintainer decision, and its first box closes with `visual-intent-layer/01`: there is no baseline to measure against, because none was recorded. The second and third boxes close with it — the relation keep-or-kill verdict was already void once the `preview` object left the wire, and voluntary repeat use is not something a run produces. The previous dogfood record is not marked discarded here: `visual-intent-layer/dogfood.md` is left as it is, and nothing in this closure rewrites it.

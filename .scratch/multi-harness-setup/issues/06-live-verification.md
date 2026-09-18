@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 (Codex registration), 03 (opencode registration), 04 (Claude Code registration).
 
-**Status:** deferred
+**Status:** wontfix
 
 **Trigger:** the Verification Run of `.scratch/several-targets-and-relations/`, the first feature spec after `.scratch/truth-and-sync/`, plus maintainer time for the parts only a human can do — 2026-09-17
 
@@ -28,3 +28,5 @@ Automated-possible evidence recorded 2026-09-15 with sandboxed `HOME` (temp dirs
 - **Claude Code — follow-up (human).** The binary is not installed on this machine. Delegation and the absent-binary manual fallback were exercised with a fake `claude` on `PATH`; the real listing still needs a machine with Claude Code installed.
 
 Deferred 2026-09-17: the interactive per-harness confirmations are parked until the next spec's Verification Run plus maintainer time. The automated-possible evidence recorded 2026-09-15 above stands; no box is ticked by the deferral.
+
+2026-09-18 — `Status: deferred` → `wontfix`, closed by maintainer decision, on the same footing as `harness-detection/07`: the interactive confirmations are not going to be performed, and no successor ticket is created. The 2026-09-15 evidence above stands as the record of what was proven — Codex global, opencode project and global — and it is not restated as closing the four boxes, which stay unticked. `claude` is not installed on this machine, so two of the four were unreachable here in any case.

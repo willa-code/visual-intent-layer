@@ -19,6 +19,8 @@ state that reads as active work.
 
 ## Comments
 
+2026-09-18 — every ticket this file parked is closed, so `.scratch/` holds no `deferred` record and the trigger is history rather than a live instruction. `surface-refinement/13` was driven and is `done`, with one box named in a `Deferred confirmation:`; `visual-intent-layer/01`, `visual-intent-layer/16`, `review-surface/17`, `multi-harness-setup/06` and `harness-detection/07` are `wontfix` by maintainer decision, each with a dated comment saying what it does and does not prove. `.scratch/visual-intent-layer/baseline.md` and `dogfood.md` were corrected to match. The boxes above are left as written: they record what was true when this ticket landed.
+
 The maintainer decision this records: verifying work can be paused and deferred, and
 the next spec's Verification Run performs an overall verification. That is consistent
 with the maintenance skill, which says dogfooding is what closes `ready-for-human`

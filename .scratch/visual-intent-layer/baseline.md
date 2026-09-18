@@ -1,12 +1,13 @@
 # Screenshot-and-chat baseline (ticket 01)
 
-Status: deferred — the three corrections below must be performed by the builder on
-work they genuinely care about, before product enthusiasm can bias them.
+Status: closed — not performed. The three corrections were never recorded, and
+nothing was fabricated to stand in for them; the template below is intact and the
+work is still startable by hand.
 
-**Trigger:** the Verification Run of `.scratch/several-targets-and-relations/`, the
-first feature spec after `.scratch/truth-and-sync/`, plus maintainer time — 2026-09-17.
-This template is parked by maintainer decision, not waiting on active work; see
-`.scratch/truth-and-sync/issues/06-park-verification-with-a-named-trigger.md`.
+Closed 2026-09-18 by maintainer decision; `visual-intent-layer/issues/01` is `wontfix`.
+The consequence is named there: the strategy's completion boundary claims the product
+"has been repeatedly used by its builder against a recorded screenshot-and-chat
+baseline", and that clause is unproven.
 
 ## How to record
 

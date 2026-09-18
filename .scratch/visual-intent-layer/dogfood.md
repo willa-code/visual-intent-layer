@@ -1,11 +1,11 @@
 # Dogfood and preview verdicts (ticket 17)
 
-Status: deferred — requires the ticket 01 baseline plus repeated real use.
+Status: closed — not performed. There is no baseline to compare against, the
+relation keep-or-kill verdict went with the `preview` object, and voluntary repeat use
+is not something a run produces.
 
-**Trigger:** the Verification Run of `.scratch/several-targets-and-relations/`, the
-first feature spec after `.scratch/truth-and-sync/`, plus maintainer time — 2026-09-17.
-Parked by maintainer decision; see
-`.scratch/truth-and-sync/issues/06-park-verification-with-a-named-trigger.md`.
+Closed 2026-09-18 by maintainer decision; `review-surface/issues/17` is `wontfix`.
+The record below is kept as it is and is not marked discarded.
 
 Blocked by: 01 (baseline), 09 (benchmark signals), 10 (previews), 14 (skill),
 15 (instrumentation), 16 (pi validation).

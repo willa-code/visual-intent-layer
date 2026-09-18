@@ -4,7 +4,7 @@
 
 **Blocked by:** 11 (Make Draft and Next-Pass Intent durable and idempotent), 12 (Negotiate host capabilities with an honest browser fallback), 13 (Harden the local boundary and publish trust docs)
 
-**Status:** deferred
+**Status:** wontfix
 
 **Trigger:** the Verification Run of `.scratch/several-targets-and-relations/`, the first feature spec after `.scratch/truth-and-sync/`, plus maintainer time for the parts only a human can do — 2026-09-17
 
@@ -19,3 +19,5 @@ Agent work in 8b70d52: installable plugin (npm package + mcp.json + skill), MCP 
 Verification note: fallback + restart boxes ticked on automated evidence (fallback suite, store restart/idempotency tests). Browser-restart safety follows from server-side state; the end-to-end live-pi box stays open for a real pi session.
 
 Deferred 2026-09-17: live validation of the core loop on pi is parked until the next spec's Verification Run plus maintainer time. Nothing here was driven by this iteration, and no box is ticked by the deferral.
+
+2026-09-18 — `Status: deferred` → `wontfix`, closed by maintainer decision: the live-pi confirmation is not going to be performed. The two ticked boxes above stand on their automated evidence and are untouched. The unticked box stays unticked — the installable plugin's end-to-end run through a real pi session is not proven by this closure, and `docs/pi-validation.md` keeps its `awaiting-human` status and its checklist so the run remains startable by hand.

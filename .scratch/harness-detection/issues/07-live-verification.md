@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 (Detection reporting), 03 (Content-verified registration), 04 (Transport selection), 05 (Status mode).
 
-**Status:** deferred
+**Status:** wontfix
 
 **Trigger:** the Verification Run of `.scratch/several-targets-and-relations/`, the first feature spec after `.scratch/truth-and-sync/`, plus maintainer time for the parts only a human can do — 2026-09-17
 
@@ -20,3 +20,5 @@
 Start from the machine and release involved in the original report: record the setup version line alongside the evidence, so a stale installation and a detection gap stay distinguishable.
 
 Deferred 2026-09-17: live detection on a multi-Harness machine is parked until the next spec's Verification Run plus maintainer time. No box is ticked by the deferral.
+
+2026-09-18 — `Status: deferred` → `wontfix`, closed by maintainer decision: the maintainer does not intend to perform this run and has a different approach in mind later. Nothing here was disproven and no box is ticked; the five unticked boxes stand as what the run would have proved. No successor ticket is created, and none is promised — a later approach that wants this evidence should open its own record. The `Trigger:` line above is kept as the history of the parking.

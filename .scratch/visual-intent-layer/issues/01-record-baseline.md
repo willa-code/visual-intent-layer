@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** deferred
+**Status:** wontfix
 
 **Trigger:** the Verification Run of `.scratch/several-targets-and-relations/`, the first feature spec after `.scratch/truth-and-sync/`, plus maintainer time for the parts only a human can do — 2026-09-17
 
@@ -18,3 +18,5 @@
 Agent scaffolding in 8b70d52: recording template at .scratch/visual-intent-layer/baseline.md. The three screenshot-and-chat corrections must be performed by the builder on real work; no data fabricated. Moved to ready-for-human.
 
 Deferred 2026-09-17: parked by maintainer decision. The screenshot-and-chat baseline needs a builder recording corrections on work they genuinely care about, which is not verification this build can perform. See `.scratch/truth-and-sync/issues/06-park-verification-with-a-named-trigger.md`.
+
+2026-09-18 — `Status: deferred` → `wontfix`, closed by maintainer decision. No correction was ever recorded and none was fabricated, so `.scratch/visual-intent-layer/baseline.md` holds its template and no numbers. That has a consequence worth naming rather than leaving in a closed ticket: `docs/background/product-strategy.md` sets its completion boundary as the product "has been repeatedly used by its builder against a recorded screenshot-and-chat baseline", and with this closed that clause is unproven. The template stays where it is, so the work is still startable by hand; nothing here promises it.
