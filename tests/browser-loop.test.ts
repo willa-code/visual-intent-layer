@@ -223,6 +223,11 @@ describe('Review Surface (primary seam: a real browser engine)', () => {
 
     await page.getByRole('button', { name: /Point at things, armed/ }).click();
     await page.getByRole('button', { name: /Box an area/ }).click();
+    await expectLater(
+      () => frame.locator('body').getAttribute('style'),
+      (style) => (style ?? '').includes('crosshair'),
+      'the layer is armed for boxing before the drag begins'
+    );
     const frameBox = await frame.locator('body').boundingBox();
     await page.mouse.move((frameBox?.x ?? 0) + 60, (frameBox?.y ?? 0) + 60);
     await page.mouse.down();
@@ -1348,11 +1353,20 @@ async function startDevServer(options: { framed?: boolean; routed?: boolean } = 
   url: string;
   requests: Array<{ method: string; url: string; body: string }>;
   advancedRevision: string;
+  advance: () => void;
   stop: () => Promise<void>;
 }> {
   const requests: Array<{ method: string; url: string; body: string }> = [];
   const advancedRevision = `blake3:${'b'.repeat(64)}`;
   const upgradeSockets = new Set<import('node:stream').Duplex>();
+  let announced = false;
+  const announce = (socket: import('node:stream').Duplex): void => {
+    if (!socket.writable) {
+      return;
+    }
+    const payload = Buffer.from(advancedRevision, 'utf8');
+    socket.write(Buffer.concat([Buffer.from([0x81, payload.length]), payload]));
+  };
   const server = createServer((request, response) => {
     const chunks: Buffer[] = [];
     request.on('data', (chunk) => chunks.push(chunk as Buffer));
@@ -1382,8 +1396,9 @@ async function startDevServer(options: { framed?: boolean; routed?: boolean } = 
     socket.write(
       `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`
     );
-    const payload = Buffer.from(advancedRevision, 'utf8');
-    setTimeout(() => socket.write(Buffer.concat([Buffer.from([0x81, payload.length]), payload])), 250);
+    if (announced) {
+      announce(socket);
+    }
   });
   return new Promise((resolvePromise) => {
     server.listen(0, '127.0.0.1', () => {
@@ -1393,6 +1408,12 @@ async function startDevServer(options: { framed?: boolean; routed?: boolean } = 
         url: `http://127.0.0.1:${port}/`,
         requests,
         advancedRevision,
+        advance: () => {
+          announced = true;
+          for (const socket of upgradeSockets) {
+            announce(socket);
+          }
+        },
         stop: () =>
           new Promise<void>((done) => {
             for (const socket of upgradeSockets) {
@@ -1543,6 +1564,7 @@ describe('Review Surface: Runtime State Evidence, one document, and a proxied ap
       );
 
       const advanced = dev.advancedRevision;
+      dev.advance();
       await expectLater(
         async () => (await status()).adoptedRevision,
         (revision) => revision === advanced,
@@ -2066,6 +2088,7 @@ describe('Review Surface: Runtime State Evidence, one document, and a proxied ap
       const widget = artifact.frameLocator('iframe#widget');
       await expectLater(() => widget.locator('.widget-action').count(), (count) => count === 1, 'the embedded document renders');
 
+      dev.advance();
       await expectLater(
         async () =>
           (
@@ -2134,6 +2157,11 @@ describe('Review Surface: Runtime State Evidence, one document, and a proxied ap
       await expectLater(() => frame.locator('#blocked').count(), (count) => count === 1, 'the blocked frame element is in the document');
 
       await blockedPage.getByRole('button', { name: /Box an area/ }).click();
+      await expectLater(
+        () => frame.locator('body').getAttribute('style'),
+        (style) => (style ?? '').includes('crosshair'),
+        'the layer is armed for boxing before the drag begins'
+      );
       const frameBox = await frame.locator('#blocked').boundingBox();
       await blockedPage.mouse.move((frameBox?.x ?? 0) - 20, (frameBox?.y ?? 0) - 10);
       await blockedPage.mouse.down();
