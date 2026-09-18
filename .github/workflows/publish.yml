@@ -3,11 +3,6 @@ name: Publish
 on:
   release:
     types: [published]
-  workflow_dispatch:
-    inputs:
-      retire_dist_tag:
-        description: "dist-tag to remove from the package, e.g. next"
-        required: true
 
 jobs:
   publish:
@@ -24,14 +19,11 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm install -g npm@latest
-      - name: Retire a dist-tag
-        if: ${{ github.event_name == 'workflow_dispatch' }}
-        run: npm dist-tag rm visual-intent-layer "${{ inputs.retire_dist_tag }}"
       - name: Refuse a pre-release
-        if: ${{ github.event_name == 'release' && github.event.release.prerelease }}
+        if: ${{ github.event.release.prerelease }}
         run: |
           echo "Pre-releases are retired: every published version is an official release."
           exit 1
       - name: Publish the release to latest
-        if: ${{ github.event_name == 'release' && !github.event.release.prerelease }}
+        if: ${{ !github.event.release.prerelease }}
         run: npm publish --provenance --access public

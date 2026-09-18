@@ -109,18 +109,29 @@ Completion: `gh run watch` reports the Publish run success.
 ## Registry listing
 
 The official MCP Registry hosts metadata only, and it verifies that the npm package it
-points at declares the same name. So the listing is published after the release, never
-before.
+points at declares the same name, so the listing can only be published once the release
+exists. The `Registry listing` workflow does it: it triggers on `release: published`,
+authenticates as this repository over GitHub OIDC, validates `server.json` and publishes
+it. Dispatch it by hand to re-publish after editing `server.json`.
+
+Bump `server.json` in the same step as `package.json`, or the listing names a version
+the package does not have.
+
+Completion: the workflow run is green and
+`curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.willa-code/visual-intent-layer"`
+returns the released version.
+
+**Retiring a dist-tag is the one npm operation this repository cannot do on its own.**
+GitHub OIDC mints a token for `npm publish`; `npm dist-tag rm` is refused with `E401`,
+which was checked rather than assumed. It needs a human with `npm login`:
 
 ```sh
-mcp-publisher validate        # reads server.json
-mcp-publisher login github
-mcp-publisher publish
+npm login
+npm dist-tag rm visual-intent-layer <tag>
 ```
 
-Completion: `mcp-publisher publish` names the server and the released version, and
-`curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.willa-code/visual-intent-layer"`
-returns it.
+Keep it out of the release path: a dist-tag that needs retiring is a one-off cleanup,
+not a step every release performs.
 
 ## Verify
 
