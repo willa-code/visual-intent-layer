@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from 'playwright';
 import { createReviewService } from '../src/mcp/service.js';
 import { startLocalService, type LocalService } from '../src/service/http.js';
@@ -46,6 +46,16 @@ let artifactPath: string;
 let dataDir: string;
 let review: ReturnType<typeof createReviewService>;
 const problems: string[] = [];
+const TRACE_DIR = join(process.cwd(), '.scratch', 'traces');
+const tracedContexts: Array<{ context: import('playwright').BrowserContext; ordinal: number }> = [];
+
+function traceName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
 
 async function launch(): Promise<Browser> {
   const channel = process.env['PW_CHANNEL'] ?? (process.env['CI'] ? undefined : 'chrome');
@@ -62,7 +72,33 @@ beforeAll(async () => {
   review = createReviewService({ dataDir, waitMs: 2000 });
   service = await startLocalService({ dataDir, reviewService: review, port: 0 });
   browser = await launch();
+  mkdirSync(TRACE_DIR, { recursive: true });
+  const openPage = browser.newPage.bind(browser);
+  browser.newPage = async (options) => {
+    const created = await openPage(options);
+    const context = created.context();
+    tracedContexts.push({ context, ordinal: tracedContexts.length });
+    await context.tracing.start({ screenshots: true, snapshots: true }).catch(() => undefined);
+    return created;
+  };
 }, 60000);
+
+afterEach(async (context) => {
+  const failed = context.task.result?.state === 'fail';
+  for (const { context: traced, ordinal } of tracedContexts.splice(0)) {
+    try {
+      if (failed) {
+        const tracePath = join(TRACE_DIR, `${traceName(context.task.name)}-${ordinal}.zip`);
+        await traced.tracing.stop({ path: tracePath });
+        console.error(`browser trace for this failure: ${tracePath}`);
+      } else {
+        await traced.tracing.stop();
+      }
+    } catch (error) {
+      void error;
+    }
+  }
+});
 
 afterAll(async () => {
   await browser?.close();

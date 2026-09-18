@@ -5,6 +5,7 @@ dist/
 coverage/
 *.tsbuildinfo
 .scratch/**/baseline-local/
+.scratch/traces/
 .visual-intent-data/
 .DS_Store
 
