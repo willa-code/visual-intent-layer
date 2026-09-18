@@ -451,6 +451,50 @@ describe('Lever contract: the relation drive', () => {
     expect(relationships().some((relation) => relation.operator === 'member-of')).toBe(true);
   }, 180000);
 
+  it('records comparative size with Shift held', () => {
+    const related = lever([
+      'relate',
+      '--run',
+      name,
+      '--from',
+      '.a',
+      '--to',
+      '.b',
+      '--modifier',
+      'Shift',
+      '--dx',
+      '30',
+      '--expect',
+      'same-width'
+    ]);
+    expect(related.status, related.stderr).toBe(0);
+    const recorded = relationships();
+    expect(recorded.some((relation) => relation.type === 'comparative-size' && relation.operator === 'same-width')).toBe(
+      true
+    );
+    expect(JSON.stringify(recorded)).not.toMatch(/"(x|y|width|height|left|top|dx|dy|px)"/);
+  }, 180000);
+
+  it('records a shared property with Ctrl held', () => {
+    const related = lever([
+      'relate',
+      '--run',
+      name,
+      '--from',
+      '.a',
+      '--to',
+      '.b',
+      '--modifier',
+      'Control',
+      '--expect',
+      'shared-property'
+    ]);
+    expect(related.status, related.stderr).toBe(0);
+    expect(
+      relationships().some((relation) => relation.type === 'equivalence' && relation.operator === 'shared-property')
+    ).toBe(true);
+  }, 180000);
+
   it('refuses a drag that infers no relation with exit code 4', () => {
     const related = lever(['relate', '--run', name, '--from', '.a', '--to', '.b', '--dx', '240', '--dy', '240']);
     expect(related.status).toBe(4);
