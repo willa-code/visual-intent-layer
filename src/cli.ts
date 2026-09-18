@@ -170,6 +170,9 @@ async function main(): Promise<void> {
       console.log(opened.reviewUrl);
       console.log(`artifact ${opened.artifact.id} revision ${opened.artifact.revision}`);
       console.log(opened.reused ? 'reused the open session for this revision' : 'opened a new session');
+      if (opened.browserOpened === false) {
+        console.log('could not open a browser on this machine; open the URL above yourself');
+      }
     }
     await new Promise(() => undefined);
     return;

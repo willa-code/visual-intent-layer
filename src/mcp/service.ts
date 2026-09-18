@@ -29,6 +29,7 @@ export type OpenedArtifact = {
   capability: string;
   artifact: { id: string; kind: string; revision: string; displayName: string };
   reused: boolean;
+  browserOpened?: boolean;
 };
 
 export type ToolDescriptor = {
@@ -94,6 +95,7 @@ export type ReviewServiceOptions = {
   dataDir: string;
   reviewBaseUrl?: string;
   waitMs?: number;
+  openUrl?: (url: string) => Promise<boolean>;
 };
 
 export type ReviewService = {
@@ -137,6 +139,7 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
   const dataDir = options.dataDir;
   const baseUrl = (options.reviewBaseUrl ?? 'http://127.0.0.1:3742').replace(/\/+$/, '');
   const waitMs = options.waitMs ?? Number(process.env['VISUAL_INTENT_WAIT_MS'] ?? DEFAULT_WAIT_MS);
+  const openUrl = options.openUrl ?? openInDefaultBrowser;
   const annotations = new AnnotationStore(dataDir);
   const attachments = new AttachmentStore(dataDir);
   const snapshots = new SnapshotStore(dataDir);
@@ -151,6 +154,16 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
 
   function capabilitiesFor(hostId: string, declared: Partial<HostCapabilities> = {}): HostCapabilities {
     return detectCapabilities(hostId, declared);
+  }
+
+  async function openBrowserIfAsked(
+    reviewUrl: string,
+    openOptions: OpenOptions
+  ): Promise<boolean | undefined> {
+    if (openOptions.openBrowser !== true) {
+      return undefined;
+    }
+    return await openUrl(reviewUrl);
   }
 
   async function openArtifact(input: OpenArtifactInput, openOptions: OpenOptions = {}): Promise<OpenedArtifact> {
@@ -169,9 +182,6 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
       if (existing) {
         lastSessionId = existing.sessionId;
         const reviewUrl = `${effectiveBase}/review/${existing.sessionId}?cap=${existing.capability}`;
-        if (openOptions.openBrowser) {
-          openInDefaultBrowser(reviewUrl);
-        }
         return {
           sessionId: existing.sessionId,
           reviewUrl,
@@ -182,7 +192,8 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
             revision: existing.revision,
             displayName: existing.displayName
           },
-          reused: true
+          reused: true,
+          browserOpened: await openBrowserIfAsked(reviewUrl, openOptions)
         };
       }
       const displayName = absolute.split('/').pop() ?? absolute;
@@ -197,15 +208,13 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
       });
       lastSessionId = record.sessionId;
       const reviewUrl = `${effectiveBase}/review/${record.sessionId}?cap=${record.capability}`;
-      if (openOptions.openBrowser) {
-        openInDefaultBrowser(reviewUrl);
-      }
       return {
         sessionId: record.sessionId,
         reviewUrl,
         capability: record.capability,
         artifact: { id: artifactId, kind: 'saved-html', revision, displayName },
-        reused: false
+        reused: false,
+        browserOpened: await openBrowserIfAsked(reviewUrl, openOptions)
       };
     }
     const artifactId = stableArtifactId(input.url);
@@ -220,9 +229,6 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     if (existing) {
       lastSessionId = existing.sessionId;
       const reviewUrl = `${effectiveBase}/review/${existing.sessionId}?cap=${existing.capability}`;
-      if (openOptions.openBrowser) {
-        openInDefaultBrowser(reviewUrl);
-      }
       return {
         sessionId: existing.sessionId,
         reviewUrl,
@@ -233,7 +239,8 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
           revision: existing.revision,
           displayName: existing.displayName
         },
-        reused: true
+        reused: true,
+        browserOpened: await openBrowserIfAsked(reviewUrl, openOptions)
       };
     }
     const record = sessions.mint({
@@ -248,15 +255,13 @@ export function createReviewService(options: ReviewServiceOptions): ReviewServic
     });
     lastSessionId = record.sessionId;
     const reviewUrl = `${effectiveBase}/review/${record.sessionId}?cap=${record.capability}`;
-    if (openOptions.openBrowser) {
-      openInDefaultBrowser(reviewUrl);
-    }
     return {
       sessionId: record.sessionId,
       reviewUrl,
       capability: record.capability,
       artifact: { id: artifactId, kind: 'react-vite-app', revision, displayName: input.url },
-      reused: false
+      reused: false,
+      browserOpened: await openBrowserIfAsked(reviewUrl, openOptions)
     };
   }
 

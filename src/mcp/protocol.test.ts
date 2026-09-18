@@ -68,6 +68,34 @@ describe('MCP protocol contract', () => {
     expect(tools.tools.map((tool) => tool.name)).not.toContain('submit_visual_intent');
     void representativeEnvelope;
   });
+
+  it('says so when the browser cannot be opened on this machine', async () => {
+    const suppressed = process.env['VISUAL_INTENT_NO_OPEN'];
+    delete process.env['VISUAL_INTENT_NO_OPEN'];
+    try {
+      const service = createReviewService({
+        dataDir: mkdtempSync(join(tmpdir(), 'vil-mcp-protocol-browser-')),
+        openUrl: async () => false
+      });
+      const server = createMcpServer(service);
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: 'test-client', version: '0.0.0' });
+      await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
+      const result = await client.callTool({
+        name: 'open_visual_review',
+        arguments: { kind: 'saved-html', path: 'fixtures/gallery.html', waitMs: 0 }
+      });
+      const text = toolText(result);
+      expect(text).toContain('could not open a browser');
+      expect(text).toContain('/review/');
+    } finally {
+      if (suppressed === undefined) {
+        delete process.env['VISUAL_INTENT_NO_OPEN'];
+      } else {
+        process.env['VISUAL_INTENT_NO_OPEN'] = suppressed;
+      }
+    }
+  });
 });
 
 function toolText(result: unknown): string {

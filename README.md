@@ -94,8 +94,10 @@ Starting a session **launches the default browser on this machine** and prints
 the review URL as well, so the loop is a product experience rather than a
 URL to copy. Automatic opening is suppressed with `--no-open` or
 `VISUAL_INTENT_NO_OPEN=1` for headless, remote and scripted use; the URL is
-still printed. Reopening the same artifact revision reuses the open session and
-its URL, so a review does not accumulate tabs.
+still printed. When no browser can be opened on this machine at all, the product
+says so and prints the URL rather than failing silently, and the agent is told the
+same in the tool result. Reopening the same artifact revision reuses the open
+session and its URL, so a review does not accumulate tabs.
 
 ### One rail, two tiles
 

@@ -396,3 +396,40 @@ describe('an interruption is never carried in an envelope', () => {
     expect(service.listPasses()).toHaveLength(0);
   });
 });
+
+describe('a browser that cannot be opened here is reported, not assumed', () => {
+  it('records failure when the opener reports it', async () => {
+    const service = createReviewService({
+      dataDir: mkdtempSync(join(tmpdir(), 'vil-mcp-browser-')),
+      openUrl: async () => false
+    });
+    const opened = await service.openArtifact(
+      { kind: 'saved-html', path: 'fixtures/gallery.html' },
+      { openBrowser: true }
+    );
+    expect(opened.browserOpened).toBe(false);
+  });
+
+  it('records success when the opener reports it', async () => {
+    const service = createReviewService({
+      dataDir: mkdtempSync(join(tmpdir(), 'vil-mcp-browser-')),
+      openUrl: async () => true
+    });
+    const opened = await service.openArtifact(
+      { kind: 'saved-html', path: 'fixtures/gallery.html' },
+      { openBrowser: true }
+    );
+    expect(opened.browserOpened).toBe(true);
+  });
+
+  it('records nothing when auto-open was not asked for', async () => {
+    const service = createReviewService({
+      dataDir: mkdtempSync(join(tmpdir(), 'vil-mcp-browser-')),
+      openUrl: async () => {
+        throw new Error('must not be asked to open a browser');
+      }
+    });
+    const opened = await service.openArtifact({ kind: 'saved-html', path: 'fixtures/gallery.html' });
+    expect(opened.browserOpened).toBeUndefined();
+  });
+});

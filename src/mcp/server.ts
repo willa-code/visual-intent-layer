@@ -64,6 +64,10 @@ async function openVisualReview(service: ReviewService, args: Record<string, unk
   const waitMs = numberArg(args, 'waitMs') ?? service.waitMs;
   const batch = noWait ? null : await service.waitForSend(opened.sessionId, waitMs);
   const queued = service.annotations.queueOf(opened.artifact.id).length;
+  const browserNote =
+    opened.browserOpened === false
+      ? ' This machine could not open a browser, so nothing was launched here; the review URL above is the way in.'
+      : '';
   return {
     reviewUrl: opened.reviewUrl,
     artifact: opened.artifact,
@@ -72,9 +76,11 @@ async function openVisualReview(service: ReviewService, args: Record<string, unk
     envelope: batch?.envelope ?? null,
     annotationIds: batch?.annotationIds ?? [],
     queuedAnnotations: queued,
-    note: batch
-      ? 'The human sent this batch. Each Annotation carries its own identity. Acknowledgement is not completion and does not verify anything.'
-      : 'The host could not hold the call for the human. Nothing is lost: Annotations stay queued durably on this machine, and get_intent_status reads them.'
+    note:
+      (batch
+        ? 'The human sent this batch. Each Annotation carries its own identity. Acknowledgement is not completion and does not verify anything.'
+        : 'The host could not hold the call for the human. Nothing is lost: Annotations stay queued durably on this machine, and get_intent_status reads them.') +
+      browserNote
   };
 }
 
