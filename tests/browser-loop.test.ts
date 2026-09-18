@@ -741,6 +741,11 @@ describe('Review Surface (primary seam: a real browser engine)', () => {
     }
     await frame.locator('button.member').nth(0).click();
     await frame.locator('button.member').nth(1).click({ modifiers: ['Shift'] });
+    await expectLater(
+      () => frame.locator('[data-vil-mark="owned"]').count(),
+      (count) => count === 2,
+      'both members carry an owned mark before the relation drag'
+    );
 
     const member = await frame.locator('button.member').nth(0).boundingBox();
     await orderingPage.mouse.move(member!.x + member!.width / 2, member!.y + member!.height / 2);
