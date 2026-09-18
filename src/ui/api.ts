@@ -2,6 +2,7 @@ import type { Annotation, AnnotationSummary, AnnotationTarget } from '../annotat
 import type { MigrationReport } from '../annotation/migrate.js';
 import type { PassState, PassOutcome } from '../annotation/store.js';
 import type { AgentPositionReport } from '../mcp/service.js';
+import type { ViewedState } from '../resolution/model.js';
 import type { ResolutionCandidate, TargetResolutionRecord } from '../resolution/resolve.js';
 import type { LayerTarget } from './protocol.js';
 
@@ -176,11 +177,11 @@ export class Api {
     annotationId: string,
     revision: string,
     candidates: ResolutionCandidate[],
-    address?: string
+    viewed?: ViewedState
   ): Promise<TargetResolutionRecord[]> {
     const result = await this.json<{ resolutions: TargetResolutionRecord[] }>(
       this.url(`/api/annotations/${annotationId}/resolve`),
-      { method: 'POST', body: JSON.stringify({ revision, candidates, ...(address ? { address } : {}) }) }
+      { method: 'POST', body: JSON.stringify({ revision, candidates, ...(viewed ? { viewed } : {}) }) }
     );
     return result.resolutions;
   }

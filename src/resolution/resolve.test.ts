@@ -165,8 +165,8 @@ describe('target resolution vocabulary', () => {
     expect(
       deriveResolutionLabel(result, {
         revisionUnchanged: true,
-        targetAddress: 'checkout.html#dialog',
-        viewedAddress: result.viewedAddress
+        recorded: { address: 'checkout.html#dialog' },
+        viewed: { address: result.viewedAddress }
       })
     ).toBe('state-only');
   });
@@ -187,17 +187,19 @@ describe('target resolution vocabulary', () => {
     expect(
       deriveResolutionLabel(result, {
         revisionUnchanged: true,
-        targetAddress: 'checkout.html#dialog',
-        viewedAddress: result.viewedAddress
+        recorded: { address: 'checkout.html#dialog' },
+        viewed: { address: result.viewedAddress }
       })
     ).toBe('deleted');
     expect(
       deriveResolutionLabel(result, {
         revisionUnchanged: false,
-        targetAddress: 'elsewhere.html',
-        viewedAddress: result.viewedAddress
+        recorded: { address: 'elsewhere.html' },
+        viewed: { address: result.viewedAddress }
       })
     ).toBe('deleted');
-    expect(deriveResolutionLabel(result, { revisionUnchanged: true, viewedAddress: result.viewedAddress })).toBe('deleted');
+    expect(deriveResolutionLabel(result, { revisionUnchanged: true, viewed: { address: result.viewedAddress } })).toBe(
+      'deleted'
+    );
   });
 });

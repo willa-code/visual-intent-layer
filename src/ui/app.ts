@@ -1,7 +1,7 @@
 import type { Annotation } from '../annotation/model.js';
 import { anchorOutcome, approvalBlockers, declaredMissingNow, isAmendable, isAttemptable, isInQueue, isVerification, missingRelationTargets, relationsAmong, targetName } from '../annotation/model.js';
 import { relationSentence } from '../annotation/relations.js';
-import { deriveResolutionLabel, type RuntimeStateContext } from '../resolution/model.js';
+import { deriveResolutionLabel, sameViewedState, type RuntimeStateContext, type ViewedState } from '../resolution/model.js';
 import type { ResolutionCandidate, TargetResolutionRecord } from '../resolution/resolve.js';
 import { Api, ApiError, type Policy, type SessionPass, type SessionSnapshot, type SessionStatus } from './api.js';
 import {
@@ -28,6 +28,7 @@ import {
   verdictControls,
   type ThemeChoice
 } from './components.js';
+import { ARTIFACT_FRAME_CLASS, ARTIFACT_FRAME_SESSION_ATTRIBUTE } from './artifact/bootstrap.js';
 import { button, clear, h, iconButton, qs } from './dom.js';
 import { CAPTURE_SUPPORT_STATEMENT, captureArtifactView, captureAvailable, captureUnavailableReason } from './capture.js';
 import { icon, type IconName } from './icons.js';
@@ -51,7 +52,7 @@ class App {
   private amendFor?: string;
   private repointFor?: string;
   private candidates?: ResolutionCandidate[];
-  private viewedAddress?: string;
+  private viewed?: ViewedState;
   private resolvedRevision?: string;
   private currentRevision = this.config.revision;
   private adoptedRevision = this.config.revision;
@@ -115,10 +116,14 @@ class App {
     this.stage = h('section', { class: 'stage', attrs: { 'aria-label': 'Artifact under review' } });
     this.placeholder = h('div', { class: 'stage__placeholder' }, h('h2', { text: 'Preparing the artifact' }));
     this.iframe = h('iframe', {
-      class: 'artifact-frame',
+      class: ARTIFACT_FRAME_CLASS,
       title: 'Artifact under review',
       hidden: true,
-      attrs: { src: 'about:blank', sandbox: 'allow-scripts allow-same-origin allow-forms allow-popups' }
+      attrs: {
+        src: 'about:blank',
+        [ARTIFACT_FRAME_SESSION_ATTRIBUTE]: this.config.sessionId,
+        sandbox: 'allow-scripts allow-same-origin allow-forms allow-popups'
+      }
     });
     this.banner = h('div', { class: 'banner', hidden: true, attrs: { role: 'alert' } });
     this.beforeAfterHost = h('div', { class: 'before-after-host', hidden: true });
@@ -597,10 +602,23 @@ class App {
     const revisionUnchanged = annotation.writtenRevision === this.adoptedRevision;
     return (resolution) => {
       const target = annotation.targets.find((entry) => entry.targetId === resolution.targetId);
+      const box = target?.renderedGrounding.boundingBox;
       return {
         revisionUnchanged,
-        targetAddress: target?.runtimeState?.address,
-        viewedAddress: resolution.viewedAddress
+        recorded: {
+          ...(target?.runtimeState?.address !== undefined ? { address: target.runtimeState.address } : {}),
+          ...(box && box.scrollX !== undefined && box.scrollY !== undefined
+            ? { scroll: { x: box.scrollX, y: box.scrollY } }
+            : {}),
+          ...(box && box.viewportWidth !== undefined && box.viewportHeight !== undefined
+            ? { viewport: { width: box.viewportWidth, height: box.viewportHeight } }
+            : {})
+        },
+        viewed: {
+          ...(resolution.viewedAddress !== undefined ? { address: resolution.viewedAddress } : {}),
+          ...(resolution.viewedScroll ? { scroll: resolution.viewedScroll } : {}),
+          ...(resolution.viewedViewport ? { viewport: resolution.viewedViewport } : {})
+        }
       };
     };
   }
@@ -1009,13 +1027,21 @@ class App {
         ...(target.sourceProvenance ? { sourceProvenance: target.sourceProvenance } : {}),
         ...(target.regionEvidence ? { regionEvidence: target.regionEvidence } : {})
       })) as LayerTarget[];
-      const selectors = annotation.targets.flatMap((target) => target.renderedGrounding.selectors ?? []);
-      const mark: ShellMarkTargets = { source: 'vil-shell', type: 'mark-targets', nodeIds: [], selectors };
-      this.postToLayer(mark);
+      this.markSelectedTargets();
     }
     this.renderCard();
     this.renderList();
     this.renderBeforeAfter();
+  }
+
+  private markSelectedTargets(): void {
+    const annotation = this.snapshot.annotations.find((entry) => entry.annotationId === this.selectedRowId);
+    if (!annotation) {
+      return;
+    }
+    const selectors = annotation.targets.flatMap((target) => target.renderedGrounding.selectors ?? []);
+    const mark: ShellMarkTargets = { source: 'vil-shell', type: 'mark-targets', nodeIds: [], selectors };
+    this.postToLayer(mark);
   }
 
   private onLayerMessage(event: MessageEvent<LayerMessage>): void {
@@ -1050,8 +1076,7 @@ class App {
         void this.onRelation(message.relation);
         break;
       case 'candidates':
-        this.candidates = message.candidates;
-        this.viewedAddress = message.address;
+        this.acceptCandidates(message.candidates, message.viewed, message.trigger);
         void this.resolveAll(message.revision);
         break;      case 'notice':
         this.showNotice(
@@ -1531,6 +1556,15 @@ class App {
     this.renderCandidateMarks();
   }
 
+  private acceptCandidates(candidates: ResolutionCandidate[], viewed?: ViewedState, trigger?: 'shell' | 'view'): void {
+    const stateMoved = !sameViewedState(viewed, this.viewed);
+    if (trigger === 'view' || stateMoved) {
+      this.resolvedRevision = undefined;
+    }
+    this.candidates = candidates;
+    this.viewed = viewed;
+  }
+
   private async resolveAll(revision: string): Promise<void> {
     if (!this.candidates || this.beforeAfter === 'before') {
       return;
@@ -1548,11 +1582,12 @@ class App {
         (annotation) => !isInQueue(annotation.state) && !isVerification(annotation.state)
       );
       for (const annotation of eligible) {
-        await this.api.resolve(annotation.annotationId, revision, this.candidates, this.viewedAddress);
+        await this.api.resolve(annotation.annotationId, revision, this.candidates, this.viewed);
       }
       this.resolvedRevision = revision;
       await this.refresh();
       this.renderCandidateMarks();
+      this.markSelectedTargets();
     } catch (error) {
       this.showNotice(messageOf(error));
     } finally {

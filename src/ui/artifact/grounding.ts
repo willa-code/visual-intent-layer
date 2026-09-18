@@ -26,8 +26,8 @@ export function describeElement(element: HTMLElement): Grounding {
   const doc = element.ownerDocument;
   const view = doc.defaultView;
   const grounding: Grounding = {
-    selectors: [cssPath(element)],
-    boundingBox: boxOf(rect, view, rect.x + (view?.scrollX ?? 0), rect.y + (view?.scrollY ?? 0)),
+    selectors: [composedSelector(element)],
+    boundingBox: boxOf(rect, view),
     semanticRole: element.getAttribute('role') ?? IMPLICIT_ROLES[element.tagName.toLowerCase()],
     accessibleName: accessibleNameOf(element) || undefined,
     structuralContext: {
@@ -52,8 +52,8 @@ export function describeTextRange(range: Range): Grounding {
   const startOffset = textOffsetOf(range);
   const rect = range.getBoundingClientRect();
   const grounding: Grounding = {
-    selectors: container ? [cssPath(container)] : [],
-    boundingBox: boxOf(rect, view, rect.x + (view?.scrollX ?? 0), rect.y + (view?.scrollY ?? 0)),
+    selectors: container ? [composedSelector(container)] : [],
+    boundingBox: boxOf(rect, view),
     textEvidence: {
       exactText,
       prefix: fullText.slice(Math.max(0, startOffset - 32), startOffset),
@@ -158,9 +158,7 @@ function accessibleNameOf(element: HTMLElement): string {
 
 function boxOf(
   rect: { x: number; y: number; width: number; height: number },
-  view: Window | null | undefined,
-  scrollX = 0,
-  scrollY = 0
+  view: Window | null | undefined
 ): Grounding['boundingBox'] {
   return {
     x: rect.x,
@@ -170,8 +168,8 @@ function boxOf(
     viewportWidth: view?.innerWidth,
     viewportHeight: view?.innerHeight,
     devicePixelRatio: view?.devicePixelRatio,
-    scrollX,
-    scrollY
+    scrollX: view?.scrollX ?? 0,
+    scrollY: view?.scrollY ?? 0
   };
 }
 
@@ -191,15 +189,81 @@ function textOffsetOf(range: Range): number {
 
 export const LAYER_ATTRIBUTE = 'data-vil-layer';
 
+export const SHADOW_SEPARATOR = '|';
+
 export function isLayerNode(element: Element): boolean {
   return element.hasAttribute(LAYER_ATTRIBUTE);
 }
 
+export function composedSelector(element: HTMLElement): string {
+  const segments = [cssPath(element)];
+  let root = element.getRootNode();
+  while (root instanceof ShadowRoot) {
+    const host = root.host as HTMLElement;
+    segments.unshift(cssPath(host));
+    root = host.getRootNode();
+  }
+  return segments.join(SHADOW_SEPARATOR);
+}
+
+export function elementByComposedSelector(selector: string, doc: Document): HTMLElement | undefined {
+  const segments = selector.split(SHADOW_SEPARATOR).filter((segment) => segment.length > 0);
+  if (segments.length === 0) {
+    return undefined;
+  }
+  let scope: ParentNode = doc;
+  let found: HTMLElement | undefined;
+  for (let index = 0; index < segments.length; index += 1) {
+    let match: Element | null;
+    try {
+      match = scope.querySelector(segments[index] as string);
+    } catch {
+      return undefined;
+    }
+    if (!(match instanceof HTMLElement)) {
+      return undefined;
+    }
+    found = match;
+    if (index < segments.length - 1) {
+      const shadow = found.shadowRoot;
+      if (!shadow) {
+        return undefined;
+      }
+      scope = shadow;
+    }
+  }
+  return found;
+}
+
+function composedElements(doc: Document, limit: number): HTMLElement[] {
+  const elements: HTMLElement[] = [];
+  const visit = (parent: ParentNode): void => {
+    for (const child of Array.from(parent.children)) {
+      if (elements.length >= limit) {
+        return;
+      }
+      const element = child as HTMLElement;
+      if (isLayerNode(element)) {
+        continue;
+      }
+      elements.push(element);
+      if (element.shadowRoot) {
+        visit(element.shadowRoot);
+      }
+      visit(element);
+    }
+  };
+  if (doc.body) {
+    visit(doc.body);
+  }
+  return elements;
+}
+
 export function extractCandidates(doc: Document, options: { limit?: number } = {}): ResolutionCandidate[] {
   const limit = options.limit ?? 2000;
-  const elements = Array.from(doc.querySelectorAll('body *')).filter((element) => !isLayerNode(element));
+  const elements = composedElements(doc, limit);
   const candidates: ResolutionCandidate[] = [];
-  const total = Math.min(elements.length, limit);
+  const total = elements.length;
   for (let index = 0; index < total; index += 1) {
     const element = elements[index] as HTMLElement;
     const grounding = describeElement(element);
@@ -232,6 +296,6 @@ export function elementByNodeId(doc: Document, nodeId: string): HTMLElement | un
     return undefined;
   }
   const index = Number(match[1]);
-  const elements = Array.from(doc.querySelectorAll('body *')).filter((element) => !isLayerNode(element));
-  return elements[index] as HTMLElement | undefined;
+  const elements = composedElements(doc, 2000);
+  return elements[index];
 }

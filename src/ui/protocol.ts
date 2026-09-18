@@ -1,3 +1,4 @@
+import type { ViewedState } from '../resolution/model.js';
 import type { ResolutionCandidate } from '../resolution/resolve.js';
 
 export type LayerTool = 'operate' | 'point' | 'box';
@@ -63,7 +64,14 @@ export type LayerRelation = {
 export type LayerReady = { source: 'vil-layer'; type: 'ready'; revision: string };
 export type LayerHover = { source: 'vil-layer'; type: 'hover'; label: string | null };
 export type LayerSelection = { source: 'vil-layer'; type: 'selection'; targets: LayerTarget[] };
-export type LayerCandidates = { source: 'vil-layer'; type: 'candidates'; candidates: ResolutionCandidate[]; revision: string; address?: string };
+export type LayerCandidates = {
+  source: 'vil-layer';
+  type: 'candidates';
+  candidates: ResolutionCandidate[];
+  revision: string;
+  viewed?: ViewedState;
+  trigger?: 'shell' | 'view';
+};
 export type LayerApplied = { source: 'vil-layer'; type: 'applied'; revision?: string };
 export type LayerRelationPreview = { source: 'vil-layer'; type: 'relation-preview'; sentence: string | null };
 export type LayerRelationCommit = { source: 'vil-layer'; type: 'relation'; relation: LayerRelation; sentence: string };

@@ -15,6 +15,7 @@ import {
   type RemoteOrigins
 } from '../artifact/fidelity.js';
 import { assertLocalAppUrl, fetchAppRevision, type ReviewService } from '../mcp/service.js';
+import type { ScrollOffset, ViewportSize } from '../resolution/model.js';
 import { resolveTarget, type ResolutionCandidate } from '../resolution/resolve.js';
 import { summarise } from '../annotation/model.js';
 import type { AnnotationRelation, AnnotationTarget } from '../annotation/model.js';
@@ -558,17 +559,13 @@ async function handleApi(context: RequestContext, url: URL, method: string): Pro
     }
     const revision = (body as { revision?: unknown }).revision;
     const candidates = (body as { candidates?: unknown }).candidates;
-    const viewedAddress = (body as { address?: unknown }).address;
+    const viewed = readViewedState((body as { viewed?: unknown }).viewed);
     if (typeof revision !== 'string' || !Array.isArray(candidates)) {
       sendText(response, 400, 'Expected { revision: string, candidates: ResolutionCandidate[] }');
       return;
     }
     const resolutions = annotation.targets.map((target) =>
-      resolveTarget(
-        target,
-        candidates as ResolutionCandidate[],
-        typeof viewedAddress === 'string' ? { viewedAddress } : {}
-      )
+      resolveTarget(target, candidates as ResolutionCandidate[], viewed)
     );
     review.annotations.noteRevisionAdvance(annotation.artifactId, revision);
     const updated = review.annotations.recordResolutions(annotationId, resolutions, revision);
@@ -1717,6 +1714,26 @@ function normalizeTargets(raw: unknown[]): AnnotationTarget[] {
       ...(runtimeState && typeof runtimeState === 'object' ? { runtimeState } : {})
     } satisfies AnnotationTarget;
   });
+}
+
+function readViewedState(value: unknown): { viewedAddress?: string; viewedScroll?: ScrollOffset; viewedViewport?: ViewportSize } {
+  if (value === null || typeof value !== 'object') {
+    return {};
+  }
+  const record = value as { address?: unknown; scroll?: unknown; viewport?: unknown };
+  const options: { viewedAddress?: string; viewedScroll?: ScrollOffset; viewedViewport?: ViewportSize } = {};
+  if (typeof record.address === 'string' && record.address.length > 0) {
+    options.viewedAddress = record.address;
+  }
+  const scroll = record.scroll as { x?: unknown; y?: unknown } | undefined;
+  if (scroll && typeof scroll.x === 'number' && typeof scroll.y === 'number') {
+    options.viewedScroll = { x: scroll.x, y: scroll.y };
+  }
+  const viewport = record.viewport as { width?: unknown; height?: unknown } | undefined;
+  if (viewport && typeof viewport.width === 'number' && typeof viewport.height === 'number') {
+    options.viewedViewport = { width: viewport.width, height: viewport.height };
+  }
+  return options;
 }
 
 function dirnameOf(path: string): string {

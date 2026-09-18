@@ -1,9 +1,11 @@
 import { provenanceForElement } from '../../adapters/source-stamp.js';
 import { relationSentence } from '../../annotation/relations.js';
+import { isArtifactDocument } from './bootstrap.js';
 import type { CandidateMark, Grounding, LayerMessage, LayerRelation, LayerTarget, LayerTool, ShellMessage } from '../protocol.js';
 import {
   LAYER_ATTRIBUTE,
   describeElement,
+  elementByComposedSelector,
   describeRegion,
   describeTextRange,
   elementByNodeId,
@@ -55,6 +57,37 @@ type Mark = { element: HTMLElement; box: HTMLElement };
 
 function post(message: LayerMessage): void {
   parentWindow?.postMessage(message, '*');
+}
+
+function postCandidates(trigger: 'shell' | 'view' = 'shell'): void {
+  const address = addressOf();
+  post({
+    source: 'vil-layer',
+    type: 'candidates',
+    candidates: extractCandidates(document),
+    revision,
+    trigger,
+    viewed: {
+      ...(address ? { address } : {}),
+      scroll: { x: window.scrollX, y: window.scrollY },
+      viewport: { width: window.innerWidth, height: window.innerHeight }
+    }
+  });
+}
+
+let candidateRequest: number | undefined;
+
+function scheduleCandidateRequest(): void {
+  if (pointDrag || boxDrag) {
+    return;
+  }
+  if (candidateRequest !== undefined) {
+    window.clearTimeout(candidateRequest);
+  }
+  candidateRequest = window.setTimeout(() => {
+    candidateRequest = undefined;
+    postCandidates('view');
+  }, 250);
 }
 
 function ensureOverlay(): HTMLElement {
@@ -309,11 +342,32 @@ function enclosedElements(rect: { x: number; y: number; width: number; height: n
   return (leaves.length > 0 ? leaves : recognizable).slice(0, MAX_AREA_TARGETS);
 }
 
+function eventElement(event: Event): HTMLElement | null {
+  const first = event.composedPath()[0];
+  return first instanceof HTMLElement ? first : null;
+}
+
+function elementAtPoint(clientX: number, clientY: number): HTMLElement | null {
+  let element = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+  while (element?.shadowRoot) {
+    const inner = element.shadowRoot.elementFromPoint(clientX, clientY) as HTMLElement | null;
+    if (!inner || inner === element) {
+      break;
+    }
+    element = inner;
+  }
+  return element;
+}
+
 function onPointerDown(event: PointerEvent): void {
+  if (candidateRequest !== undefined) {
+    window.clearTimeout(candidateRequest);
+    candidateRequest = undefined;
+  }
   if (tool === 'operate' || event.button !== 0) {
     return;
   }
-  const element = event.target as HTMLElement | null;
+  const element = eventElement(event);
   if (!element || isLayerNode(element)) {
     return;
   }
@@ -343,7 +397,7 @@ function onPointerMove(event: PointerEvent): void {
     }
   }
   if (tool === 'point') {
-    const element = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+    const element = elementAtPoint(event.clientX, event.clientY);
     if (element && !isLayerNode(element)) {
       setHover(element);
     } else {
@@ -400,7 +454,7 @@ function onPointerUp(event: PointerEvent): void {
     }
     return;
   }
-  const element = event.target as HTMLElement | null;
+  const element = eventElement(event);
   if (!element || isLayerNode(element)) {
     return;
   }
@@ -641,7 +695,7 @@ function onClick(event: MouseEvent): void {
   if (tool === 'operate') {
     return;
   }
-  const element = event.target as HTMLElement | null;
+  const element = eventElement(event);
   if (element && isLayerNode(element)) {
     return;
   }
@@ -702,11 +756,7 @@ function selectorElement(selector: string | undefined): HTMLElement | null {
   if (!selector) {
     return null;
   }
-  try {
-    return document.querySelector(selector) as HTMLElement | null;
-  } catch {
-    return null;
-  }
+  return elementByComposedSelector(selector, document) ?? null;
 }
 
 function markBySelectors(selectors: string[], nodeIds: string[], chosenNodeId?: string): void {
@@ -722,13 +772,9 @@ function markBySelectors(selectors: string[], nodeIds: string[], chosenNodeId?: 
     }
   }
   for (const selector of selectors) {
-    try {
-      const element = document.querySelector(selector) as HTMLElement | null;
-      if (element) {
-        marks.push({ element, box: boxFor(element, 'owned', selector) });
-      }
-    } catch {
-      continue;
+    const element = elementByComposedSelector(selector, document);
+    if (element) {
+      marks.push({ element, box: boxFor(element, 'owned', selector) });
     }
   }
   redraw();
@@ -768,14 +814,7 @@ function onMessage(event: MessageEvent<ShellMessage>): void {
       markCandidates(message.candidates);
       break;
     case 'request-candidates': {
-      const address = addressOf();
-      post({
-        source: 'vil-layer',
-        type: 'candidates',
-        candidates: extractCandidates(document),
-        revision,
-        ...(address ? { address } : {})
-      });
+      postCandidates();
       break;
     }
     case 'before-after':
@@ -788,7 +827,7 @@ function onDocumentClick(event: MouseEvent): void {
   if (!addressBase.startsWith('/artifact/')) {
     return;
   }
-  const target = event.target as Element | null;
+  const target = eventElement(event);
   const anchor = target?.closest?.('a[href]') as HTMLAnchorElement | null | undefined;
   if (!anchor) {
     return;
@@ -835,34 +874,49 @@ function onKeyDown(event: KeyboardEvent): void {
   cancelRelationDrag();
 }
 
-document.addEventListener('pointerdown', onPointerDown, true);
-document.addEventListener('pointermove', onPointerMove, true);
-document.addEventListener('pointerup', onPointerUp, true);
-document.addEventListener('pointercancel', () => {
-  if (pointDrag?.startedOnSelected) {
-    cancelRelationDrag();
-  }
-});
-document.addEventListener('keydown', onKeyDown, true);
-window.addEventListener('blur', () => {
-  if (pointDrag?.startedOnSelected) {
-    cancelRelationDrag();
-  }
-});
-document.addEventListener('click', onClick, true);
-document.addEventListener('click', onDocumentClick, true);
-window.addEventListener('scroll', redraw, true);
-window.addEventListener('resize', redraw);
-window.addEventListener('message', onMessage as EventListener);
-window.addEventListener('visual-intent:applied-revision', ((event: CustomEvent<{ revision?: unknown }>) => {
-  const supplied = event.detail?.revision;
-  post({
-    source: 'vil-layer',
-    type: 'applied',
-    ...(typeof supplied === 'string' && supplied.length > 0 ? { revision: supplied } : {})
+function start(): void {
+  document.addEventListener('pointerdown', onPointerDown, true);
+  document.addEventListener('pointermove', onPointerMove, true);
+  document.addEventListener('pointerup', onPointerUp, true);
+  document.addEventListener('pointercancel', () => {
+    if (pointDrag?.startedOnSelected) {
+      cancelRelationDrag();
+    }
   });
-}) as EventListener);
+  document.addEventListener('keydown', onKeyDown, true);
+  window.addEventListener('blur', () => {
+    if (pointDrag?.startedOnSelected) {
+      cancelRelationDrag();
+    }
+  });
+  document.addEventListener('click', onClick, true);
+  document.addEventListener('click', onDocumentClick, true);
+  window.addEventListener(
+    'scroll',
+    () => {
+      redraw();
+      scheduleCandidateRequest();
+    },
+    true
+  );
+  window.addEventListener('resize', () => {
+    redraw();
+    scheduleCandidateRequest();
+  });
+  window.addEventListener('message', onMessage as EventListener);
+  window.addEventListener('visual-intent:applied-revision', ((event: CustomEvent<{ revision?: unknown }>) => {
+    const supplied = event.detail?.revision;
+    post({
+      source: 'vil-layer',
+      type: 'applied',
+      ...(typeof supplied === 'string' && supplied.length > 0 ? { revision: supplied } : {})
+    });
+  }) as EventListener);
+  overlay = ensureOverlay();
+  post({ source: 'vil-layer', type: 'ready', revision });
+}
 
-overlay = ensureOverlay();
-post({ source: 'vil-layer', type: 'ready', revision });
+if (isArtifactDocument(window.frameElement, sessionId)) {
+  start();
+}
 void sessionId;

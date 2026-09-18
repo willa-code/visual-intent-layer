@@ -1241,4 +1241,185 @@ describe('Review Surface: Runtime State Evidence, one document, and a proxied ap
       await dev.stop();
     }
   }, 120000);
+
+
+  it('stops calling an unrendered row deleted, and the operator\u2019s own scroll restores it', async () => {
+    const virtualized = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Virtualized roster</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; }
+      #list { position: relative; }
+      .row { position: absolute; left: 0; right: 0; height: 60px; line-height: 60px; padding-left: 8px; border-bottom: 1px solid rgb(238, 238, 238); }
+    </style>
+  </head>
+  <body>
+    <main class="roster">
+      <h1>Roster</h1>
+      <div id="list"></div>
+    </main>
+    <script>
+      const TOTAL = 200;
+      const ROW = 60;
+      const WINDOW = 10;
+      const list = document.getElementById('list');
+      list.style.height = TOTAL * ROW + 'px';
+      function render() {
+        const first = Math.max(0, Math.floor(window.scrollY / ROW) - 2);
+        const last = Math.min(TOTAL, first + WINDOW);
+        list.textContent = '';
+        for (let index = first; index < last; index += 1) {
+          const row = document.createElement('div');
+          row.className = 'row';
+          row.id = 'row-' + index;
+          row.style.top = index * ROW + 'px';
+          row.textContent = 'Row ' + String(index).padStart(4, '0');
+          list.appendChild(row);
+        }
+      }
+      window.addEventListener('scroll', render);
+      render();
+    </script>
+  </body>
+</html>`;
+    const virtualDir = mkdtempSync(join(tmpdir(), 'vil-virtual-artifact-'));
+    const virtualPath = join(virtualDir, 'roster.html');
+    writeFileSync(virtualPath, virtualized, 'utf8');
+    const opened = await service.openSession({ kind: 'saved-html', path: virtualPath });
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const virtualPage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const snapshot = () =>
+      fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`).then((response) =>
+        response.json()
+      ) as Promise<{ annotations: Array<{ state: string; resolutions: Array<{ match: string }> }> }>;
+    try {
+      await virtualPage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+      const frame = virtualPage.frameLocator('iframe.artifact-frame');
+      await expectLater(() => frame.locator('#row-100').count(), (count) => count === 0, 'row 100 is not rendered at rest');
+
+      await virtualPage.getByRole('button', { name: /Point at things/ }).click();
+      await frame.locator('body').evaluate(() => {
+        window.scrollTo(0, 6000);
+      });
+      await expectLater(() => frame.locator('#row-100').count(), (count) => count === 1, 'row 100 renders once scrolled to');
+      await frame.locator('#row-100').click();
+      await virtualPage.locator('.anchored-card textarea').fill('Align this row with the header.');
+      await virtualPage.locator('.anchored-card textarea').press('Enter');
+      await virtualPage.getByRole('button', { name: 'Send the queue' }).click();
+      await expectLater(
+        async () => (await snapshot()).annotations[0]?.state,
+        (state) => state === 'delivered',
+        'the queue is sent'
+      );
+
+      await frame.locator('body').evaluate(() => {
+        window.scrollTo(0, 0);
+      });
+      await expectLater(() => frame.locator('#row-100').count(), (count) => count === 0, 'row 100 leaves the rendered window');
+      await expectLater(
+        () => virtualPage.locator('.annotation-row .resolution').first().getAttribute('data-label'),
+        (label) => label === 'state-only',
+        'the row stops claiming the Target is not in this revision'
+      );
+      const rowText = await virtualPage.locator('.annotation-row').first().innerText();
+      expect(rowText).toMatch(/may exist only in a state no longer on screen/i);
+
+      await frame.locator('body').evaluate(() => {
+        window.scrollTo(0, 6000);
+      });
+      await expectLater(
+        () => virtualPage.locator('.annotation-row .resolution').first().getAttribute('data-label'),
+        (label) => label === 'matched' || label === 'recovered',
+        'the Target is found again once the operator scrolls the row back'
+      );
+      await expectLater(
+        async () => (await snapshot()).annotations[0]?.resolutions[0]?.match !== 'unresolved',
+        (resolved) => resolved,
+        'resolution re-ran with no re-pointing'
+      );
+    } finally {
+      await virtualPage.close();
+    }
+  }, 120000);
+
+  it('points inside an open shadow root, and re-finds the same node after a reload', async () => {
+    const shadowed = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Shadow widget</title>
+    <style>body { margin: 2rem; font-family: system-ui, sans-serif; }</style>
+  </head>
+  <body>
+    <main class="page">
+      <h1>Account</h1>
+      <div id="widget"></div>
+    </main>
+    <script>
+      const root = document.getElementById('widget').attachShadow({ mode: 'open' });
+      root.innerHTML =
+        '<style>.card { border: 1px solid #ddd; padding: 1rem; } .primary { font: inherit; padding: 10px 18px; }</style>' +
+        '<section class="card"><h2>Delivery</h2><p>Where should it go?</p><button class="primary" type="button">Save address</button></section>';
+    </script>
+  </body>
+</html>`;
+    const shadowDir = mkdtempSync(join(tmpdir(), 'vil-shadow-artifact-'));
+    const shadowPath = join(shadowDir, 'widget.html');
+    writeFileSync(shadowPath, shadowed, 'utf8');
+    const opened = await service.openSession({ kind: 'saved-html', path: shadowPath });
+    const auth = `session=${opened.sessionId}&cap=${opened.capability}`;
+    const shadowPage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const snapshot = () =>
+      fetch(`${service.baseUrl}/api/sessions/${opened.sessionId}/annotations?${auth}`).then((response) =>
+        response.json()
+      ) as Promise<{
+        annotations: Array<{
+          state: string;
+          targets: Array<{ renderedGrounding: { selectors?: string[] } }>;
+          resolutions: Array<{ match: string }>;
+        }>;
+      }>;
+    try {
+      await shadowPage.goto(opened.reviewUrl, { waitUntil: 'domcontentloaded' });
+      const frame = shadowPage.frameLocator('iframe.artifact-frame');
+      await expectLater(() => frame.locator('button.primary').count(), (count) => count === 1, 'the shadow button renders');
+
+      await shadowPage.getByRole('button', { name: /Point at things/ }).click();
+      await frame.locator('button.primary').click();
+      const card = shadowPage.locator('.anchored-card');
+      await card.waitFor({ state: 'visible' });
+      expect(await card.innerText()).toMatch(/Save address/);
+
+      await card.locator('textarea').fill('Make the save button the primary action.');
+      await card.locator('textarea').press('Enter');
+      await expectLater(
+        async () => (await snapshot()).annotations[0]?.targets[0]?.renderedGrounding.selectors?.[0]?.includes('|'),
+        (boundaryQualified) => boundaryQualified === true,
+        'the Target stores a boundary-qualified selector'
+      );
+
+      await shadowPage.getByRole('button', { name: 'Send the queue' }).click();
+      await expectLater(
+        async () => (await snapshot()).annotations[0]?.state,
+        (state) => state === 'delivered',
+        'the queue is sent'
+      );
+
+      await shadowPage.reload({ waitUntil: 'domcontentloaded' });
+      await expectLater(
+        async () => (await snapshot()).annotations[0]?.resolutions[0]?.match !== 'unresolved',
+        (resolved) => resolved,
+        'the shadow Target re-resolves after a reload'
+      );
+      await expectLater(
+        () => shadowPage.locator('.annotation-row .resolution').first().getAttribute('data-label'),
+        (label) => label === 'matched' || label === 'recovered',
+        'the row reports the shadow Target as found'
+      );
+    } finally {
+      await shadowPage.close();
+    }
+  }, 120000);
 });
